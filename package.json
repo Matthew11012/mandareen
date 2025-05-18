@@ -9,7 +9,12 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev:backend": "npm --workspace apps/backend run start:dev",
+    "dev:frontend": "npm --workspace apps/frontend run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "migrate": "npm --workspace apps/backend run prisma migrate dev",
+    "generate": "npm --workspace apps/backend run prisma generate"
   },
   "keywords": [],
   "author": "",
