@@ -1,0 +1,113 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              Int            @id @default(autoincrement())
+  email           String         @unique
+  password_hashed String
+  createdAt       DateTime       @default(now())
+  assessments     Assessment[]
+  flashcards      Flashcard[]
+  conversations   Conversation[]
+}
+
+model Assessment {
+  id          Int      @id @default(autoincrement())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      Int
+  levelPlaced Int
+  takenAt     DateTime @default(now())
+}
+
+model Lesson {
+  id        Int             @id @default(autoincrement())
+  level     Int
+  title     String?
+  createdBy String?
+  createdAt DateTime        @default(now())
+  sections  LessonSection[]
+}
+
+model LessonSection {
+  id            Int            @id @default(autoincrement())
+  lesson        Lesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  lessonId      Int
+  sectionType   String
+  content       Json
+  wordInstances WordInstance[]
+}
+
+model VocabularyItem {
+  id         Int            @id @default(autoincrement())
+  hanzi      String         @unique
+  pinyin     String
+  definition String
+  instances  WordInstance[]
+  flashcards Flashcard[]
+}
+
+model WordInstance {
+  id         Int            @id @default(autoincrement())
+  section    LessonSection  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  sectionId  Int
+  vocab      VocabularyItem @relation(fields: [vocabId], references: [id], onDelete: Cascade)
+  vocabId    Int
+  startIndex Int
+  endIndex   Int
+  flashcards Flashcard[]
+}
+
+model Flashcard {
+  id               Int            @id @default(autoincrement())
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           Int
+  vocab            VocabularyItem @relation(fields: [vocabId], references: [id], onDelete: Cascade)
+  vocabId          Int
+  sourceInstance   WordInstance?  @relation(fields: [sourceInstanceId], references: [id])
+  sourceInstanceId Int?
+  nextReview       DateTime
+  intervalDays     Int
+  easiness         Float
+  reviews          Review[]
+}
+
+model Review {
+  id          Int       @id @default(autoincrement())
+  flashcard   Flashcard @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
+  flashcardId Int
+  reviewedAt  DateTime  @default(now())
+  quality     Int
+}
+
+model Conversation {
+  id        Int       @id @default(autoincrement())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  startedAt DateTime  @default(now())
+  messages  Message[]
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId Int
+  role           String
+  hanzi          String
+  pinyin         String
+  translation    String
+  audioUrl       String?
+  createdAt      DateTime     @default(now())
+}
