@@ -5,6 +5,11 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
 
+interface GoogleUser {
+  email: string;
+  googleId: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -82,6 +87,55 @@ export class AuthService {
         id: user.id,
         email: user.email,
         // levelPlaced: user.levelPlaced, // This will be null for new users
+      },
+      token,
+    };
+  }
+
+  async validateGoogleUser(details: GoogleUser) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: details.email },
+    });
+
+    if (user) {
+      // Update user with Google ID if not present
+      if (!user.googleId) {
+        return await this.prisma.user.update({
+          where: { id: user.id },
+          data: { googleId: details.googleId },
+        });
+      }
+      return user;
+    }
+
+    // Create new user if doesn't exist
+    const newUser = await this.prisma.user.create({
+      data: {
+        email: details.email,
+        googleId: details.googleId,
+        password_hashed: '', // Empty as Google auth doesn't need password
+      },
+    });
+
+    return newUser;
+  }
+
+  async googleLogin(user: any) {
+    if (!user) {
+      throw new UnauthorizedException('No user from Google');
+    }
+
+    // Generate JWT token
+    const token = this.jwtService.sign({ 
+      sub: user.id,
+      email: user.email 
+    });
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        levelPlaced: user.levelPlaced,
       },
       token,
     };

@@ -5,6 +5,9 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
+  // Add global prefix to all routes
+  app.setGlobalPrefix('api');
+  
   // Enable validation
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true, // Strip properties that don't have decorators
