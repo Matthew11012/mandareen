@@ -1,13 +1,17 @@
 import { Controller, Post, Get, Body, UseGuards, Logger } from '@nestjs/common';
 import { DictionaryImportService } from './dictionary-import.service';
+import { HSKLevelAssignmentService } from './hsk-level-assignment.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('dictionary')
-@UseGuards(JwtAuthGuard) // Protect admin endpoints
+@UseGuards(JwtAuthGuard) 
 export class DictionaryImportController {
   private readonly logger = new Logger(DictionaryImportController.name);
 
-  constructor(private dictionaryImportService: DictionaryImportService) {}
+  constructor(
+    private dictionaryImportService: DictionaryImportService,
+    private hskLevelAssignmentService: HSKLevelAssignmentService
+  ) {}
 
   @Post('full-import')
   async fullDictionaryImport() {
@@ -15,25 +19,17 @@ export class DictionaryImportController {
     return this.dictionaryImportService.fullDictionaryImport();
   }
 
-  @Post('import-cedict')
-  async importCCCEDICT(@Body('filePath') filePath: string) {
-    this.logger.log(`Starting CC-CEDICT import from: ${filePath}`);
-    await this.dictionaryImportService.importCCCEDICT(filePath);
-    return { message: 'CC-CEDICT import completed successfully' };
-  }
-
-  @Post('import-hsk')
-  async importHSKLevels(@Body() hskData: Array<{ hanzi: string; level: number }>) {
-    this.logger.log(`Importing HSK levels for ${hskData.length} words`);
-    await this.dictionaryImportService.importHSKLevels(hskData);
-    return { message: 'HSK levels imported successfully' };
-  }
-
   @Post('add-sample-data')
   async addSampleData() {
     this.logger.log('Adding sample vocabulary data');
     await this.dictionaryImportService.addSampleData();
     return { message: 'Sample data added successfully' };
+  }
+
+  @Post('assign-hsk-levels')
+  async assignHSKLevels() {
+    this.logger.log('Starting HSK level assignment from comprehensive data');
+    return this.hskLevelAssignmentService.assignHSKLevels();
   }
 
   @Get('stats')

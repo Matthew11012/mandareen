@@ -5,6 +5,7 @@ import { VocabularyController } from './vocabulary.controller';
 import { SegmentationService } from './segmentation.service';
 import { DictionaryImportService } from './dictionary-import.service';
 import { DictionaryImportController } from './dictionary-import.controller';
+import { HSKLevelAssignmentService } from './hsk-level-assignment.service';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
@@ -16,7 +17,7 @@ import { PrismaModule } from '../prisma/prisma.module';
     }),
   ],
   controllers: [VocabularyController, DictionaryImportController],
-  providers: [VocabularyService, SegmentationService, DictionaryImportService],
+  providers: [VocabularyService, SegmentationService, DictionaryImportService, HSKLevelAssignmentService],
   exports: [VocabularyService, SegmentationService],
 })
 export class VocabularyModule {}

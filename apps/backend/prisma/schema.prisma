@@ -58,12 +58,15 @@ model VocabularyItem {
   hskLevel    Int?            // HSK level (1-7), null for non-HSK words
   isCustom    Boolean         @default(false)  // User-added words
   frequency   Int?            // Word frequency ranking
+  traditional String?         // Traditional characters
+  source      String?         // Data source (HSK30, HSK20, CEDICT, etc.)
   createdAt   DateTime        @default(now())
   instances   WordInstance[]
   flashcards  Flashcard[]
   
   @@index([hanzi])
   @@index([hskLevel])
+  @@index([source])
 }
 
 model WordInstance {
