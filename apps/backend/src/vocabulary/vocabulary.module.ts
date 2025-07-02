@@ -3,6 +3,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { VocabularyService } from './vocabulary.service';
 import { VocabularyController } from './vocabulary.controller';
 import { SegmentationService } from './segmentation.service';
+import { DictionaryImportService } from './dictionary-import.service';
+import { DictionaryImportController } from './dictionary-import.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
@@ -13,8 +15,8 @@ import { PrismaModule } from '../prisma/prisma.module';
       signOptions: { expiresIn: '1d' },
     }),
   ],
-  controllers: [VocabularyController],
-  providers: [VocabularyService, SegmentationService],
+  controllers: [VocabularyController, DictionaryImportController],
+  providers: [VocabularyService, SegmentationService, DictionaryImportService],
   exports: [VocabularyService, SegmentationService],
 })
 export class VocabularyModule {}
