@@ -55,18 +55,29 @@ model VocabularyItem {
   hanzi       String          @unique
   pinyin      String
   definition  String
+  hskLevel    Int?            // HSK level (1-7), null for non-HSK words
+  isCustom    Boolean         @default(false)  // User-added words
+  frequency   Int?            // Word frequency ranking
+  createdAt   DateTime        @default(now())
   instances   WordInstance[]
   flashcards  Flashcard[]
+  
+  @@index([hanzi])
+  @@index([hskLevel])
 }
 
 model WordInstance {
   id          Int             @id @default(autoincrement())
-  section     LessonSection   @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  sectionId   Int
+  section     LessonSection?  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  sectionId   Int?
+  message     Message?        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId   Int?
   vocab       VocabularyItem  @relation(fields: [vocabId], references: [id], onDelete: Cascade)
   vocabId     Int
   startIndex  Int
   endIndex    Int
+  context     String          // The surrounding text for context
+  createdAt   DateTime        @default(now())
   flashcards  Flashcard[]
 }
 
@@ -110,4 +121,5 @@ model Message {
   translation     String
   audioUrl        String?
   createdAt       DateTime      @default(now())
+  wordInstances   WordInstance[]
 }
