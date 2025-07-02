@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
-interface SegmentResult {
+export interface SegmentResult {
   word: string;
   startIndex: number;
   endIndex: number;

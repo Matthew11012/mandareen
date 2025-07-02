@@ -4,6 +4,7 @@ import { OpenAIService } from '../openai/openai.service';
 import { Passage, Word } from './models/passage.model';
 import { FetchQuestionsDto } from './dto/fetch-questions.dto';
 import { SubmitAssessmentDto, WordKnowledgeLevel } from './dto/submit-assessment.dto';
+import { SegmentationService } from '../vocabulary/segmentation.service';
 
 @Injectable()
 export class AssessmentService {
@@ -12,9 +13,10 @@ export class AssessmentService {
   constructor(
     private prisma: PrismaService,
     private openaiService: OpenAIService,
+    private segmentationService: SegmentationService,
   ) {}
 
-  async fetchAssessmentQuestions(userId: number, dto: FetchQuestionsDto): Promise<Passage[]> {
+  async fetchAssessmentQuestions(userId: number, dto: FetchQuestionsDto): Promise<any[]> {
     try {
       const { maxLevel = 7, passageCount = 4 } = dto;
       
@@ -26,10 +28,24 @@ export class AssessmentService {
       
       const passages = await Promise.all(passagePromises);
       
+      // Segment each passage and add vocabulary metadata
+      const enrichedPassages = await Promise.all(
+        passages.map(async (passage) => {
+          const segments = await this.segmentationService.segmentText(passage.content);
+          return {
+            ...passage,
+            segments: segments,
+            vocabularyItems: segments
+              .filter(s => s.vocabItem)
+              .map(s => s.vocabItem),
+          };
+        })
+      );
+      
       // Store assessment session in cache or DB if needed
       
       
-      return passages;
+      return enrichedPassages;
     } catch (error) {
       this.logger.error('Error fetching assessment questions:', error);
       throw new Error(`Failed to fetch assessment questions: ${error.message}`);
