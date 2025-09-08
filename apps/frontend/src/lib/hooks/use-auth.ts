@@ -47,9 +47,15 @@ export const useAuth = () => {
   /**
    * Logout and redirect to login page
    */
-  const logoutWithRedirect = () => {
-    logout();
-    router.push("/auth/login");
+  const logoutWithRedirect = async () => {
+    try {
+      await logout();
+      router.push("/auth/login");
+    } catch (error) {
+      // Even if logout fails, redirect to login
+      console.error("Logout error:", error);
+      router.push("/auth/login");
+    }
   };
 
   return {

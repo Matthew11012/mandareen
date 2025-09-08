@@ -149,4 +149,19 @@ export class AuthService {
       token,
     };
   }
+
+  async logout(userId: number): Promise<{ message: string }> {
+    // In a JWT-based auth system, logout is typically handled client-side
+    // by removing the token. However, we can perform server-side cleanup here.
+
+    // For now, we'll just return a success message
+    // In the future, you might want to:
+    // 1. Add token blacklisting
+    // 2. Clear any active sessions
+    // 3. Log the logout event
+
+    return {
+      message: 'Successfully logged out',
+    };
+  }
 }

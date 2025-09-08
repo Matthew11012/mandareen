@@ -101,6 +101,28 @@ export const authApi = {
   },
 
   /**
+   * Logout current user
+   * @returns Promise with logout confirmation
+   * @throws ApiError on server errors
+   */
+  logout: async (): Promise<{ message: string }> => {
+    try {
+      const response = await api.post<{ message: string }>("/auth/logout");
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const apiError: ApiError = {
+          message: error.response?.data?.message || "Logout failed",
+          statusCode: error.response?.status,
+          error: error.response?.data?.error,
+        };
+        throw apiError;
+      }
+      throw error;
+    }
+  },
+
+  /**
    * Initiate Google OAuth flow
    * @returns Google OAuth URL for redirection
    */

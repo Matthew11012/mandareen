@@ -23,7 +23,7 @@ interface AuthState {
   // Actions
   login: (data: LoginData) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   clearError: () => void;
   setLoading: (loading: boolean) => void;
 
@@ -119,20 +119,31 @@ export const useAuthStore = create<AuthState>()(
 
       /**
        * Logout current user
-       * Clears all auth state and removes stored token
+       * Calls backend logout endpoint and clears all auth state
        */
-      logout: () => {
-        localStorage.removeItem("auth-token");
-        // Clear cookie as well
-        document.cookie =
-          "auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-        set({
-          user: null,
-          token: null,
-          isAuthenticated: false,
-          isLoading: false,
-          error: null,
-        });
+      logout: async () => {
+        set({ isLoading: true });
+
+        try {
+          // Call backend logout endpoint
+          await authApi.logout();
+        } catch (error) {
+          // Even if backend logout fails, we should clear local state
+          console.warn("Backend logout failed:", error);
+        } finally {
+          // Always clear local auth state
+          localStorage.removeItem("auth-token");
+          // Clear cookie as well
+          document.cookie =
+            "auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+          set({
+            user: null,
+            token: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: null,
+          });
+        }
       },
 
       /**

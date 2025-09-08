@@ -13,6 +13,7 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/request.types';
 
@@ -29,6 +30,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async logout(@Req() req: AuthenticatedRequest): Promise<{ message: string }> {
+    return this.authService.logout(req.user.id);
   }
 
   @Get('google')
