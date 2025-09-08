@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
-import { Word, Passage } from '../assessment/models/passage.model';
+import { Passage } from '../assessment/models/passage.model';
 import { v4 as uuidv4 } from 'uuid';
+
+interface OpenAIError extends Error {
+  message: string;
+}
 
 @Injectable()
 export class OpenAIService {
@@ -45,11 +49,12 @@ export class OpenAIService {
         targetHskLevel: hskLevel,
       };
     } catch (error) {
+      const openaiError = error as OpenAIError;
       this.logger.error(
         `Error generating passage for HSK level ${hskLevel}:`,
-        error,
+        openaiError,
       );
-      throw new Error(`Failed to generate passage: ${error.message}`);
+      throw new Error(`Failed to generate passage: ${openaiError.message}`);
     }
   }
 

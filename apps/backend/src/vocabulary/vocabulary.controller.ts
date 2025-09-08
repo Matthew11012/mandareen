@@ -1,4 +1,12 @@
-import { Controller, Post, Body, Get, Param, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Param,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { VocabularyService } from './vocabulary.service';
 import { SegmentationService } from './segmentation.service';
 import { CreateWordInstanceDto } from './dto/create-word-instance.dto';
@@ -13,12 +21,12 @@ export class VocabularyController {
   ) {}
 
   @Post('segment')
-  async segmentText(@Body('text') text: string) {
+  async segmentText(@Body('text') text: string): Promise<any> {
     return this.segmentationService.segmentText(text);
   }
 
   @Post('lookup')
-  async lookupWord(@Body('hanzi') hanzi: string) {
+  async lookupWord(@Body('hanzi') hanzi: string): Promise<any> {
     return this.vocabularyService.findVocabularyItem(hanzi);
   }
 
@@ -26,10 +34,12 @@ export class VocabularyController {
   async createWordInstance(
     @Req() req,
     @Body() createDto: CreateWordInstanceDto,
-  ) {
+  ): Promise<any> {
     // Find or create vocabulary item
-    let vocabItem = await this.vocabularyService.findVocabularyItem(createDto.hanzi);
-    
+    let vocabItem = await this.vocabularyService.findVocabularyItem(
+      createDto.hanzi,
+    );
+
     if (!vocabItem) {
       // Create custom vocabulary item
       vocabItem = await this.vocabularyService.createVocabularyItem({
@@ -51,7 +61,7 @@ export class VocabularyController {
   }
 
   @Get('search/:query')
-  async searchVocabulary(@Param('query') query: string) {
+  async searchVocabulary(@Param('query') query: string): Promise<any> {
     return this.vocabularyService.searchVocabulary(query);
   }
 }

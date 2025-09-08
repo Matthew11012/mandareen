@@ -1,9 +1,20 @@
-import { Controller, Get, Post, Body, UseGuards, Req, Res, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  UseGuards,
+  Req,
+  Res,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { Response } from 'express';
+import { AuthenticatedRequest } from '../types/request.types';
 
 @Controller('auth')
 export class AuthController {
@@ -28,17 +39,23 @@ export class AuthController {
 
   @Get('google/callback')
   @UseGuards(GoogleAuthGuard)
-  async googleAuthRedirect(@Req() req, @Res() res: Response) {
+  async googleAuthRedirect(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
     try {
-      const result = await this.authService.googleLogin(req.user);
-      
+      const result = await this.authService.googleLogin({
+        ...req.user,
+        levelPlaced: req.user.levelPlaced ?? null,
+      });
+
       // Redirect to frontend with token
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
       res.redirect(`${frontendUrl}/auth/callback?token=${result.token}`);
-    } catch (error) {
+    } catch {
       // Handle error appropriately
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
       res.redirect(`${frontendUrl}/auth/error`);
     }
   }
-} 
+}

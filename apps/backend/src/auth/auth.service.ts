@@ -1,14 +1,14 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
-
-interface GoogleUser {
-  email: string;
-  googleId: string;
-}
+import { GoogleUser } from '../types/request.types';
 
 @Injectable()
 export class AuthService {
@@ -45,9 +45,9 @@ export class AuthService {
     });
 
     // Generate JWT token
-    const token = this.jwtService.sign({ 
+    const token = this.jwtService.sign({
       sub: user.id,
-      email: user.email 
+      email: user.email,
     });
 
     return {
@@ -77,9 +77,9 @@ export class AuthService {
     }
 
     // Generate JWT token
-    const token = this.jwtService.sign({ 
+    const token = this.jwtService.sign({
       sub: user.id,
-      email: user.email 
+      email: user.email,
     });
 
     return {
@@ -92,7 +92,7 @@ export class AuthService {
     };
   }
 
-  async validateGoogleUser(details: GoogleUser) {
+  async validateGoogleUser(details: GoogleUser): Promise<any> {
     const user = await this.prisma.user.findUnique({
       where: { email: details.email },
     });
@@ -120,16 +120,25 @@ export class AuthService {
     return newUser;
   }
 
-  async googleLogin(user: any) {
+  async googleLogin(user: {
+    id: number;
+    email: string;
+    levelPlaced: number | null;
+  }): Promise<{
+    user: { id: number; email: string; levelPlaced: number | null };
+    token: string;
+  }> {
     if (!user) {
       throw new UnauthorizedException('No user from Google');
     }
 
     // Generate JWT token
-    const token = this.jwtService.sign({ 
-      sub: user.id,
-      email: user.email 
-    });
+    const token = await Promise.resolve(
+      this.jwtService.sign({
+        sub: user.id,
+        email: user.email,
+      }),
+    );
 
     return {
       user: {
@@ -140,4 +149,4 @@ export class AuthService {
       token,
     };
   }
-} 
+}

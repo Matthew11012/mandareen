@@ -52,8 +52,9 @@ export const useAuthStore = create<AuthState>()(
         try {
           const response: AuthResponse = await authApi.login(data);
 
-          // Store token in localStorage for persistence
+          // Store token in localStorage and cookies for persistence
           localStorage.setItem("auth-token", response.token);
+          document.cookie = `auth-token=${response.token}; path=/; max-age=86400; SameSite=Lax`;
 
           set({
             user: response.user,
@@ -91,6 +92,7 @@ export const useAuthStore = create<AuthState>()(
 
           // Store token and auto-login after registration
           localStorage.setItem("auth-token", response.token);
+          document.cookie = `auth-token=${response.token}; path=/; max-age=86400; SameSite=Lax`;
 
           set({
             user: response.user,
@@ -121,6 +123,9 @@ export const useAuthStore = create<AuthState>()(
        */
       logout: () => {
         localStorage.removeItem("auth-token");
+        // Clear cookie as well
+        document.cookie =
+          "auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         set({
           user: null,
           token: null,
@@ -151,13 +156,56 @@ export const useAuthStore = create<AuthState>()(
       initialize: () => {
         const token = localStorage.getItem("auth-token");
         if (token) {
-          // In a real app, you'd validate the token with the server
-          // For now, we'll assume it's valid if it exists
-          set({
-            token,
-            isAuthenticated: true,
-            // Note: User data would need to be fetched from server
-          });
+          try {
+            // Decode JWT to extract user data
+            const base64Url = token.split(".")[1];
+            const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+            // Add padding if needed
+            const paddedBase64 =
+              base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+            const payload = JSON.parse(window.atob(paddedBase64));
+
+            // Check if token is expired
+            if (payload.exp && Date.now() >= payload.exp * 1000) {
+              // Token expired, clear it
+              localStorage.removeItem("auth-token");
+              document.cookie =
+                "auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+              set({
+                user: null,
+                token: null,
+                isAuthenticated: false,
+                isLoading: false,
+                error: null,
+              });
+              return;
+            }
+
+            // Set auth state with decoded user data
+            set({
+              user: {
+                id: payload.sub,
+                email: payload.email,
+              },
+              token,
+              isAuthenticated: true,
+              isLoading: false,
+              error: null,
+            });
+          } catch (error) {
+            // Invalid token, clear it
+            console.error("Invalid token:", error);
+            localStorage.removeItem("auth-token");
+            document.cookie =
+              "auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+            set({
+              user: null,
+              token: null,
+              isAuthenticated: false,
+              isLoading: false,
+              error: null,
+            });
+          }
         }
       },
     }),

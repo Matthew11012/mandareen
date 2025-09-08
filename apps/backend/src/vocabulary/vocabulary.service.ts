@@ -7,10 +7,12 @@ export class VocabularyService {
 
   constructor(private prisma: PrismaService) {}
 
-  async findVocabularyItem(hanzi: string) {
-    return this.prisma.vocabularyItem.findFirst({
-      where: { hanzi },
-    });
+  async findVocabularyItem(hanzi: string): Promise<any> {
+    return await Promise.resolve(
+      this.prisma.vocabularyItem.findFirst({
+        where: { hanzi },
+      }),
+    );
   }
 
   async createVocabularyItem(data: {
@@ -19,13 +21,15 @@ export class VocabularyService {
     definition: string;
     hskLevel?: number;
     isCustom?: boolean;
-  }) {
-    return this.prisma.vocabularyItem.create({
-      data: {
-        ...data,
-        isCustom: data.isCustom ?? false,
-      },
-    });
+  }): Promise<any> {
+    return await Promise.resolve(
+      this.prisma.vocabularyItem.create({
+        data: {
+          ...data,
+          isCustom: data.isCustom ?? false,
+        },
+      }),
+    );
   }
 
   async createWordInstance(data: {
@@ -35,7 +39,7 @@ export class VocabularyService {
     context: string;
     sectionId?: number;
     messageId?: number;
-  }) {
+  }): Promise<any> {
     // Filter out undefined values
     const cleanData: any = {
       vocabId: data.vocabId,
@@ -52,24 +56,28 @@ export class VocabularyService {
       cleanData.messageId = data.messageId;
     }
 
-    return this.prisma.wordInstance.create({
-      data: cleanData,
-      include: {
-        vocab: true,
-      },
-    });
+    return await Promise.resolve(
+      this.prisma.wordInstance.create({
+        data: cleanData,
+        include: {
+          vocab: true,
+        },
+      }),
+    );
   }
 
-  async searchVocabulary(query: string, limit: number = 20) {
-    return this.prisma.vocabularyItem.findMany({
-      where: {
-        OR: [
-          { hanzi: { contains: query } },
-          { pinyin: { contains: query } },
-          { definition: { contains: query } },
-        ],
-      },
-      take: limit,
-    });
+  async searchVocabulary(query: string, limit: number = 20): Promise<any> {
+    return await Promise.resolve(
+      this.prisma.vocabularyItem.findMany({
+        where: {
+          OR: [
+            { hanzi: { contains: query } },
+            { pinyin: { contains: query } },
+            { definition: { contains: query } },
+          ],
+        },
+        take: limit,
+      }),
+    );
   }
 }
