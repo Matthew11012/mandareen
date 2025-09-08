@@ -1,4 +1,6 @@
 node_modules
+Mandarin Web Learning App.md
+PROJECT_PROGRESS.md
 # Logs
 logs
 *.log
@@ -135,3 +137,6 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# continue.ai
+.continue
