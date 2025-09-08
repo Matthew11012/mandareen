@@ -26,7 +26,10 @@ export const useAuth = () => {
   const loginWithRedirect = async (data: Parameters<typeof login>[0]) => {
     try {
       await login(data);
-      router.push("/dashboard");
+
+      // Force a page refresh to ensure middleware picks up the cookie
+      // This is more reliable than router.push for initial authentication
+      window.location.href = "/dashboard";
     } catch {
       // Error is handled by the store, component can show it
     }

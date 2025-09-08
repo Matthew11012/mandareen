@@ -6,6 +6,25 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Enable CORS for frontend communication
+  app.enableCors({
+    origin: [
+      'http://localhost:3001', // Frontend development
+      'http://localhost:3000', // Alternative frontend port
+      process.env.FRONTEND_URL || 'http://localhost:3001',
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: [
+      'Origin',
+      'X-Requested-With',
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'Cache-Control',
+    ],
+    credentials: true, // Allow cookies and credentials
+  });
+
   // Add global prefix to all routes
   app.setGlobalPrefix('api');
 
