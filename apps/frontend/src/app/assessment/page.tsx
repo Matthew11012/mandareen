@@ -1,8 +1,12 @@
 "use client";
 
+import React, { useState } from "react";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { DashboardLayout } from "@/components/layout";
-import { Target, Clock, CheckCircle } from "lucide-react";
+import { AssessmentFlow, AssessmentResults } from "@/components/assessment";
+import { Target, Clock, CheckCircle, ArrowRight } from "lucide-react";
+
+type AssessmentPhase = "intro" | "assessment" | "results";
 
 /**
  * Assessment Page (Protected Route)
@@ -11,6 +15,8 @@ import { Target, Clock, CheckCircle } from "lucide-react";
  */
 export default function AssessmentPage() {
   const { isLoading } = useRequireAuth();
+  const [currentPhase, setCurrentPhase] = useState<AssessmentPhase>("intro");
+  const [placementResult, setPlacementResult] = useState<number | null>(null);
 
   if (isLoading) {
     return (
@@ -20,6 +26,52 @@ export default function AssessmentPage() {
     );
   }
 
+  const handleStartAssessment = () => {
+    setCurrentPhase("assessment");
+  };
+
+  const handleAssessmentComplete = (levelPlaced: number) => {
+    setPlacementResult(levelPlaced);
+    setCurrentPhase("results");
+  };
+
+  const handleRetakeAssessment = () => {
+    setPlacementResult(null);
+    setCurrentPhase("intro");
+  };
+
+  // Assessment Flow Phase
+  if (currentPhase === "assessment") {
+    return (
+      <DashboardLayout
+        title="Taking Assessment"
+        subtitle="Mark your knowledge level for each word"
+      >
+        <div className="p-6">
+          <AssessmentFlow onComplete={handleAssessmentComplete} />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Results Phase
+  if (currentPhase === "results" && placementResult !== null) {
+    return (
+      <DashboardLayout
+        title="Assessment Results"
+        subtitle="Your Mandarin proficiency level has been determined"
+      >
+        <div className="p-6">
+          <AssessmentResults
+            levelPlaced={placementResult}
+            onRetakeAssessment={handleRetakeAssessment}
+          />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Introduction Phase (default)
   return (
     <DashboardLayout
       title="Placement Test"
@@ -86,10 +138,11 @@ export default function AssessmentPage() {
               </div>
               <div>
                 <h4 className="font-inter font-medium text-white">
-                  Vocabulary Recognition
+                  Read Chinese Passages
                 </h4>
                 <p className="text-[#a6a6a6] text-sm font-inter">
-                  Mark Chinese words as Unknown, Partial, or Known
+                  Read 4 different Chinese passages with varying difficulty
+                  levels
                 </p>
               </div>
             </div>
@@ -100,10 +153,10 @@ export default function AssessmentPage() {
               </div>
               <div>
                 <h4 className="font-inter font-medium text-white">
-                  Reading Comprehension
+                  Mark Word Knowledge
                 </h4>
                 <p className="text-[#a6a6a6] text-sm font-inter">
-                  Read passages and answer multiple choice questions
+                  Click on words to mark them as Known, Partial, or Unknown
                 </p>
               </div>
             </div>
@@ -114,10 +167,11 @@ export default function AssessmentPage() {
               </div>
               <div>
                 <h4 className="font-inter font-medium text-white">
-                  Grammar & Context
+                  Get Your Level
                 </h4>
                 <p className="text-[#a6a6a6] text-sm font-inter">
-                  Fill in blanks and demonstrate understanding
+                  Receive your HSK level placement with personalized
+                  recommendations
                 </p>
               </div>
             </div>
@@ -126,25 +180,36 @@ export default function AssessmentPage() {
 
         {/* Start Assessment */}
         <div className="text-center">
-          <button className="px-8 py-4 bg-gradient-to-r from-[#4040f2] to-[#6366f1] hover:from-[#3636d9] hover:to-[#5855f0] text-white font-inter font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-blue-500/20">
+          <button
+            onClick={handleStartAssessment}
+            className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-[#4040f2] to-[#6366f1] hover:from-[#3636d9] hover:to-[#5855f0] text-white font-inter font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-blue-500/20 cursor-pointer"
+          >
             Start Placement Test
+            <ArrowRight className="w-5 h-5" />
           </button>
           <p className="text-[#a6a6a6] text-sm font-inter mt-3">
             You can retake this test anytime to track your progress
           </p>
         </div>
 
-        {/* Coming Soon Notice */}
-        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 max-w-4xl mx-auto">
-          <div className="flex items-center gap-3">
-            <div className="w-6 h-6 bg-yellow-500/20 rounded-full flex items-center justify-center">
-              <Clock className="w-4 h-4 text-yellow-400" />
+        {/* Instructions */}
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 max-w-4xl mx-auto">
+          <div className="flex items-start gap-3">
+            <div className="w-6 h-6 bg-blue-500/20 rounded-full flex items-center justify-center mt-0.5">
+              <Target className="w-4 h-4 text-blue-400" />
             </div>
-            <p className="text-yellow-200 font-inter text-sm">
-              <strong>Under Development:</strong> The assessment interface is
-              currently being built. The backend functionality is ready and will
-              be connected soon.
-            </p>
+            <div>
+              <h4 className="font-inter font-medium text-blue-200 mb-1">
+                How the Assessment Works
+              </h4>
+              <p className="text-blue-300 font-inter text-sm">
+                You&apos;ll be shown Chinese passages with clickable words.
+                Simply click on any word to indicate whether you know it well
+                (Known), recognize it but aren&apos;t sure (Partial), or
+                don&apos;t know it at all (Unknown). Our AI will analyze your
+                responses to determine your proficiency level.
+              </p>
+            </div>
           </div>
         </div>
       </div>

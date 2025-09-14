@@ -173,4 +173,58 @@ export class AssessmentService {
 
     return distribution.slice(0, passageCount);
   }
+
+  async getAssessmentHistory(
+    userId: number,
+  ): Promise<Array<{ id: number; levelPlaced: number; takenAt: string }>> {
+    try {
+      const assessments = await this.prisma.assessment.findMany({
+        where: {
+          userId,
+        },
+        orderBy: {
+          takenAt: 'desc',
+        },
+        select: {
+          id: true,
+          levelPlaced: true,
+          takenAt: true,
+        },
+      });
+
+      return assessments.map((assessment) => ({
+        id: assessment.id,
+        levelPlaced: assessment.levelPlaced,
+        takenAt: assessment.takenAt.toISOString(),
+      }));
+    } catch (error) {
+      this.logger.error('Error fetching assessment history:', error);
+      throw new Error(`Failed to fetch assessment history: ${error.message}`);
+    }
+  }
+
+  async getCurrentLevel(
+    userId: number,
+  ): Promise<{ currentLevel: number | null }> {
+    try {
+      const latestAssessment = await this.prisma.assessment.findFirst({
+        where: {
+          userId,
+        },
+        orderBy: {
+          takenAt: 'desc',
+        },
+        select: {
+          levelPlaced: true,
+        },
+      });
+
+      return {
+        currentLevel: latestAssessment ? latestAssessment.levelPlaced : null,
+      };
+    } catch (error) {
+      this.logger.error('Error fetching current level:', error);
+      throw new Error(`Failed to fetch current level: ${error.message}`);
+    }
+  }
 }

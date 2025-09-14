@@ -2,6 +2,7 @@
 
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { DashboardLayout } from "@/components/layout";
+import { useCurrentLevel } from "@/lib/hooks/use-current-level";
 import {
   BookOpen,
   Brain,
@@ -10,6 +11,7 @@ import {
   Sparkles,
   Clock,
   Target,
+  RefreshCw,
 } from "lucide-react";
 
 /**
@@ -19,6 +21,12 @@ import {
  */
 export default function DashboardPage() {
   const { isLoading } = useRequireAuth();
+  const {
+    isLoading: levelLoading,
+    formatLevel,
+    getLevelColor,
+    refreshLevel,
+  } = useCurrentLevel();
 
   if (isLoading) {
     return (
@@ -57,18 +65,41 @@ export default function DashboardPage() {
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040]">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
-                <Target className="w-5 h-5 text-blue-400" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                  <Target className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-[#a6a6a6] text-sm font-inter">
+                    Current Level
+                  </p>
+                  {levelLoading ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      <span className="text-[#a6a6a6] text-sm font-inter">
+                        Loading...
+                      </span>
+                    </div>
+                  ) : (
+                    <p
+                      className={`text-xl font-inter font-semibold ${getLevelColor()}`}
+                    >
+                      {formatLevel()}
+                    </p>
+                  )}
+                </div>
               </div>
-              <div>
-                <p className="text-[#a6a6a6] text-sm font-inter">
-                  Current Level
-                </p>
-                <p className="text-white text-xl font-inter font-semibold">
-                  Not Assessed
-                </p>
-              </div>
+              <button
+                onClick={refreshLevel}
+                disabled={levelLoading}
+                className="p-2 hover:bg-[#404040] rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refresh level"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 text-[#a6a6a6] ${levelLoading ? "animate-spin" : ""}`}
+                />
+              </button>
             </div>
           </div>
 

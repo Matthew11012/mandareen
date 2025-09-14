@@ -39,9 +39,14 @@ export class AssessmentController {
   }
 
   @Get('history')
-  async getAssessmentHistory(): Promise<any[]> {
-    // This would fetch assessment history from the database
-    // Implement this method in the service
-    return await Promise.resolve([]);
+  async getAssessmentHistory(@Req() req: AuthenticatedRequest): Promise<any[]> {
+    return this.assessmentService.getAssessmentHistory(req.user.id);
+  }
+
+  @Get('current-level')
+  async getCurrentLevel(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ currentLevel: number | null }> {
+    return this.assessmentService.getCurrentLevel(req.user.id);
   }
 }
