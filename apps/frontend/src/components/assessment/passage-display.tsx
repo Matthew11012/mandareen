@@ -230,7 +230,7 @@ export const PassageDisplay: React.FC<PassageDisplayProps> = ({
                 key={index}
                 onClick={(event) => handleWordClick(segment, event)}
                 className={cn(
-                  "cursor-pointer px-1 py-0.5 rounded border transition-all duration-200 mx-0.5 select-none",
+                  "cursor-pointer rounded border transition-all duration-200 mx-0.5 select-none",
                   colorClass
                 )}
                 title={`${segment.text} (${segment.wordData?.pinyin}) - Click to mark`}
