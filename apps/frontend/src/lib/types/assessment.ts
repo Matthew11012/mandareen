@@ -13,6 +13,15 @@ export interface AssessmentPassage {
   translation: string;
   words: AssessmentWord[];
   targetHskLevel?: number;
+  segments?: Array<{
+    text: string;
+    startIndex: number;
+    endIndex: number;
+    isWord: boolean;
+    hskLevel?: number;
+    pinyin?: string;
+    definition?: string;
+  }>;
 }
 
 export type WordStatus = "known" | "partial" | "unknown";

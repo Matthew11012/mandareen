@@ -40,15 +40,29 @@ export class AssessmentService {
       // Segment each passage and add vocabulary metadata
       const enrichedPassages = await Promise.all(
         passages.map(async (passage) => {
+          // Prefer LLM-provided words list as high-priority dictionary entries
+          const extraEntries = (passage.words || []).map((w) => ({
+            text: w.text,
+            hskLevel: w.hskLevel,
+            pinyin: w.pinyin,
+            definition: w.definition,
+          }));
           const segments = await this.segmentationService.segmentText(
             passage.content,
+            extraEntries,
           );
+          const mappedSegments = segments.map((s) => ({
+            text: s.word,
+            startIndex: s.startIndex,
+            endIndex: s.endIndex,
+            isWord: s.isWord,
+            hskLevel: s.hskLevel,
+            pinyin: s.pinyin,
+            definition: s.definition,
+          }));
           return {
             ...passage,
-            segments: segments,
-            vocabularyItems: segments
-              .filter((s) => s.vocabItem)
-              .map((s) => s.vocabItem),
+            segments: mappedSegments,
           };
         }),
       );

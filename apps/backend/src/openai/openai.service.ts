@@ -22,39 +22,73 @@ export class OpenAIService {
     try {
       const prompt = this.createPassagePrompt(hskLevel);
 
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-5o-mini',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a Mandarin Chinese language expert specializing in creating educational content for language learners at different HSK levels.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        response_format: { type: 'json_object' },
-      });
+      const preferredModel = process.env.OPENAI_MODEL || 'gpt-5o-mini';
+      const fallbackModels = ['gpt-4o-mini'];
+      const modelsToTry = [preferredModel, ...fallbackModels];
 
-      const responseContent = completion.choices[0].message.content;
-      if (!responseContent) {
-        throw new Error('Empty response from OpenAI');
+      let lastError: any = null;
+      for (const model of modelsToTry) {
+        try {
+          const completion = await this.openai.chat.completions.create({
+            model,
+            messages: [
+              {
+                role: 'system',
+                content:
+                  'You are a Mandarin Chinese language expert specializing in creating educational content for language learners at different HSK levels.',
+              },
+              { role: 'user', content: prompt },
+            ],
+            response_format: { type: 'json_object' },
+          });
+
+          const responseContent = completion.choices[0].message.content;
+          if (!responseContent) {
+            throw new Error('Empty response from OpenAI');
+          }
+
+          const passageData = JSON.parse(responseContent);
+
+          return {
+            id: uuidv4(),
+            ...passageData,
+            targetHskLevel: hskLevel,
+          };
+        } catch (err: any) {
+          lastError = err;
+          const msg = (err?.message || '').toString();
+          const code = (err?.code || '').toString();
+          // Retry if model not found; otherwise break
+          if (
+            msg.includes('model') &&
+            (msg.includes('does not exist') ||
+              msg.includes('not found') ||
+              code === 'model_not_found')
+          ) {
+            this.logger.warn(
+              `Model ${model} unavailable. Trying next fallback...`,
+            );
+            continue;
+          }
+          // Non-retryable error
+          throw err;
+        }
       }
 
-      const passageData = JSON.parse(responseContent);
-
-      // Add unique ID to passage
-      return {
-        id: uuidv4(),
-        ...passageData,
-        targetHskLevel: hskLevel,
-      };
+      // Exhausted all models
+      throw (
+        lastError ||
+        new Error('Failed to generate passage: no models available')
+      );
     } catch (error) {
       const openaiError = error as OpenAIError;
       this.logger.error(
         `Error generating passage for HSK level ${hskLevel}:`,
         openaiError,
       );
-      throw new Error(`Failed to generate passage: ${openaiError.message}`);
+      throw new Error(
+        `Failed to generate passage: ${openaiError.message}. You can set OPENAI_MODEL to a supported model (e.g., gpt-4o-mini, gpt-4o, gpt-3.5-turbo).`,
+      );
     }
   }
 
@@ -85,7 +119,7 @@ export class OpenAIService {
       ]
     }
     
-    Include at least 15 words in the "words" array, focusing on key vocabulary from the passage that students at this level should know.
+    Include ALL words in the "words" array, focusing on ALL vocabulary from the passage that students at this level should know.
     For levels 1-3, include some words from the next HSK level to challenge students.
     For levels 4+, include a few advanced words that might be unfamiliar.
     `;

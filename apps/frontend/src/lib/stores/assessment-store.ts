@@ -280,15 +280,28 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
           response.wordResponses.map((wr) => [wr.word, wr.status])
         );
 
-        // Process all words in the passage
-        for (const word of passage.words) {
-          const status = wordResponseMap.get(word.text) || "known"; // Default to known
+        // Prefer backend segments (full coverage); fallback to words list
+        if (passage.segments && passage.segments.length > 0) {
+          for (const seg of passage.segments) {
+            if (!seg.isWord) continue; // skip spaces/punctuation
+            const status = wordResponseMap.get(seg.text) || "known";
+            wordAssessments.push({
+              word: seg.text,
+              knowledge: status,
+              hskLevel: seg.hskLevel ?? 0,
+            });
+          }
+        } else {
+          // Fallback to words list
+          for (const word of passage.words) {
+            const status = wordResponseMap.get(word.text) || "known"; // Default to known
 
-          wordAssessments.push({
-            word: word.text,
-            knowledge: status,
-            hskLevel: word.hskLevel,
-          });
+            wordAssessments.push({
+              word: word.text,
+              knowledge: status,
+              hskLevel: word.hskLevel,
+            });
+          }
         }
       }
 

@@ -51,41 +51,50 @@ export const PassageDisplay: React.FC<PassageDisplayProps> = ({
     position: { x: 0, y: 0 },
   });
 
-  // Create segments from the passage content for clickable words
+  // Create segments from backend tokenization (full coverage), fallback to words scan
   const segments = useMemo<ClickableSegment[]>(() => {
-    const content = passage.content;
-    const segments: ClickableSegment[] = [];
-    let currentIndex = 0;
+    if (passage.segments && passage.segments.length > 0) {
+      return passage.segments.map((s) => ({
+        text: s.text,
+        startIndex: s.startIndex,
+        endIndex: s.endIndex,
+        isWord: s.isWord,
+        wordData: s.isWord
+          ? {
+              pinyin: s.pinyin || "",
+              definition: s.definition || "",
+              hskLevel: s.hskLevel || 0,
+            }
+          : undefined,
+      }));
+    }
 
-    // Sort words by their position in the text (if we had positions)
-    // For now, we'll identify words by finding them in the content
-    const identifiedWords: Array<{
+    // Fallback: approximate using provided words list (legacy)
+    const content = passage.content;
+    const result: ClickableSegment[] = [];
+    let currentIndex = 0;
+    const identified: Array<{
       word: string;
       startIndex: number;
       endIndex: number;
       wordData: { pinyin: string; definition: string; hskLevel: number };
     }> = [];
 
-    // Find all word positions in the content
     passage.words.forEach((wordData) => {
       const wordText = wordData.text;
       let searchIndex = 0;
-
       while (true) {
         const foundIndex = content.indexOf(wordText, searchIndex);
         if (foundIndex === -1) break;
-
-        // Check if this position is already covered by another word
-        const isOverlapping = identifiedWords.some(
+        const isOverlapping = identified.some(
           (existing) =>
             (foundIndex >= existing.startIndex &&
               foundIndex < existing.endIndex) ||
             (foundIndex + wordText.length > existing.startIndex &&
               foundIndex + wordText.length <= existing.endIndex)
         );
-
         if (!isOverlapping) {
-          identifiedWords.push({
+          identified.push({
             word: wordText,
             startIndex: foundIndex,
             endIndex: foundIndex + wordText.length,
@@ -96,50 +105,39 @@ export const PassageDisplay: React.FC<PassageDisplayProps> = ({
             },
           });
         }
-
         searchIndex = foundIndex + 1;
       }
     });
 
-    // Sort by start index
-    identifiedWords.sort((a, b) => a.startIndex - b.startIndex);
-
-    // Create segments
-    identifiedWords.forEach((word) => {
-      // Add text before the word if there's a gap
+    identified.sort((a, b) => a.startIndex - b.startIndex);
+    identified.forEach((word) => {
       if (currentIndex < word.startIndex) {
-        segments.push({
+        result.push({
           text: content.slice(currentIndex, word.startIndex),
           startIndex: currentIndex,
           endIndex: word.startIndex,
           isWord: false,
         });
       }
-
-      // Add the word segment
-      segments.push({
+      result.push({
         text: word.word,
         startIndex: word.startIndex,
         endIndex: word.endIndex,
         isWord: true,
         wordData: word.wordData,
       });
-
       currentIndex = word.endIndex;
     });
-
-    // Add remaining text
     if (currentIndex < content.length) {
-      segments.push({
+      result.push({
         text: content.slice(currentIndex),
         startIndex: currentIndex,
         endIndex: content.length,
         isWord: false,
       });
     }
-
-    return segments;
-  }, [passage.content, passage.words]);
+    return result;
+  }, [passage.content, passage.words, passage.segments]);
 
   const handleWordClick = (
     segment: ClickableSegment,

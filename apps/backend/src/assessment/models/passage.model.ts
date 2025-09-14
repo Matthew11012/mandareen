@@ -13,4 +13,13 @@ export interface Passage {
   words: Word[];
   translation: string;
   pinyin: string;
-} 
+  segments?: Array<{
+    text: string;
+    startIndex: number;
+    endIndex: number;
+    isWord: boolean;
+    hskLevel?: number;
+    pinyin?: string;
+    definition?: string;
+  }>;
+}
