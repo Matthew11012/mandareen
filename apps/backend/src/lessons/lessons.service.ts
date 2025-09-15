@@ -227,7 +227,7 @@ export class LessonsService {
       {
         role: 'system',
         content:
-          'You are a senior Mandarin curriculum designer. Generate long, engaging lessons strictly as JSON. Do not include any extra commentary.',
+          'You are a native Mandarin speaker and a senior Mandarin curriculum and lesson designer with much creativity in creating engaging lessons types and topics. Generate long, engaging lessons strictly as JSON. Do not include any extra commentary.',
       },
       {
         role: 'user',
@@ -239,9 +239,6 @@ export class LessonsService {
       model: preferredModel,
       messages,
       response_format: { type: 'json_object' },
-      temperature: 0.85,
-      presence_penalty: 0.6,
-      frequency_penalty: 0.2,
     } as any);
 
     const content = completion.choices[0].message.content;
