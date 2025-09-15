@@ -81,7 +81,7 @@ export const NAVIGATION_DATA: NavigationData = [
         label: "Profile",
         href: "/profile",
         icon: "User",
-        isComingSoon: true,
+        isComingSoon: false,
         description: "Manage your account settings",
       },
       {

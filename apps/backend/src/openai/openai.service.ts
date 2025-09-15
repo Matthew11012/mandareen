@@ -22,7 +22,7 @@ export class OpenAIService {
     try {
       const prompt = this.createPassagePrompt(hskLevel);
 
-      const preferredModel = process.env.OPENAI_MODEL || 'gpt-5o-mini';
+      const preferredModel = process.env.OPENAI_MODEL || 'gpt-5-mini';
       const fallbackModels = ['gpt-4o-mini'];
       const modelsToTry = [preferredModel, ...fallbackModels];
 

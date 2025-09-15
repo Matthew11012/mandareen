@@ -38,6 +38,13 @@ export interface AuthResponse {
   token: string;
 }
 
+export interface MeResponse {
+  id: number;
+  email: string;
+  createdAt: string;
+  currentLevel: number | null;
+}
+
 export interface ApiError {
   message: string;
   statusCode?: number;
@@ -120,6 +127,14 @@ export const authApi = {
       }
       throw error;
     }
+  },
+
+  /**
+   * Get current authenticated user's profile
+   */
+  me: async (): Promise<MeResponse> => {
+    const response = await api.get<MeResponse>("/users/me");
+    return response.data;
   },
 
   /**

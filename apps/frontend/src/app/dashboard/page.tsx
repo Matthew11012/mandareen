@@ -3,6 +3,8 @@
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { DashboardLayout } from "@/components/layout";
 import { useCurrentLevel } from "@/lib/hooks/use-current-level";
+import { useEffect, useState } from "react";
+import { assessmentApi } from "@/lib/api/assessment";
 import {
   BookOpen,
   Brain,
@@ -27,6 +29,32 @@ export default function DashboardPage() {
     getLevelColor,
     refreshLevel,
   } = useCurrentLevel();
+
+  const [history, setHistory] = useState<
+    Array<{ id: number; levelPlaced: number; takenAt: string }>
+  >([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchHistory = async () => {
+      setHistoryLoading(true);
+      setHistoryError(null);
+      try {
+        const data = await assessmentApi.getHistory();
+        if (isMounted) setHistory(data);
+      } catch {
+        if (isMounted) setHistoryError("Failed to load assessment history");
+      } finally {
+        if (isMounted) setHistoryLoading(false);
+      }
+    };
+    fetchHistory();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   if (isLoading) {
     return (
@@ -265,6 +293,73 @@ export default function DashboardPage() {
               </p>
             </div>
           </div>
+        </div>
+
+        {/* Assessment History */}
+        <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040]">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-inter font-semibold text-white">
+              Assessment History
+            </h3>
+            <button
+              onClick={() => {
+                // simple refresh
+                setHistoryLoading(true);
+                assessmentApi
+                  .getHistory()
+                  .then(setHistory)
+                  .catch(() =>
+                    setHistoryError("Failed to load assessment history")
+                  )
+                  .finally(() => setHistoryLoading(false));
+              }}
+              className="p-2 hover:bg-[#404040] rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Refresh history"
+            >
+              <RefreshCw
+                className={`w-4 h-4 text-[#a6a6a6] ${historyLoading ? "animate-spin" : ""}`}
+              />
+            </button>
+          </div>
+
+          {historyLoading ? (
+            <div className="flex items-center gap-2 text-[#a6a6a6]">
+              <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              <span className="font-inter text-sm">Loading...</span>
+            </div>
+          ) : historyError ? (
+            <p className="text-red-400 font-inter text-sm">{historyError}</p>
+          ) : history.length === 0 ? (
+            <p className="text-[#a6a6a6] font-inter text-sm">
+              No assessments yet. Take a placement test to get started.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {history.slice(0, 10).map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between bg-[#24262b] rounded-lg p-3 border border-[#3a3a3a]"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-blue-500/20 rounded-md flex items-center justify-center">
+                      <Target className="w-4 h-4 text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="text-white font-inter text-sm">
+                        Level Placed
+                      </p>
+                      <p className="text-[#a6a6a6] font-inter text-xs">
+                        {new Date(item.takenAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-white font-inter font-semibold">
+                    HSK {item.levelPlaced}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </DashboardLayout>
