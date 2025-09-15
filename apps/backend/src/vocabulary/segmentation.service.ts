@@ -11,6 +11,7 @@ export interface SegmentResult {
   hskLevel?: number;
   pinyin?: string;
   definition?: string;
+  definitions?: string[];
 }
 
 @Injectable()
@@ -20,12 +21,20 @@ export class SegmentationService {
   private initialized = false;
   private dictionary = new Map<
     string,
-    { hskLevel?: number; pinyin?: string; definition?: string }
+    {
+      hskLevel?: number;
+      pinyin?: string;
+      definition?: string;
+      definitions?: string[];
+    }
   >();
   private maxTokenLength = 6;
 
   private async initializeDictionary(): Promise<void> {
-    if (this.initialized) return;
+    if (this.initialized) {
+      void this.prisma;
+      return;
+    }
 
     console.log('🔍 [SegmentationService] Initializing HSK dictionary...');
 
@@ -39,33 +48,25 @@ export class SegmentationService {
         hskLevel: item.hskLevel ?? undefined,
         pinyin: item.pinyin ?? undefined,
         definition: item.definition ?? undefined,
+        definitions: item.definition ? [item.definition] : undefined,
       });
       this.maxTokenLength = Math.max(this.maxTokenLength, item.hanzi.length);
     }
 
-    // 2) Load HSK JSON dictionaries (best-effort)
+    // 2) Load HSK JSON dictionaries
     const candidatePaths = [
       // Monorepo root
       path.resolve(process.cwd(), 'apps/backend/data/hsk/complete-hsk.json'),
-      path.resolve(process.cwd(), 'apps/backend/data/hsk/complete.json'),
-      path.resolve(process.cwd(), 'apps/backend/data/hsk/complete.min.json'),
-      path.resolve(process.cwd(), 'apps/backend/data/hsk-levels.json'),
       // Compiled dist-relative
       path.resolve(__dirname, '../../data/hsk/complete-hsk.json'),
-      path.resolve(__dirname, '../../data/hsk/complete.json'),
-      path.resolve(__dirname, '../../data/hsk/complete.min.json'),
-      path.resolve(__dirname, '../../data/hsk-levels.json'),
     ];
 
     for (const filePath of candidatePaths) {
       try {
         if (fs.existsSync(filePath)) {
-          console.log(`📂 Found HSK file: ${filePath}`);
+          
           const raw = fs.readFileSync(filePath, 'utf-8');
           const data = JSON.parse(raw);
-          console.log(
-            `📊 Loaded ${Array.isArray(data) ? data.length : 'unknown'} entries from HSK file`,
-          );
 
           // Try shape: { hsk1: [...], hsk2: [...], ... }
           const levelKeys = Object.keys(data).filter((k) => /hsk\d+/i.test(k));
@@ -146,6 +147,7 @@ export class SegmentationService {
               // Extract pinyin and meanings from forms array (nested structure)
               let pinyin: string | undefined;
               let definition: string | undefined;
+              let definitionsArr: string[] | undefined;
               let hanziTraditional: string | undefined;
 
               const forms = entry?.forms || [];
@@ -174,6 +176,7 @@ export class SegmentationService {
                 const meanings = firstForm?.meanings || firstForm?.m; // 'm' is shortened key
                 if (Array.isArray(meanings) && meanings.length > 0) {
                   definition = meanings.join('; ');
+                  definitionsArr = meanings;
                 }
               }
 
@@ -184,6 +187,7 @@ export class SegmentationService {
                     hskLevel,
                     pinyin,
                     definition,
+                    definitions: definitionsArr,
                   });
                 } else {
                   const existing = this.dictionary.get(hanziForm)!;
@@ -192,6 +196,12 @@ export class SegmentationService {
                   if (!existing.pinyin && pinyin) existing.pinyin = pinyin;
                   if (!existing.definition && definition)
                     existing.definition = definition;
+                  if (
+                    (!existing.definitions ||
+                      existing.definitions.length === 0) &&
+                    definitionsArr
+                  )
+                    existing.definitions = definitionsArr;
                 }
                 this.maxTokenLength = Math.max(
                   this.maxTokenLength,
@@ -232,6 +242,9 @@ export class SegmentationService {
                       Array.isArray(formMeanings) && formMeanings.length > 0
                         ? formMeanings.join('; ')
                         : undefined;
+                    const formDefinitionsArr = Array.isArray(formMeanings)
+                      ? formMeanings
+                      : undefined;
 
                     if (formHanzi) {
                       if (!this.dictionary.has(formHanzi)) {
@@ -239,6 +252,7 @@ export class SegmentationService {
                           hskLevel,
                           pinyin: formPinyin || pinyin,
                           definition: formDefinition || definition,
+                          definitions: formDefinitionsArr || definitionsArr,
                         });
                       } else {
                         const existing = this.dictionary.get(formHanzi)!;
@@ -251,6 +265,13 @@ export class SegmentationService {
                           (formDefinition || definition)
                         )
                           existing.definition = formDefinition || definition;
+                        if (
+                          (!existing.definitions ||
+                            existing.definitions.length === 0) &&
+                          (formDefinitionsArr || definitionsArr)
+                        )
+                          existing.definitions =
+                            formDefinitionsArr || definitionsArr;
                       }
                       this.maxTokenLength = Math.max(
                         this.maxTokenLength,
@@ -271,10 +292,7 @@ export class SegmentationService {
     // Reasonable cap to avoid pathological lengths
     this.maxTokenLength = Math.min(this.maxTokenLength, 16);
 
-    console.log(
-      `✅ Dictionary initialized with ${this.dictionary.size} entries`,
-    );
-    console.log(`🔧 Max token length: ${this.maxTokenLength}`);
+    
 
     // Debug: Check specific entries
     const testWords = ['仿佛', '你好', '中国'];
@@ -371,6 +389,7 @@ export class SegmentationService {
             hskLevel: dictEntry.hskLevel,
             pinyin: dictEntry.pinyin,
             definition: dictEntry.definition,
+            definitions: dictEntry.definitions,
           });
           i += len;
           matched = true;
@@ -380,14 +399,16 @@ export class SegmentationService {
 
       if (!matched) {
         // Fallback: single Chinese character as a word segment
+        const chEntry = localDict.get(char);
         segments.push({
           word: char,
           startIndex: i,
           endIndex: i + 1,
           isWord: true,
-          hskLevel: localDict.get(char)?.hskLevel,
-          pinyin: localDict.get(char)?.pinyin,
-          definition: localDict.get(char)?.definition,
+          hskLevel: chEntry?.hskLevel,
+          pinyin: chEntry?.pinyin,
+          definition: chEntry?.definition,
+          definitions: chEntry?.definitions,
         });
         i += 1;
       }

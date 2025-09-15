@@ -8,6 +8,7 @@ import { OpenAIModule } from './openai/openai.module';
 import { VocabularyModule } from './vocabulary/vocabulary.module';
 import { ConfigModule } from '@nestjs/config';
 import { UsersModule } from './users/users.module';
+import { LessonsModule } from './lessons/lessons.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { UsersModule } from './users/users.module';
     OpenAIModule,
     VocabularyModule,
     UsersModule,
+    LessonsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

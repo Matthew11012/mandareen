@@ -1,0 +1,59 @@
+import axios from "axios";
+
+const api = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api",
+  headers: { "Content-Type": "application/json" },
+});
+
+api.interceptors.request.use((config) => {
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+export interface LessonListItem {
+  id: number;
+  title: string | null;
+  level: number;
+  createdAt: string;
+  lessonType: string;
+  titlePinyin: string | null;
+  titleTranslation: string | null;
+}
+
+export interface LessonSection {
+  id: number;
+  sectionType: string;
+  content: unknown;
+}
+
+export interface LessonDetail {
+  id: number;
+  level: number;
+  title: string | null;
+  createdAt: string;
+  sections: LessonSection[];
+}
+
+export const lessonsApi = {
+  async generate(params: {
+    level?: number;
+    type?: "story" | "dialogue";
+    readTimeMinutes?: number;
+    topic?: string;
+  }) {
+    const res = await api.post<{ id: number }>("/lessons/generate", params);
+    return res.data;
+  },
+  async list(level?: number) {
+    const res = await api.get<LessonListItem[]>("/lessons", {
+      params: { level },
+    });
+    return res.data;
+  },
+  async getById(id: number) {
+    const res = await api.get<LessonDetail>(`/lessons/${id}`);
+    return res.data;
+  },
+};
