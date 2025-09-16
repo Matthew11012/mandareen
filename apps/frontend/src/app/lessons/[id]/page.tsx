@@ -10,8 +10,18 @@ import {
 import { useParams } from "next/navigation";
 import { DashboardLayout } from "@/components/layout";
 import { lessonsApi, type LessonDetail } from "@/lib/api/lessons";
-import { Eye, EyeOff, RefreshCw, ArrowLeft } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  RefreshCw,
+  ArrowLeft,
+  Plus,
+  CheckSquare,
+  Square,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+// import { flashcardsApi } from "@/lib/api/flashcards";
 
 export default function LessonViewerPage() {
   const router = useRouter();
@@ -23,12 +33,25 @@ export default function LessonViewerPage() {
 
   const [showPinyin, setShowPinyin] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
-  const [chunkPinyinOn, setChunkPinyinOn] = useState<Record<number, boolean>>(
-    {}
-  );
-  const [chunkTransOn, setChunkTransOn] = useState<Record<number, boolean>>({});
-  const [turnPinyinOn, setTurnPinyinOn] = useState<Record<number, boolean>>({});
-  const [turnTransOn, setTurnTransOn] = useState<Record<number, boolean>>({});
+  const [chunkPinyinOn, setChunkPinyinOn] = useState<
+    Record<number, boolean | null>
+  >({});
+  const [chunkTransOn, setChunkTransOn] = useState<
+    Record<number, boolean | null>
+  >({});
+  const [turnPinyinOn, setTurnPinyinOn] = useState<
+    Record<number, boolean | null>
+  >({});
+  const [turnTransOn, setTurnTransOn] = useState<
+    Record<number, boolean | null>
+  >({});
+  const [multiSelect, setMultiSelect] = useState(false);
+  const [selectedWords, setSelectedWords] = useState<
+    Record<
+      string,
+      { text: string; pinyin?: string; paraIndex?: number; tokenIndex?: number }
+    >
+  >({});
 
   const load = async () => {
     if (!id) return;
@@ -113,11 +136,182 @@ export default function LessonViewerPage() {
     return () => document.removeEventListener("mousedown", onClick);
   }, [popup.open]);
 
-  const isChunkPinyinOn = (idx: number) => showPinyin || !!chunkPinyinOn[idx];
-  const isChunkTransOn = (idx: number) =>
-    showTranslation || !!chunkTransOn[idx];
-  const isTurnPinyinOn = (idx: number) => showPinyin || !!turnPinyinOn[idx];
-  const isTurnTransOn = (idx: number) => showTranslation || !!turnTransOn[idx];
+  const isChunkPinyinOn = (idx: number) => {
+    const v = chunkPinyinOn[idx];
+    if (v === true) return true;
+    if (v === false) return false;
+    return showPinyin;
+  };
+  const isChunkTransOn = (idx: number) => {
+    const v = chunkTransOn[idx];
+    if (v === true) return true;
+    if (v === false) return false;
+    return showTranslation;
+  };
+  const isTurnPinyinOn = (idx: number) => {
+    const v = turnPinyinOn[idx];
+    if (v === true) return true;
+    if (v === false) return false;
+    return showPinyin;
+  };
+  const isTurnTransOn = (idx: number) => {
+    const v = turnTransOn[idx];
+    if (v === true) return true;
+    if (v === false) return false;
+    return showTranslation;
+  };
+
+  const toggleSelectWord = (
+    key: string,
+    text: string,
+    pinyin: string | undefined,
+    paraIndex: number,
+    tokenIndex: number
+  ) => {
+    setSelectedWords((prev) => {
+      const next = { ...prev };
+      if (next[key]) delete next[key];
+      else next[key] = { text, pinyin, paraIndex, tokenIndex };
+      return next;
+    });
+  };
+
+  const addSingleToFlashcards = async (
+    hanzi: string,
+    context?: { hanzi?: string; pinyin?: string; translation?: string }
+  ) => {
+    try {
+      await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"}/flashcards`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${
+              typeof window !== "undefined"
+                ? localStorage.getItem("auth-token")
+                : ""
+            }`,
+          },
+          body: JSON.stringify({
+            hanzi,
+            sentenceHanzi: context?.hanzi,
+            sentencePinyin: context?.pinyin,
+            sentenceTranslation: context?.translation,
+          }),
+        }
+      );
+      toast.success("Added to flashcards");
+    } catch {
+      toast.error("Failed to add to flashcards");
+    }
+  };
+
+  const addSelectedToFlashcards = async () => {
+    const entries = Object.values(selectedWords);
+    if (entries.length === 0) return;
+    try {
+      for (const w of entries) {
+        let sentenceCtx:
+          | { hanzi?: string; pinyin?: string; translation?: string }
+          | undefined;
+        if (
+          typeof w.paraIndex === "number" &&
+          typeof w.tokenIndex === "number"
+        ) {
+          const paraIndex = w.paraIndex;
+          const paraHanzi = storyParagraphs[paraIndex] || "";
+          const hanziSentences = paraHanzi
+            .split(/(?<=[。！？!?])/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+          // compute token start offset within paragraph
+          const tokens = segmentedParagraphs[paraIndex] || [];
+          const tokenStart = tokens
+            .slice(0, w.tokenIndex)
+            .reduce((acc, s) => acc + (s.text?.length || 0), 0);
+          // find sentence by char range
+          let accLen = 0;
+          let chosenIdx = 0;
+          for (let si = 0; si < hanziSentences.length; si++) {
+            const sTxt = hanziSentences[si];
+            const sLen = sTxt.length;
+            if (tokenStart >= accLen && tokenStart < accLen + sLen) {
+              chosenIdx = si;
+              break;
+            }
+            accLen += sLen;
+          }
+          const chosenHanzi = hanziSentences[chosenIdx] || paraHanzi;
+          // build per-char pinyin string from tokens
+          const perChar: string[] = [];
+          // walk chars within paragraph and map to tokens
+          let tokenPos = 0;
+          let tokenCharIndex = 0;
+          const paraChars = Array.from(paraHanzi);
+          const sentStart = hanziSentences.slice(0, chosenIdx).join("").length;
+          const sentLen = (hanziSentences[chosenIdx] || "").length;
+          for (let i = 0; i < paraChars.length; i++) {
+            // advance token positions
+            while (
+              tokenPos < tokens.length &&
+              tokenCharIndex >= (tokens[tokenPos].text?.length || 0)
+            ) {
+              tokenPos++;
+              tokenCharIndex = 0;
+            }
+            const token = tokens[tokenPos];
+            let p = "";
+            if (token && token.isWord && token.pinyin) {
+              const splits = token.pinyin.split(/\s+/);
+              p = splits[tokenCharIndex] || splits[0] || "";
+            }
+            // if char within chosen sentence range, record pinyin
+            if (i >= sentStart && i < sentStart + sentLen) {
+              perChar.push(p);
+            }
+            tokenCharIndex++;
+          }
+          // align translation by index best-effort
+          const paraTrans = translationParagraphs[paraIndex] || "";
+          const transSentences = paraTrans
+            .split(/(?<=[.!?])\s+/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+          sentenceCtx = {
+            hanzi: chosenHanzi,
+            pinyin: perChar.join(" "),
+            translation: transSentences[chosenIdx],
+          };
+        }
+        await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"}/flashcards`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${
+                typeof window !== "undefined"
+                  ? localStorage.getItem("auth-token")
+                  : ""
+              }`,
+            },
+            body: JSON.stringify({
+              hanzi: w.text,
+              sentenceHanzi: sentenceCtx?.hanzi,
+              sentencePinyin: sentenceCtx?.pinyin,
+              sentenceTranslation: sentenceCtx?.translation,
+            }),
+          }
+        );
+      }
+      setSelectedWords({});
+      setMultiSelect(false);
+      toast.success("Added selected words to flashcards");
+    } catch {
+      toast.error("Failed to add selected words");
+    }
+  };
 
   const storyParagraphs = useMemo(
     () =>
@@ -160,6 +354,24 @@ export default function LessonViewerPage() {
     return result;
   }, [story, storyParagraphs]);
 
+  // Helpers for pinyin alignment from story-level pinyin
+  const isChineseChar = (ch: string) => /[\u3400-\u9FFF]/.test(ch);
+  const buildStoryCharPinyin = (fullHanzi: string, fullPinyin?: string) => {
+    const tokens = (fullPinyin || "").trim().split(/\s+/).filter(Boolean);
+    const chars = Array.from(fullHanzi || "");
+    const perChar: string[] = new Array(chars.length).fill("");
+    let t = 0;
+    for (let i = 0; i < chars.length; i++) {
+      if (isChineseChar(chars[i])) {
+        perChar[i] = tokens[t] || "";
+        if (tokens[t]) t++;
+      } else {
+        perChar[i] = "";
+      }
+    }
+    return perChar;
+  };
+
   if (!id) return null;
 
   return (
@@ -181,7 +393,7 @@ export default function LessonViewerPage() {
             </button>
             <button
               onClick={() => setShowPinyin((v) => !v)}
-              className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer"
+              className="px-3 py-2 bg-orange-500/20 border border-orange-500/40 rounded-lg hover:border-orange-500 text-orange-300 transition-colors duration-200 cursor-pointer"
             >
               <div className="flex items-center gap-2 text-[#a6a6a6]">
                 {showPinyin ? (
@@ -194,7 +406,7 @@ export default function LessonViewerPage() {
             </button>
             <button
               onClick={() => setShowTranslation((v) => !v)}
-              className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer"
+              className="px-3 py-2 bg-purple-600/20 border border-purple-600/40 rounded-lg hover:border-purple-600 text-purple-300 transition-colors duration-200 cursor-pointer"
             >
               <div className="flex items-center gap-2 text-[#a6a6a6]">
                 {showTranslation ? (
@@ -206,16 +418,52 @@ export default function LessonViewerPage() {
               </div>
             </button>
           </div>
-          <button
-            onClick={load}
-            disabled={loading}
-            className="p-2 hover:bg-[#404040] rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Refresh"
-          >
-            <RefreshCw
-              className={`w-4 h-4 text-[#a6a6a6] ${loading ? "animate-spin" : ""}`}
-            />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (multiSelect) {
+                  // cancel selection
+                  setMultiSelect(false);
+                  setSelectedWords({});
+                } else {
+                  setMultiSelect(true);
+                }
+              }}
+              className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer"
+            >
+              <div className="flex items-center gap-2 text-[#a6a6a6]">
+                {multiSelect ? (
+                  <CheckSquare className="w-4 h-4" />
+                ) : (
+                  <Square className="w-4 h-4" />
+                )}
+                <span className="font-inter text-sm">
+                  {multiSelect
+                    ? "Cancel Selection"
+                    : "Select Words to Add to Flashcards"}
+                </span>
+              </div>
+            </button>
+            {multiSelect && (
+              <button
+                onClick={() => void addSelectedToFlashcards()}
+                disabled={Object.keys(selectedWords).length === 0}
+                className="px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Add Selected ({Object.keys(selectedWords).length})
+              </button>
+            )}
+            <button
+              onClick={load}
+              disabled={loading}
+              className="p-2 hover:bg-[#404040] rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Refresh"
+            >
+              <RefreshCw
+                className={`w-4 h-4 text-[#a6a6a6] ${loading ? "animate-spin" : ""}`}
+              />
+            </button>
+          </div>
         </div>
 
         {(story?.titlePinyin ||
@@ -301,6 +549,16 @@ export default function LessonViewerPage() {
                                 e: ReactMouseEvent<HTMLSpanElement>
                               ) => {
                                 if (!isWord) return;
+                                if (multiSelect) {
+                                  toggleSelectWord(
+                                    `${ci}-${idx}-${seg.text}`,
+                                    seg.text,
+                                    seg.pinyin,
+                                    ci,
+                                    idx
+                                  );
+                                  return;
+                                }
                                 setPopup({
                                   open: true,
                                   x: e.clientX,
@@ -312,7 +570,16 @@ export default function LessonViewerPage() {
                                 });
                               }}
                             >
-                              {seg.text}
+                              <span
+                                className={
+                                  multiSelect &&
+                                  selectedWords[`${ci}-${idx}-${seg.text}`]
+                                    ? "underline decoration-[#4040f2] decoration-2"
+                                    : undefined
+                                }
+                              >
+                                {seg.text}
+                              </span>
                             </span>
                           </span>
                         );
@@ -384,6 +651,16 @@ export default function LessonViewerPage() {
                                 e: ReactMouseEvent<HTMLSpanElement>
                               ) => {
                                 if (!isWord) return;
+                                if (multiSelect) {
+                                  toggleSelectWord(
+                                    `${ti}-${idx}-${seg.text}`,
+                                    seg.text,
+                                    seg.pinyin,
+                                    ti,
+                                    idx
+                                  );
+                                  return;
+                                }
                                 setPopup({
                                   open: true,
                                   x: e.clientX,
@@ -395,7 +672,16 @@ export default function LessonViewerPage() {
                                 });
                               }}
                             >
-                              {seg.text}
+                              <span
+                                className={
+                                  multiSelect &&
+                                  selectedWords[`${ti}-${idx}-${seg.text}`]
+                                    ? "underline decoration-[#4040f2] decoration-2"
+                                    : undefined
+                                }
+                              >
+                                {seg.text}
+                              </span>
                             </span>
                           </span>
                         );
@@ -429,7 +715,7 @@ export default function LessonViewerPage() {
                   {popup.word}
                 </div>
                 {popup.pinyin && (
-                  <div className="text-[#4040f2] text-sm font-medium truncate">
+                  <div className="text-[#c6ceff] text-sm font-medium truncate">
                     {popup.pinyin}
                   </div>
                 )}
@@ -446,6 +732,91 @@ export default function LessonViewerPage() {
                       ))}
                     </div>
                   )}
+                <div className="mt-3 pt-3 border-t border-[#404040]">
+                  <button
+                    onClick={() => {
+                      // Build sentence-level context: pick the exact sentence containing the word
+                      let ctx:
+                        | {
+                            hanzi?: string;
+                            pinyin?: string;
+                            translation?: string;
+                          }
+                        | undefined;
+                      const paraIndex = segmentedParagraphs.findIndex((para) =>
+                        para.some((s) => s.text === popup.word)
+                      );
+                      if (paraIndex >= 0) {
+                        const paraHanzi = storyParagraphs[paraIndex] || "";
+                        // Split Chinese by sentence-ending punctuation, preserving punctuation
+                        const hanziSentences = paraHanzi
+                          .split(/(?<=[。！？!?])/)
+                          .map((s) => s.trim())
+                          .filter(Boolean);
+                        const sentenceIdx = hanziSentences.findIndex((s) =>
+                          s.includes(popup.word)
+                        );
+                        const chosenHanzi =
+                          sentenceIdx >= 0
+                            ? hanziSentences[sentenceIdx]
+                            : hanziSentences[0] || paraHanzi;
+
+                        // Try to align translation by sentence index (best-effort)
+                        const paraTrans =
+                          translationParagraphs[paraIndex] || "";
+                        const transSentences = paraTrans
+                          .split(/(?<=[.!?])\s+/)
+                          .map((s) => s.trim())
+                          .filter(Boolean);
+                        const chosenTrans =
+                          sentenceIdx >= 0 && transSentences[sentenceIdx]
+                            ? transSentences[sentenceIdx]
+                            : undefined;
+
+                        // Build pinyin from story.pinyin as fallback for OOV names like 李梅
+                        let chosenPinyin: string | undefined;
+                        if (story?.pinyin) {
+                          const storyCharPinyin = buildStoryCharPinyin(
+                            story.hanzi,
+                            story.pinyin
+                          );
+                          // Map paragraph start offset within story
+                          let storyOffset = 0;
+                          for (let i = 0; i < paraIndex; i++) {
+                            storyOffset +=
+                              (storyParagraphs[i] || "").length + 2; // +2 for \n\n
+                          }
+                          // Find sentence range within paragraph and map to story offsets
+                          const paraStart = storyOffset;
+                          const sentStartInPara = hanziSentences
+                            .slice(0, sentenceIdx)
+                            .join("").length;
+                          const sentGlobalStart = paraStart + sentStartInPara;
+                          const sentLen = chosenHanzi.length;
+                          const slice = storyCharPinyin.slice(
+                            sentGlobalStart,
+                            sentGlobalStart + sentLen
+                          );
+                          chosenPinyin = slice.join(" ");
+                        }
+
+                        ctx = {
+                          hanzi: chosenHanzi,
+                          pinyin: chosenPinyin,
+                          translation: chosenTrans,
+                        };
+                      }
+                      void addSingleToFlashcards(popup.word, ctx);
+                      setPopup((p) => ({ ...p, open: false }));
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="text-sm font-inter">
+                      Add to Flashcards
+                    </span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

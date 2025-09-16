@@ -5,6 +5,7 @@ import { DashboardLayout } from "@/components/layout";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { authApi, type MeResponse } from "@/lib/api/auth";
 import { RefreshCw, User } from "lucide-react";
+import { getHSKPillClasses } from "@/lib/constants/hsk";
 
 export default function ProfilePage() {
   const { isLoading: authLoading } = useRequireAuth();
@@ -93,11 +94,15 @@ export default function ProfilePage() {
                 <p className="text-[#a6a6a6] text-sm font-inter">
                   Current Level
                 </p>
-                <p className="text-white font-inter">
-                  {data.currentLevel === null
-                    ? "—"
-                    : `HSK ${data.currentLevel}`}
-                </p>
+                {data.currentLevel === null ? (
+                  <p className="text-white font-inter">—</p>
+                ) : (
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs mt-1 ${getHSKPillClasses(data.currentLevel)}`}
+                  >
+                    HSK {data.currentLevel}
+                  </span>
+                )}
               </div>
             </div>
           ) : (

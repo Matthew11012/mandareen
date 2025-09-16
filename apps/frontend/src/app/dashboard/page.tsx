@@ -5,6 +5,8 @@ import { DashboardLayout } from "@/components/layout";
 import { useCurrentLevel } from "@/lib/hooks/use-current-level";
 import { useEffect, useState } from "react";
 import { assessmentApi } from "@/lib/api/assessment";
+import { useRouter } from "next/navigation";
+import { lessonsApi } from "@/lib/api/lessons";
 import {
   BookOpen,
   Brain,
@@ -22,6 +24,7 @@ import {
  * Main dashboard showing user progress, quick actions, and learning overview.
  */
 export default function DashboardPage() {
+  const router = useRouter();
   const { isLoading } = useRequireAuth();
   const {
     isLoading: levelLoading,
@@ -35,6 +38,7 @@ export default function DashboardPage() {
   >([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [lessonsCount, setLessonsCount] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -51,6 +55,10 @@ export default function DashboardPage() {
       }
     };
     fetchHistory();
+    lessonsApi
+      .list()
+      .then((items) => setLessonsCount(items.length || 0))
+      .catch(() => setLessonsCount(0));
     return () => {
       isMounted = false;
     };
@@ -109,12 +117,14 @@ export default function DashboardPage() {
                         Loading...
                       </span>
                     </div>
-                  ) : (
-                    <p
-                      className={`text-xl font-inter font-semibold ${getLevelColor()}`}
+                  ) : formatLevel() ? (
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${getLevelColor()}`}
                     >
                       {formatLevel()}
-                    </p>
+                    </span>
+                  ) : (
+                    <p className="text-xl font-inter font-semibold">—</p>
                   )}
                 </div>
               </div>
@@ -191,8 +201,11 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* AI Lessons - Coming Soon */}
-            <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] opacity-60 relative overflow-hidden">
+            {/* AI Lessons - Enabled with orange accents */}
+            <div
+              className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] hover:border-orange-500/60 transition-all duration-200 cursor-pointer"
+              onClick={() => router.push("/lessons")}
+            >
               <div className="space-y-4">
                 <div className="w-12 h-12 bg-orange-500/20 rounded-lg flex items-center justify-center">
                   <BookOpen className="w-6 h-6 text-orange-400" />
@@ -206,16 +219,19 @@ export default function DashboardPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Sparkles className="w-3 h-3 text-[#999999]" />
-                  <span className="text-xs text-[#999999] font-inter">
-                    Coming Soon
+                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                  <span className="text-xs text-green-400 font-inter">
+                    Available
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Flashcards - Coming Soon */}
-            <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] opacity-60 relative overflow-hidden">
+            {/* Flashcards - Enabled with green accents */}
+            <div
+              className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] hover:border-green-500/60 transition-all duration-200 cursor-pointer"
+              onClick={() => router.push("/flashcards")}
+            >
               <div className="space-y-4">
                 <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center">
                   <Brain className="w-6 h-6 text-green-400" />
@@ -229,9 +245,9 @@ export default function DashboardPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Sparkles className="w-3 h-3 text-[#999999]" />
-                  <span className="text-xs text-[#999999] font-inter">
-                    Coming Soon
+                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                  <span className="text-xs text-green-400 font-inter">
+                    Available
                   </span>
                 </div>
               </div>
@@ -276,19 +292,39 @@ export default function DashboardPage() {
                 Take your placement test to determine your current level
               </p>
             </div>
-            <div className="flex items-center gap-3 opacity-60">
-              <div className="w-6 h-6 bg-[#404040] rounded-full flex items-center justify-center">
-                <span className="text-[#999999] text-xs font-bold">2</span>
+            <div
+              className={`flex items-center gap-3 ${history.length > 0 ? "" : "opacity-60"}`}
+            >
+              <div
+                className={`w-6 h-6 rounded-full flex items-center justify-center ${history.length > 0 ? "bg-orange-500/80" : "bg-[#404040]"}`}
+              >
+                <span
+                  className={`text-xs font-bold ${history.length > 0 ? "text-white" : "text-[#999999]"}`}
+                >
+                  2
+                </span>
               </div>
-              <p className="text-[#999999] font-inter">
+              <p
+                className={`${history.length > 0 ? "text-white" : "text-[#999999]"} font-inter`}
+              >
                 Start with AI-generated lessons tailored to your level
               </p>
             </div>
-            <div className="flex items-center gap-3 opacity-60">
-              <div className="w-6 h-6 bg-[#404040] rounded-full flex items-center justify-center">
-                <span className="text-[#999999] text-xs font-bold">3</span>
+            <div
+              className={`flex items-center gap-3 ${lessonsCount > 0 ? "" : "opacity-60"}`}
+            >
+              <div
+                className={`w-6 h-6 rounded-full flex items-center justify-center ${lessonsCount > 0 ? "bg-green-500" : "bg-[#404040]"}`}
+              >
+                <span
+                  className={`text-xs font-bold ${lessonsCount > 0 ? "text-white" : "text-[#999999]"}`}
+                >
+                  3
+                </span>
               </div>
-              <p className="text-[#999999] font-inter">
+              <p
+                className={`${lessonsCount > 0 ? "text-white" : "text-[#999999]"} font-inter`}
+              >
                 Practice with flashcards and conversation AI
               </p>
             </div>

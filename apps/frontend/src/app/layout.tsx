@@ -44,20 +44,13 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="font-inter antialiased">
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" href="/icons/icon-192x192.png" sizes="192x192" />
+        <link rel="icon" href="/icons/icon-512x512.png" sizes="512x512" />
         {children}
 
         {/* Global Toast Notifications */}
-        <Toaster
-          theme="dark"
-          position="top-right"
-          toastOptions={{
-            style: {
-              background: "#2e323a",
-              border: "1px solid #4040f2",
-              color: "#ffffff",
-            },
-          }}
-        />
+        <Toaster theme="dark" position="top-right" richColors />
       </body>
     </html>
   );

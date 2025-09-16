@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { NAVIGATION_DATA } from "@/lib/constants/navigation";
 import type { NavigationItem } from "@/lib/types/navigation";
+import { flashcardsApi } from "@/lib/api/flashcards";
 
 // Icon mapping
 const ICONS = {
@@ -43,9 +44,15 @@ interface NavItemProps {
   item: NavigationItem;
   isActive: boolean;
   isCollapsed: boolean;
+  badgeCount?: number;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ item, isActive, isCollapsed }) => {
+const NavItem: React.FC<NavItemProps> = ({
+  item,
+  isActive,
+  isCollapsed,
+  badgeCount,
+}) => {
   const IconComponent = ICONS[item.icon as keyof typeof ICONS];
 
   const content = (
@@ -84,6 +91,11 @@ const NavItem: React.FC<NavItemProps> = ({ item, isActive, isCollapsed }) => {
           >
             {item.label}
           </span>
+          {typeof badgeCount === "number" && badgeCount > 0 && (
+            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-[#333956] text-[#c6ceff] text-xs">
+              {badgeCount}
+            </span>
+          )}
 
           {item.isComingSoon && (
             <div className="flex items-center gap-1 px-2 py-0.5 bg-[#3a3f47] rounded-full">
@@ -119,6 +131,22 @@ const NavItem: React.FC<NavItemProps> = ({ item, isActive, isCollapsed }) => {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
   const pathname = usePathname();
+  const [dueCount, setDueCount] = useState<number>(0);
+
+  useEffect(() => {
+    let mounted = true;
+    flashcardsApi
+      .due()
+      .then((items) => {
+        if (mounted) setDueCount(items.length);
+      })
+      .catch(() => {
+        if (mounted) setDueCount(0);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <aside
@@ -178,6 +206,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
                   item={item}
                   isActive={pathname === item.href}
                   isCollapsed={isCollapsed}
+                  badgeCount={item.id === "flashcards" ? dueCount : undefined}
                 />
               ))}
             </div>

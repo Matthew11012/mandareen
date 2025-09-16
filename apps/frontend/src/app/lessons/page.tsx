@@ -5,6 +5,7 @@ import { DashboardLayout } from "@/components/layout";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { lessonsApi, type LessonListItem } from "@/lib/api/lessons";
 import { Plus, RefreshCw, BookOpen, MessageSquare } from "lucide-react";
+import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { useRouter } from "next/navigation";
 
 export default function LessonsPage() {
@@ -38,26 +39,7 @@ export default function LessonsPage() {
     }
   };
 
-  const getLevelPillColor = (level: number) => {
-    switch (level) {
-      case 1:
-        return "bg-green-500/20 text-green-300 border border-green-500/30";
-      case 2:
-        return "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
-      case 3:
-        return "bg-blue-500/20 text-blue-300 border border-blue-500/30";
-      case 4:
-        return "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
-      case 5:
-        return "bg-purple-500/20 text-purple-300 border border-purple-500/30";
-      case 6:
-        return "bg-pink-500/20 text-pink-300 border border-pink-500/30";
-      case 7:
-        return "bg-orange-500/20 text-orange-300 border border-orange-500/30";
-      default:
-        return "bg-[#3a3a3a] text-[#d0d0d0] border border-[#4a4a4a]";
-    }
-  };
+  const getLevelPillColor = (level: number) => getHSKPillClasses(level);
 
   useEffect(() => {
     if (!authLoading) load();
@@ -148,7 +130,7 @@ export default function LessonsPage() {
             <button
               onClick={handleGenerate}
               disabled={generating}
-              className="px-4 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#5053ff] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-orange-500/80 text-white rounded-lg hover:bg-orange-600 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <div className="flex items-center gap-2">
                 <Plus className="w-4 h-4" />
@@ -158,18 +140,25 @@ export default function LessonsPage() {
             <button
               onClick={handleGenerateDialogue}
               disabled={generating}
-              className="px-4 py-2 bg-[#2e323a] border border-[#404040] text-white rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <div className="flex items-center gap-2">
                 <MessageSquare className="w-4 h-4" />
                 <span className="font-inter">Generate Dialogue</span>
               </div>
             </button>
+            <button
+              onClick={() => setTopic("")}
+              disabled={generating}
+              className="px-3 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Clear
+            </button>
           </div>
           <button
             onClick={load}
             disabled={loading}
-            className="p-2 hover:bg-[#404040] rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             title="Refresh"
           >
             <RefreshCw
@@ -204,8 +193,8 @@ export default function LessonsPage() {
                       onClick={() => router.push(`/lessons/${l.id}`)}
                     >
                       <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
-                          <BookOpen className="w-5 h-5 text-blue-400" />
+                        <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
+                          <BookOpen className="w-5 h-5 text-orange-400" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
@@ -253,8 +242,8 @@ export default function LessonsPage() {
                       onClick={() => router.push(`/lessons/${l.id}`)}
                     >
                       <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
-                          <MessageSquare className="w-5 h-5 text-blue-400" />
+                        <div className="w-10 h-10 bg-purple-600/20 rounded-lg flex items-center justify-center">
+                          <MessageSquare className="w-5 h-5 text-purple-500" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">

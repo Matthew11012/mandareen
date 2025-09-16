@@ -9,6 +9,7 @@ import { VocabularyModule } from './vocabulary/vocabulary.module';
 import { ConfigModule } from '@nestjs/config';
 import { UsersModule } from './users/users.module';
 import { LessonsModule } from './lessons/lessons.module';
+import { FlashcardsModule } from './flashcards/flashcards.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { LessonsModule } from './lessons/lessons.module';
     VocabularyModule,
     UsersModule,
     LessonsModule,
+    FlashcardsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

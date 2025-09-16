@@ -96,6 +96,7 @@ model Flashcard {
   intervalDays      Int
   easiness          Float
   reviews           Review[]
+  sentences         FlashcardSentence[]
 }
 
 model Review {
@@ -104,6 +105,16 @@ model Review {
   flashcardId  Int
   reviewedAt   DateTime  @default(now())
   quality      Int
+}
+
+model FlashcardSentence {
+  id           Int        @id @default(autoincrement())
+  flashcard    Flashcard  @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
+  flashcardId  Int
+  hanzi        String
+  pinyin       String?
+  translation  String?
+  createdAt    DateTime   @default(now())
 }
 
 model Conversation {

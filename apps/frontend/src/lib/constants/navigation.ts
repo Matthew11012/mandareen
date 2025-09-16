@@ -37,7 +37,7 @@ export const NAVIGATION_DATA: NavigationData = [
         label: "Flashcards",
         href: "/flashcards",
         icon: "Brain",
-        isComingSoon: true,
+        isComingSoon: false,
         description: "Spaced repetition vocabulary practice",
       },
       {
