@@ -255,7 +255,7 @@ export class LessonsService {
   ): string {
     const approxChars = Math.min(readTimeMinutes * 300, 6000);
     const topicLine = topic
-      ? `\nTOPIC (mandatory): ${topic}\nYou MUST center the entire ${type} on this topic. The title MUST include at least one keyword from the topic. Use domain-specific vocabulary related to the topic throughout the text and include those items in the vocabulary list.`
+      ? `\nTOPIC (mandatory): ${topic}\n.You MUST center the entire ${type} on this topic. The title MUST include at least one keyword from the topic. Use domain-specific vocabulary related to the topic throughout the text and include those items in the vocabulary list.`
       : `\nNo topic provided: choose a fresh everyday-life theme distinct from generic themes. Avoid those unless explicitly requested.`;
     const genreHint =
       type === 'dialogue'
@@ -279,7 +279,7 @@ Return ONLY valid JSON with this exact structure (no extra keys, no comments):
   },
   "dialogue": { // if type is dialogue, else null
     "turns": [ // 18-22 turns of practical daily conversation suitable for HSK-${level}
-      { "speaker": "A|B|Narrator", "hanzi": "string", "pinyin": "string", "translation": "string" }
+      { "speaker": "<Character name 1>|<Character name 2>|<Narrator>", "hanzi": "string", "pinyin": "string", "translation": "string" }
     ]
   },
   "vocabulary": [

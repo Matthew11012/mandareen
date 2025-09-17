@@ -116,12 +116,6 @@ export default function LessonsPage() {
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
             />
-            <button
-              onClick={() => setTopic("")}
-              className="px-3 py-2 bg-[#2e323a] border border-[#404040] text-[#a6a6a6] rounded-lg hover:border-[#4040f2] cursor-pointer"
-            >
-              Clear
-            </button>
           </div>
         </div>
 

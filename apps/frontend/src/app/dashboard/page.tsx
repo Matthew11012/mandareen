@@ -119,7 +119,7 @@ export default function DashboardPage() {
                     </div>
                   ) : formatLevel() ? (
                     <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${getLevelColor()}`}
+                      className={`inline-flex items-center rounded-full text-xl ${getLevelColor()}`}
                     >
                       {formatLevel()}
                     </span>

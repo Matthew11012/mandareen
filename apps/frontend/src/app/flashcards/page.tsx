@@ -70,11 +70,7 @@ export default function FlashcardsPage() {
               <span className="text-xs text-[#c6ceff] leading-none mb-[2px]">
                 {pArr[idx]}
               </span>
-            ) : (
-              <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
-                •
-              </span>
-            )}
+            ) : null}
             <span className="px-[1px] rounded">{ch}</span>
           </span>
         ))}
