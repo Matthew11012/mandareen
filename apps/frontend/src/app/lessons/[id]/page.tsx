@@ -392,7 +392,25 @@ export default function LessonViewerPage() {
               </div>
             </button>
             <button
-              onClick={() => setShowPinyin((v) => !v)}
+              onClick={() =>
+                setShowPinyin((prev) => {
+                  const next = !prev;
+                  // Force all blocks/turns to follow global state
+                  setChunkPinyinOn(
+                    Object.fromEntries(
+                      (segmentedParagraphs || []).map((_, i) => [i, next])
+                    ) as Record<number, boolean>
+                  );
+                  setTurnPinyinOn(
+                    Object.fromEntries(
+                      ((dialogue?.turns || []) as Array<unknown>).map(
+                        (_, i) => [i, next]
+                      )
+                    ) as Record<number, boolean>
+                  );
+                  return next;
+                })
+              }
               className="px-3 py-2 bg-orange-500/20 border border-orange-500/40 rounded-lg hover:border-orange-500 text-orange-300 transition-colors duration-200 cursor-pointer"
             >
               <div className="flex items-center gap-2 text-[#a6a6a6]">
@@ -405,7 +423,25 @@ export default function LessonViewerPage() {
               </div>
             </button>
             <button
-              onClick={() => setShowTranslation((v) => !v)}
+              onClick={() =>
+                setShowTranslation((prev) => {
+                  const next = !prev;
+                  // Force all blocks/turns to follow global state
+                  setChunkTransOn(
+                    Object.fromEntries(
+                      (segmentedParagraphs || []).map((_, i) => [i, next])
+                    ) as Record<number, boolean>
+                  );
+                  setTurnTransOn(
+                    Object.fromEntries(
+                      ((dialogue?.turns || []) as Array<unknown>).map(
+                        (_, i) => [i, next]
+                      )
+                    ) as Record<number, boolean>
+                  );
+                  return next;
+                })
+              }
               className="px-3 py-2 bg-purple-600/20 border border-purple-600/40 rounded-lg hover:border-purple-600 text-purple-300 transition-colors duration-200 cursor-pointer"
             >
               <div className="flex items-center gap-2 text-[#a6a6a6]">
@@ -706,7 +742,7 @@ export default function LessonViewerPage() {
                     10,
                     Math.min(popup.x - 110, window.innerWidth - 260)
                   ),
-                  top: Math.max(10, popup.y - 130),
+                  top: Math.max(10, popup.y - 150),
                   zIndex: 1000,
                 }}
                 className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
@@ -717,11 +753,6 @@ export default function LessonViewerPage() {
                 {popup.pinyin && (
                   <div className="text-[#c6ceff] text-sm font-medium truncate">
                     {popup.pinyin}
-                  </div>
-                )}
-                {popup.definition && (
-                  <div className="text-xs text-[#a6a6a6] mt-2">
-                    {popup.definition}
                   </div>
                 )}
                 {Array.isArray(popup.definitions) &&

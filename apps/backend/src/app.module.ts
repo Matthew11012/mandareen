@@ -10,6 +10,7 @@ import { ConfigModule } from '@nestjs/config';
 import { UsersModule } from './users/users.module';
 import { LessonsModule } from './lessons/lessons.module';
 import { FlashcardsModule } from './flashcards/flashcards.module';
+import { ConversationsModule } from './conversations/conversations.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { FlashcardsModule } from './flashcards/flashcards.module';
     UsersModule,
     LessonsModule,
     FlashcardsModule,
+    ConversationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

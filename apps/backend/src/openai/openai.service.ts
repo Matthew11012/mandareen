@@ -17,6 +17,36 @@ export class OpenAIService {
       apiKey: process.env.OPENAI_API_KEY,
     });
   }
+  async chatChineseReply(userHanzi: string): Promise<{
+    hanzi: string;
+    pinyin: string;
+    translation: string;
+  }> {
+    const model = 'gpt-5-nano';
+    const completion = await this.openai.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a friendly native Mandarin tutor. Reply in Chinese first, then provide pinyin and English translation. Format STRICTLY as JSON with keys hanzi, pinyin, translation. Keep replies 1-2 sentences of natural daily conversation.',
+        },
+        {
+          role: 'user',
+          content: `User said: ${userHanzi}. Respond appropriately. Return JSON only.`,
+        },
+      ],
+      response_format: { type: 'json_object' },
+    });
+    const content = completion.choices[0].message.content;
+    if (!content) throw new Error('Empty OpenAI response');
+    const data = JSON.parse(content);
+    return {
+      hanzi: data.hanzi || '',
+      pinyin: (data.pinyin || '').toLowerCase(),
+      translation: data.translation || '',
+    };
+  }
 
   async generateAssessmentPassage(hskLevel: number): Promise<Passage> {
     try {

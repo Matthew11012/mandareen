@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OpenAIService } from '../openai/openai.service';
@@ -68,8 +69,9 @@ export class LessonsService {
             endIndex: s.endIndex,
             isWord: s.isWord,
             hskLevel: s.hskLevel,
-            pinyin: s.pinyin,
+            pinyin: (s.pinyin || '')?.toLowerCase(),
             definition: s.definition,
+            definitions: s.definitions,
           })),
         );
 
@@ -129,8 +131,9 @@ export class LessonsService {
           endIndex: s.endIndex,
           isWord: s.isWord,
           hskLevel: s.hskLevel,
-          pinyin: s.pinyin,
+          pinyin: (s.pinyin || '')?.toLowerCase(),
           definition: s.definition,
+          definitions: s.definitions,
         })),
       );
 

@@ -17,7 +17,7 @@ async function downloadAndExtractCCCEDICT() {
   console.log('Downloading CC-CEDICT dictionary...');
   
   return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(gzPath);
+    const file = fs.createWriteStream(gzPath);  
     
     https.get(url, (response) => {
       response.pipe(file);

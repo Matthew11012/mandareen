@@ -64,7 +64,6 @@ export class SegmentationService {
     for (const filePath of candidatePaths) {
       try {
         if (fs.existsSync(filePath)) {
-          
           const raw = fs.readFileSync(filePath, 'utf-8');
           const data = JSON.parse(raw);
 
@@ -99,7 +98,7 @@ export class SegmentationService {
               for (const k of keys) {
                 const val = obj?.[k];
                 if (typeof val === 'string' && val.trim().length > 0)
-                  return val.trim();
+                  return val.trim().toLowerCase();
               }
               return undefined;
             };
@@ -116,12 +115,23 @@ export class SegmentationService {
                 }
                 // Handle arrays like ["new-6", "old-5"]
                 if (Array.isArray(val) && val.length > 0) {
+                  // Prefer the entry starting with "new-"
+                  const newEntry = val.find(
+                    (x: any) =>
+                      typeof x === 'string' &&
+                      x.toLowerCase().startsWith('new-'),
+                  );
+                  if (typeof newEntry === 'string') {
+                    const m = newEntry.match(/\d+/);
+                    if (m) return parseInt(m[0], 10);
+                  }
+                  // Fallback: first numeric value
                   for (const item of val) {
+                    if (typeof item === 'number') return item;
                     if (typeof item === 'string') {
                       const m = item.match(/\d+/);
                       if (m) return parseInt(m[0], 10);
                     }
-                    if (typeof item === 'number') return item;
                   }
                 }
               }
@@ -149,9 +159,12 @@ export class SegmentationService {
               let definition: string | undefined;
               let definitionsArr: string[] | undefined;
               let hanziTraditional: string | undefined;
+              // Aggregate meanings across forms (ensure defined for all branches)
+              const aggregateMeanings: string[] = [];
 
               const forms = entry?.forms || [];
               if (Array.isArray(forms) && forms.length > 0) {
+                // Aggregate across ALL forms to collect all meanings
                 const firstForm = forms[0];
 
                 // Extract traditional from first form
@@ -164,19 +177,18 @@ export class SegmentationService {
                 const transcriptions =
                   firstForm?.transcriptions || firstForm?.i; // 'i' is shortened key
                 if (transcriptions) {
-                  pinyin = pickString(transcriptions, [
-                    'pinyin',
-                    'y', // shortened key
-                    'numeric',
-                    'n', // shortened key
-                  ]);
+                  // Prefer standard pinyin over numeric
+                  const std = pickString(transcriptions, ['pinyin', 'y']);
+                  const numeric = pickString(transcriptions, ['numeric', 'n']);
+                  pinyin = (std || numeric)?.toLowerCase();
                 }
 
                 // Extract meanings
                 const meanings = firstForm?.meanings || firstForm?.m; // 'm' is shortened key
                 if (Array.isArray(meanings) && meanings.length > 0) {
-                  definition = meanings.join('; ');
-                  definitionsArr = meanings;
+                  aggregateMeanings.push(
+                    ...meanings.map((m: string) => m.trim()).filter(Boolean),
+                  );
                 }
               }
 
@@ -186,22 +198,36 @@ export class SegmentationService {
                   this.dictionary.set(hanziForm, {
                     hskLevel,
                     pinyin,
-                    definition,
-                    definitions: definitionsArr,
+                    definition:
+                      aggregateMeanings.length > 0
+                        ? aggregateMeanings.join('; ')
+                        : definition,
+                    definitions:
+                      aggregateMeanings.length > 0
+                        ? aggregateMeanings
+                        : definitionsArr,
                   });
                 } else {
                   const existing = this.dictionary.get(hanziForm)!;
                   if (!existing.hskLevel && hskLevel)
                     existing.hskLevel = hskLevel;
                   if (!existing.pinyin && pinyin) existing.pinyin = pinyin;
-                  if (!existing.definition && definition)
-                    existing.definition = definition;
+                  if (!existing.definition) {
+                    const joined =
+                      aggregateMeanings.length > 0
+                        ? aggregateMeanings.join('; ')
+                        : definition;
+                    if (joined) existing.definition = joined;
+                  }
                   if (
                     (!existing.definitions ||
                       existing.definitions.length === 0) &&
-                    definitionsArr
+                    (aggregateMeanings.length > 0 || definitionsArr)
                   )
-                    existing.definitions = definitionsArr;
+                    existing.definitions =
+                      aggregateMeanings.length > 0
+                        ? aggregateMeanings
+                        : definitionsArr;
                 }
                 this.maxTokenLength = Math.max(
                   this.maxTokenLength,
@@ -228,14 +254,19 @@ export class SegmentationService {
                     ]);
 
                     const formTranscriptions = f?.transcriptions || f?.i;
-                    const formPinyin = formTranscriptions
-                      ? pickString(formTranscriptions, [
-                          'pinyin',
-                          'y',
-                          'numeric',
-                          'n',
-                        ])
-                      : undefined;
+                    let formPinyin: string | undefined;
+                    if (formTranscriptions) {
+                      const std = pickString(formTranscriptions, [
+                        'pinyin',
+                        'y',
+                      ]);
+                      const num = pickString(formTranscriptions, [
+                        'numeric',
+                        'n',
+                      ]);
+                      formPinyin = (std || num)?.toLowerCase();
+                    }
+                    const normalizedFormPinyin = formPinyin;
 
                     const formMeanings = f?.meanings || f?.m;
                     const formDefinition =
@@ -245,12 +276,22 @@ export class SegmentationService {
                     const formDefinitionsArr = Array.isArray(formMeanings)
                       ? formMeanings
                       : undefined;
+                    // Push into aggregate list for root forms as well
+                    if (
+                      Array.isArray(formMeanings) &&
+                      formMeanings.length > 0
+                    ) {
+                      for (const m of formMeanings) {
+                        if (typeof m === 'string')
+                          aggregateMeanings.push(m.trim());
+                      }
+                    }
 
                     if (formHanzi) {
                       if (!this.dictionary.has(formHanzi)) {
                         this.dictionary.set(formHanzi, {
                           hskLevel,
-                          pinyin: formPinyin || pinyin,
+                          pinyin: normalizedFormPinyin || pinyin,
                           definition: formDefinition || definition,
                           definitions: formDefinitionsArr || definitionsArr,
                         });
@@ -258,8 +299,11 @@ export class SegmentationService {
                         const existing = this.dictionary.get(formHanzi)!;
                         if (!existing.hskLevel && hskLevel)
                           existing.hskLevel = hskLevel;
-                        if (!existing.pinyin && (formPinyin || pinyin))
-                          existing.pinyin = formPinyin || pinyin;
+                        if (
+                          !existing.pinyin &&
+                          (normalizedFormPinyin || pinyin)
+                        )
+                          existing.pinyin = normalizedFormPinyin || pinyin;
                         if (
                           !existing.definition &&
                           (formDefinition || definition)
@@ -291,8 +335,6 @@ export class SegmentationService {
 
     // Reasonable cap to avoid pathological lengths
     this.maxTokenLength = Math.min(this.maxTokenLength, 16);
-
-    
 
     // Debug: Check specific entries
     const testWords = ['仿佛', '你好', '中国'];
