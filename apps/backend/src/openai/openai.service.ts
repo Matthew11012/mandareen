@@ -17,6 +17,75 @@ export class OpenAIService {
       apiKey: process.env.OPENAI_API_KEY,
     });
   }
+  async annotateChinese(text: string): Promise<
+    Array<{
+      text: string;
+      pinyin?: string;
+      definition?: string;
+      hskLevel?: number;
+    }>
+  > {
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const completion = await this.openai.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a Mandarin lexical annotator. Given the user Chinese text, extract a small list (10–25) of important words and short phrases (multi-character collocations where appropriate). For each, include exact substring matching the text, its pinyin, and a concise English definition. Return STRICT JSON: {"vocabulary":[{"text":"...","pinyin":"...","definition":"..."}]}. No commentary. Only include items that appear verbatim in the text.',
+        },
+        { role: 'user', content: text },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.2,
+    } as any);
+    const content = completion.choices?.[0]?.message?.content;
+    if (!content) return [];
+    try {
+      const data = JSON.parse(content);
+      const vocab = Array.isArray(data?.vocabulary) ? data.vocabulary : [];
+      return vocab
+        .filter(
+          (v: any) => typeof v?.text === 'string' && v.text.trim().length > 0,
+        )
+        .map((v: any) => ({
+          text: v.text,
+          pinyin: (v.pinyin || '').toLowerCase(),
+          definition: v.definition || v.translation || undefined,
+          hskLevel: typeof v.hskLevel === 'number' ? v.hskLevel : undefined,
+        }));
+    } catch {
+      return [];
+    }
+  }
+  async chatChineseReplyWithContext(
+    messagesIn: Array<{
+      role: 'system' | 'user' | 'assistant';
+      content: string;
+    }>,
+  ): Promise<{ hanzi: string; pinyin: string; translation: string }> {
+    const model = 'gpt-4o-mini';
+    const completion = await this.openai.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a friendly native Mandarin tutor. Reply in Chinese first, then provide pinyin and English translation. Format STRICTLY as JSON with keys hanzi, pinyin, translation. Keep replies 1-2 sentences of natural daily conversation.',
+        },
+        ...messagesIn,
+      ],
+      response_format: { type: 'json_object' },
+    } as any);
+    const content = completion.choices[0].message.content;
+    if (!content) throw new Error('Empty OpenAI response');
+    const data = JSON.parse(content);
+    return {
+      hanzi: data.hanzi || '',
+      pinyin: (data.pinyin || '').toLowerCase(),
+      translation: data.translation || '',
+    };
+  }
   async chatChineseReply(userHanzi: string): Promise<{
     hanzi: string;
     pinyin: string;

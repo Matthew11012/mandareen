@@ -60,7 +60,7 @@ export class LessonsService {
         );
 
         // Fill missing pinyin from the dialogue turn pinyin line (fallback per character)
-        const filledSegs = this.fillSegmentPinyinFromLine(
+        const filledSegsRaw = this.fillSegmentPinyinFromLine(
           t.hanzi || '',
           t.pinyin || '',
           segs.map((s) => ({
@@ -74,11 +74,15 @@ export class LessonsService {
             definitions: s.definitions,
           })),
         );
+        const filledSegs = filledSegsRaw.map((s) => ({
+          ...s,
+          pinyin: this.toToneMarks(s.pinyin),
+        }));
 
         turnsWithSegments.push({
           speaker: t.speaker,
           hanzi: t.hanzi || '',
-          pinyin: t.pinyin || '',
+          pinyin: this.toToneMarks(t.pinyin || ''),
           translation: t.translation || '',
           segments: filledSegs,
         });
@@ -95,7 +99,8 @@ export class LessonsService {
                 sectionType: 'dialogue',
                 content: {
                   title: generated.title || null,
-                  titlePinyin: generated.titlePinyin || null,
+                  titlePinyin:
+                    this.toToneMarks(generated.titlePinyin || '') || null,
                   titleTranslation: generated.titleTranslation || null,
                   turns: turnsWithSegments,
                 },
@@ -122,7 +127,7 @@ export class LessonsService {
       );
 
       // Fill missing pinyin from story.pinyin (fallback per character)
-      const filledSegs = this.fillSegmentPinyinFromLine(
+      const filledSegsRaw = this.fillSegmentPinyinFromLine(
         generated.story?.hanzi || '',
         generated.story?.pinyin || '',
         segs.map((s) => ({
@@ -136,6 +141,10 @@ export class LessonsService {
           definitions: s.definitions,
         })),
       );
+      const filledSegs = filledSegsRaw.map((s) => ({
+        ...s,
+        pinyin: this.toToneMarks(s.pinyin),
+      }));
 
       lesson = await this.prismaService.lesson.create({
         data: {
@@ -148,10 +157,11 @@ export class LessonsService {
                 sectionType: 'story',
                 content: {
                   title: generated.title || null,
-                  titlePinyin: generated.titlePinyin || null,
+                  titlePinyin:
+                    this.toToneMarks(generated.titlePinyin || '') || null,
                   titleTranslation: generated.titleTranslation || null,
                   hanzi: generated.story?.hanzi || '',
-                  pinyin: generated.story?.pinyin || '',
+                  pinyin: this.toToneMarks(generated.story?.pinyin || ''),
                   translation: generated.story?.translation || '',
                   segments: filledSegs,
                 },
@@ -347,5 +357,53 @@ Strict requirements:
       (code >= 0x3400 && code <= 0x4dbf) ||
       (code >= 0x20000 && code <= 0x2a6df)
     );
+  }
+
+  // Convert numeric tones to tone marks (e.g., ni3hao3 -> nǐ hǎo)
+  private toToneMarkSyllable(syl: string): string {
+    const m = syl.match(
+      /^(zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw]?)([aeiouüv]+[a-z]*)([1-5])?$/i,
+    );
+    if (!m) return (syl || '').toLowerCase();
+    const head = (m[1] || '').toLowerCase();
+    let body = (m[2] || '').toLowerCase();
+    const tone = parseInt(m[3] || '0', 10);
+    body = body.replace('v', 'ü').replace('u:', 'ü');
+    if (!tone || tone === 5) return head + body;
+    const toneMap: Record<string, string[]> = {
+      a: ['ā', 'á', 'ǎ', 'à'],
+      e: ['ē', 'é', 'ě', 'è'],
+      i: ['ī', 'í', 'ǐ', 'ì'],
+      o: ['ō', 'ó', 'ǒ', 'ò'],
+      u: ['ū', 'ú', 'ǔ', 'ù'],
+      ü: ['ǖ', 'ǘ', 'ǚ', 'ǜ'],
+    };
+    let idx = -1;
+    if (body.includes('a')) idx = body.indexOf('a');
+    else if (body.includes('e')) idx = body.indexOf('e');
+    else if (body.includes('ou')) idx = body.indexOf('o');
+    else {
+      for (const v of ['i', 'o', 'u', 'ü']) {
+        const pos = body.indexOf(v);
+        if (pos >= 0) {
+          idx = pos;
+          break;
+        }
+      }
+    }
+    if (idx >= 0) {
+      const v = body[idx];
+      const marked = (toneMap as any)[v]?.[tone - 1];
+      if (marked) body = body.slice(0, idx) + marked + body.slice(idx + 1);
+    }
+    return head + body;
+  }
+  private toToneMarks(line?: string): string | undefined {
+    if (!line) return undefined;
+    return line
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((s) => this.toToneMarkSyllable(s))
+      .join(' ');
   }
 }

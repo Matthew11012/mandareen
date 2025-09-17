@@ -12,7 +12,6 @@ import {
   Brain,
   MessageCircle,
   TrendingUp,
-  Sparkles,
   Clock,
   Target,
   RefreshCw,
@@ -253,8 +252,10 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Conversation - Coming Soon */}
-            <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] opacity-60 relative overflow-hidden">
+            {/* Conversation - enabled */}
+            <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] relative hover:border-purple-500/60 transition-all duration-200 cursor-pointer" 
+            onClick={() => router.push("/conversations")}
+            >
               <div className="space-y-4">
                 <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center">
                   <MessageCircle className="w-6 h-6 text-purple-400" />
@@ -268,9 +269,9 @@ export default function DashboardPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Sparkles className="w-3 h-3 text-[#999999]" />
-                  <span className="text-xs text-[#999999] font-inter">
-                    Coming Soon
+                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                  <span className="text-xs text-green-400 font-inter">
+                    Available
                   </span>
                 </div>
               </div>

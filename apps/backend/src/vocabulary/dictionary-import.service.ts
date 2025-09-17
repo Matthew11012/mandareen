@@ -168,7 +168,10 @@ export class DictionaryImportService {
     if (!match) return null;
 
     const [, , simplified, pinyin, definitions] = match;
-    const definitionList = definitions.split('/').filter((d) => d.trim());
+    const definitionList = definitions
+      .split('/')
+      .map((d) => d.trim())
+      .filter((d) => d);
 
     // Skip entries that are too long or contain non-Chinese characters
     if (simplified.length > 10 || !/^[\u4e00-\u9fff]+$/.test(simplified)) {
@@ -180,15 +183,45 @@ export class DictionaryImportService {
       pinyin: pinyin.toLowerCase(),
       definition: definitionList.join('; '),
       isCustom: false,
+      _definitions: definitionList,
     };
   }
 
   private async insertBatch(entries: any[]): Promise<void> {
     try {
-      await this.prisma.vocabularyItem.createMany({
-        data: entries,
-        skipDuplicates: true,
-      });
+      // Upsert base items, then attach senses
+      for (const e of entries) {
+        const base = await this.prisma.vocabularyItem.upsert({
+          where: { hanzi: e.hanzi },
+          update: {
+            // keep earliest pinyin/definition if already present
+          },
+          create: {
+            hanzi: e.hanzi,
+            pinyin: e.pinyin,
+            definition: e.definition,
+            source: 'CEDICT',
+            isCustom: false,
+          },
+        });
+        const defs: string[] = Array.isArray(e._definitions)
+          ? e._definitions
+          : [e.definition];
+        // store each definition as a sense (unique guarded by schema)
+        for (const def of defs) {
+          try {
+            await (this.prisma as any).vocabularySense?.create({
+              data: {
+                vocabularyItemId: base.id,
+                pinyin: e.pinyin,
+                definition: def,
+              },
+            });
+          } catch {
+            // ignore duplicates
+          }
+        }
+      }
     } catch (error) {
       this.logger.error('Error inserting batch:', error);
       throw error;

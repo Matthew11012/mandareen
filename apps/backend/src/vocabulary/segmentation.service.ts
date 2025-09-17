@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import * as fs from 'fs';
-import * as path from 'path';
+// import * as fs from 'fs';
+// import * as path from 'path';
 
 export interface SegmentResult {
   word: string;
@@ -29,6 +29,7 @@ export class SegmentationService {
     }
   >();
   private maxTokenLength = 6;
+  private firstCharSet = new Set<string>();
 
   private async initializeDictionary(): Promise<void> {
     if (this.initialized) {
@@ -36,24 +37,84 @@ export class SegmentationService {
       return;
     }
 
-    console.log('🔍 [SegmentationService] Initializing HSK dictionary...');
+    console.log(
+      '🔍 [SegmentationService] Initializing in-memory dictionary from DB...',
+    );
 
     // 1) Load vocabulary from DB
     const vocabularyItems = await this.prisma.vocabularyItem.findMany({
-      select: { hanzi: true, pinyin: true, definition: true, hskLevel: true },
+      select: {
+        id: true,
+        hanzi: true,
+        pinyin: true,
+        definition: true,
+        hskLevel: true,
+      },
     });
+    const idToHanzi = new Map<number, string>();
     for (const item of vocabularyItems) {
       if (!item.hanzi) continue;
       this.dictionary.set(item.hanzi, {
         hskLevel: item.hskLevel ?? undefined,
-        pinyin: item.pinyin ?? undefined,
-        definition: item.definition ?? undefined,
+        pinyin: (item.pinyin || '').toLowerCase() || undefined,
+        definition: item.definition || undefined,
         definitions: item.definition ? [item.definition] : undefined,
       });
       this.maxTokenLength = Math.max(this.maxTokenLength, item.hanzi.length);
+      this.firstCharSet.add(item.hanzi.charAt(0));
+      idToHanzi.set(item.id, item.hanzi);
     }
 
-    // 2) Load HSK JSON dictionaries
+    // 2) Load senses and aggregate richer definitions/pinyin
+    try {
+      const senses = await (this.prisma as any).vocabularySense?.findMany({
+        select: { vocabularyItemId: true, pinyin: true, definition: true },
+      });
+      if (Array.isArray(senses)) {
+        for (const s of senses) {
+          const hanzi = idToHanzi.get(s.vocabularyItemId);
+          if (!hanzi) continue;
+          const existing = this.dictionary.get(hanzi) || {};
+          const defs = new Set<string>((existing as any).definitions || []);
+          if (s.definition) defs.add(s.definition);
+          const combined = Array.from(defs);
+          this.dictionary.set(hanzi, {
+            hskLevel: (existing as any).hskLevel,
+            pinyin:
+              (existing as any).pinyin ||
+              (s.pinyin ? s.pinyin.toLowerCase() : undefined),
+            definition:
+              combined.length > 0
+                ? combined.join('; ')
+                : (existing as any).definition,
+            definitions:
+              combined.length > 0 ? combined : (existing as any).definitions,
+          });
+        }
+      }
+    } catch {
+      // vocabularySense may not exist yet; ignore
+    }
+
+    // Cap max token length and finalize (DB-only)
+    this.maxTokenLength = Math.min(this.maxTokenLength, 16);
+
+    // Quick debug sample
+    const testWords = ['仿佛'];
+    for (const word of testWords) {
+      const entry = this.dictionary.get(word);
+      if (entry) {
+        console.log(
+          `✓ Loaded "${word}": HSK ${entry.hskLevel || 'unknown'}, pinyin: ${entry.pinyin || 'none'}`,
+        );
+      }
+    }
+
+    this.initialized = true;
+    return;
+
+    /*
+    // 2) Load HSK JSON dictionaries (disabled; DB-only path)
     const candidatePaths = [
       // Monorepo root
       path.resolve(process.cwd(), 'apps/backend/data/hsk/complete-hsk.json'),
@@ -350,6 +411,7 @@ export class SegmentationService {
     }
 
     this.initialized = true;
+    */
   }
 
   async segmentText(
@@ -401,6 +463,23 @@ export class SegmentationService {
 
       let matched = false;
       const maxLen = Math.min(this.maxTokenLength, textLength - i);
+
+      // Fast path: if first character cannot start any known word, emit single char
+      if (!this.firstCharSet.has(char)) {
+        const chEntry = this.dictionary.get(char);
+        segments.push({
+          word: char,
+          startIndex: i,
+          endIndex: i + 1,
+          isWord: true,
+          hskLevel: chEntry?.hskLevel,
+          pinyin: chEntry?.pinyin,
+          definition: chEntry?.definition,
+          definitions: chEntry?.definitions,
+        });
+        i += 1;
+        continue;
+      }
 
       // Debug logging for specific problematic words
       const remainingText = text.substring(i, i + 4); // Look ahead 4 characters

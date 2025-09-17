@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConversationsService } from './conversations.service';
 import { ConversationsController } from './conversations.controller';
 import { OpenAIModule } from '../openai/openai.module';
+import { VocabularyModule } from '../vocabulary/vocabulary.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { OpenAIModule } from '../openai/openai.module';
       signOptions: { expiresIn: '1d' },
     }),
     OpenAIModule,
+    VocabularyModule,
   ],
   controllers: [ConversationsController],
   providers: [ConversationsService],

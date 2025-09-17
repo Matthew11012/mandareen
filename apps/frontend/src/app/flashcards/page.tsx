@@ -55,25 +55,32 @@ export default function FlashcardsPage() {
   // Sentence renderer: pinyin above hanzi per character
   const renderSentenceWithPinyin = (hanzi: string, pinyin?: string) => {
     if (!current) return null;
-    const pArr = (pinyin || "").split(/\s+/);
+    const tokens = (pinyin || "")
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    let pi = 0;
+    const isCJK = (ch: string) => /[\u3400-\u9FFF]/.test(ch);
     const chars = Array.from(hanzi || "");
     return (
       <div className="leading-8 text-white font-inter text-[18px]">
-        {chars.map((ch, idx) => (
-          <span
-            key={idx}
-            className="inline-flex flex-col items-center align-top mr-[2px]"
-          >
-            {revealPinyin[current.id] &&
-            pArr[idx] &&
-            pArr[idx].trim().length > 0 ? (
-              <span className="text-xs text-[#c6ceff] leading-none mb-[2px]">
-                {pArr[idx]}
-              </span>
-            ) : null}
-            <span className="px-[1px] rounded">{ch}</span>
-          </span>
-        ))}
+        {chars.map((ch, idx) => {
+          const top =
+            revealPinyin[current.id] && isCJK(ch) ? tokens[pi++] || "" : "";
+          return (
+            <span
+              key={idx}
+              className="inline-flex flex-col items-center align-top mr-[2px]"
+            >
+              {top ? (
+                <span className="text-xs text-[#c6ceff] leading-none mb-[2px]">
+                  {top}
+                </span>
+              ) : null}
+              <span className="px-[1px] rounded">{ch}</span>
+            </span>
+          );
+        })}
       </div>
     );
   };

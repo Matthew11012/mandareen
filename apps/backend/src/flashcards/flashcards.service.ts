@@ -34,6 +34,63 @@ export class FlashcardsService {
   // Initial scheduling per SM-2
   private initialEasiness = 2.5;
 
+  private isChineseChar(ch: string): boolean {
+    const code = ch.charCodeAt(0);
+    return (
+      (code >= 0x4e00 && code <= 0x9fff) ||
+      (code >= 0x3400 && code <= 0x4dbf) ||
+      (code >= 0x20000 && code <= 0x2a6df)
+    );
+  }
+
+  private toToneMarkSyllable(syl: string): string {
+    const m = syl.match(
+      /^(zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw]?)([aeiouüv]+[a-z]*)([1-5])?$/i,
+    );
+    if (!m) return syl.toLowerCase();
+    const head = (m[1] || '').toLowerCase();
+    let body = (m[2] || '').toLowerCase();
+    const tone = parseInt(m[3] || '0', 10);
+    body = body.replace('v', 'ü').replace('u:', 'ü');
+    if (!tone || tone === 5) return head + body;
+    const toneMap: Record<string, string[]> = {
+      a: ['ā', 'á', 'ǎ', 'à'],
+      e: ['ē', 'é', 'ě', 'è'],
+      i: ['ī', 'í', 'ǐ', 'ì'],
+      o: ['ō', 'ó', 'ǒ', 'ò'],
+      u: ['ū', 'ú', 'ǔ', 'ù'],
+      ü: ['ǖ', 'ǘ', 'ǚ', 'ǜ'],
+    };
+    let idx = -1;
+    if (body.includes('a')) idx = body.indexOf('a');
+    else if (body.includes('e')) idx = body.indexOf('e');
+    else if (body.includes('ou')) idx = body.indexOf('o');
+    else {
+      for (const v of ['i', 'o', 'u', 'ü']) {
+        const pos = body.indexOf(v);
+        if (pos >= 0) {
+          idx = pos;
+          break;
+        }
+      }
+    }
+    if (idx >= 0) {
+      const v = body[idx];
+      const marked = (toneMap as any)[v]?.[tone - 1];
+      if (marked) body = body.slice(0, idx) + marked + body.slice(idx + 1);
+    }
+    return head + body;
+  }
+
+  private toToneMarks(line?: string): string | undefined {
+    if (!line) return undefined;
+    return line
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((s) => this.toToneMarkSyllable(s))
+      .join(' ');
+  }
+
   private addDays(date: Date, days: number): Date {
     const d = new Date(date);
     d.setDate(d.getDate() + days);
@@ -44,22 +101,44 @@ export class FlashcardsService {
     text: string,
   ): Promise<string> {
     const segments = await this.segmentationService.segmentText(text);
-    const totalChars = Array.from(text).length;
-    const perChar: string[] = new Array(totalChars).fill('');
-    let cursor = 0;
+    const chars = Array.from(text);
+    const perChar: string[] = new Array(chars.length).fill('');
+    // Pointer to next chinese char index in sentence
+    let ci = 0;
+    // Helper: advance ci to next Chinese
+    const advanceToNextChinese = () => {
+      while (ci < chars.length && !this.isChineseChar(chars[ci])) ci++;
+    };
+    advanceToNextChinese();
     for (const seg of segments) {
-      const segLen = Array.from(seg.word).length;
-      const tokens = (seg.pinyin || '').trim().split(/\s+/).filter(Boolean);
-      if (seg.isWord && tokens.length > 0) {
-        if (tokens.length === segLen) {
-          for (let i = 0; i < segLen; i++) perChar[cursor + i] = tokens[i];
-        } else {
-          for (let i = 0; i < segLen; i++)
-            perChar[cursor + i] = tokens[0] || '';
+      if (!seg.isWord || !seg.pinyin) {
+        // skip non-words; just advance ci by number of Chinese chars in seg
+        const chineseLen = Array.from(seg.word).filter((c) =>
+          this.isChineseChar(c),
+        ).length;
+        for (let k = 0; k < chineseLen; k++) {
+          if (ci >= chars.length) break;
+          advanceToNextChinese();
+          ci++;
         }
+        continue;
       }
-      cursor += segLen;
+      const tokenSyllables = seg.pinyin
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((s) => this.toToneMarkSyllable(s));
+      const chineseLen = Array.from(seg.word).filter((c) =>
+        this.isChineseChar(c),
+      ).length;
+      for (let k = 0; k < chineseLen; k++) {
+        advanceToNextChinese();
+        if (ci >= chars.length) break;
+        perChar[ci] = tokenSyllables[k] || tokenSyllables[0] || '';
+        ci++;
+      }
     }
+    // Fill any remaining pinyins as empty
     return perChar.join(' ');
   }
 
@@ -95,33 +174,21 @@ export class FlashcardsService {
     if (existing) {
       // Append sentence if provided and not already present
       if (sentence?.hanzi) {
-        const prismaAny: any = this.prisma as any;
-        const hasSentence = await prismaAny.flashcardSentence?.findFirst({
-          where: { flashcardId: existing.id, hanzi: sentence.hanzi },
+        // Insert a new sentence unless the exact same hanzi+translation row exists
+        const exact = await this.prisma.flashcardSentence.findFirst({
+          where: {
+            flashcardId: existing.id,
+            hanzi: sentence.hanzi,
+            translation: sentence.translation ?? null,
+          },
         });
-        if (!hasSentence) {
+        
+        if (!exact) {
           const pinyin =
             sentence.pinyin && sentence.pinyin.trim().length > 0
               ? sentence.pinyin
               : await this.computeSentencePinyinPerCharacter(sentence.hanzi);
-          await prismaAny.flashcardSentence?.create({
-            data: {
-              flashcardId: existing.id,
-              hanzi: sentence.hanzi,
-              pinyin,
-              translation: sentence.translation ?? null,
-            },
-          });
-        } else if (
-          sentence.translation &&
-          hasSentence &&
-          hasSentence.translation !== sentence.translation
-        ) {
-          const pinyin =
-            sentence.pinyin && sentence.pinyin.trim().length > 0
-              ? sentence.pinyin
-              : await this.computeSentencePinyinPerCharacter(sentence.hanzi);
-          await prismaAny.flashcardSentence?.create({
+          await this.prisma.flashcardSentence.create({
             data: {
               flashcardId: existing.id,
               hanzi: sentence.hanzi,
@@ -148,12 +215,11 @@ export class FlashcardsService {
 
     // Create initial sentence if provided
     if (sentence?.hanzi) {
-      const prismaAny: any = this.prisma as any;
       const pinyin =
         sentence.pinyin && sentence.pinyin.trim().length > 0
           ? sentence.pinyin
           : await this.computeSentencePinyinPerCharacter(sentence.hanzi);
-      await prismaAny.flashcardSentence?.create({
+      await this.prisma.flashcardSentence.create({
         data: {
           flashcardId: flashcard.id,
           hanzi: sentence.hanzi,
@@ -191,7 +257,7 @@ export class FlashcardsService {
     }>;
 
     for (const f of due) {
-      let pinyin = f.vocab?.pinyin || '';
+      let pinyin = this.toToneMarks(f.vocab?.pinyin || '') || '';
       let definition = f.vocab?.definition || '';
       let hskLevel = f.vocab?.hskLevel ?? null;
       if (!pinyin || !definition || !hskLevel) {
@@ -199,7 +265,7 @@ export class FlashcardsService {
         const segs = await this.segmentationService.segmentText(wordHanzi);
         const best = segs.find((s) => s.isWord && s.word === wordHanzi);
         if (best) {
-          pinyin = pinyin || best.pinyin || '';
+          pinyin = pinyin || this.toToneMarks(best.pinyin || '') || '';
           if (!definition) {
             definition =
               (best.definitions && best.definitions.join('; ')) ||
@@ -214,18 +280,16 @@ export class FlashcardsService {
       let sentences:
         | Array<{ hanzi: string; pinyin?: string; translation?: string }>
         | undefined;
-      const prismaAny: any = this.prisma as any;
-      const rows = await prismaAny.flashcardSentence?.findMany({
+      const rows = await this.prisma.flashcardSentence.findMany({
         where: { flashcardId: f.id },
         orderBy: { id: 'asc' },
       });
       if (Array.isArray(rows) && rows.length > 0) {
         sentences = [];
         for (const s of rows) {
-          let sp: string | undefined = s.pinyin || undefined;
-          if (!sp || sp.trim().length === 0) {
-            sp = await this.computeSentencePinyinPerCharacter(s.hanzi);
-          }
+          // Always recompute to ensure alignment correctness and tone marks
+          const sp: string | undefined =
+            await this.computeSentencePinyinPerCharacter(s.hanzi);
           sentences.push({
             hanzi: s.hanzi,
             pinyin: sp,

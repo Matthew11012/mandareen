@@ -123,6 +123,8 @@ export default function LessonViewerPage() {
     pinyin?: string;
     definition?: string;
     definitions?: string[];
+    paraIndex?: number;
+    tokenIndex?: number;
   }>({ open: false, x: 0, y: 0, word: "" });
   const popupRef = useRef<HTMLDivElement | null>(null);
 
@@ -603,6 +605,8 @@ export default function LessonViewerPage() {
                                   pinyin: seg.pinyin,
                                   definition: seg.definition,
                                   definitions: seg.definitions,
+                                  paraIndex: ci,
+                                  tokenIndex: idx,
                                 });
                               }}
                             >
@@ -756,17 +760,21 @@ export default function LessonViewerPage() {
                   </div>
                 )}
                 {Array.isArray(popup.definitions) &&
-                  popup.definitions.length > 0 && (
-                    <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
-                      {popup.definitions.map((d, i) => (
-                        <div key={i}>• {d}</div>
-                      ))}
-                    </div>
-                  )}
+                popup.definitions.length > 0 ? (
+                  <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
+                    {popup.definitions.map((d, i) => (
+                      <div key={i}>• {d}</div>
+                    ))}
+                  </div>
+                ) : popup.definition ? (
+                  <div className="text-xs text-[#a6a6a6] mt-2">
+                    {popup.definition}
+                  </div>
+                ) : null}
                 <div className="mt-3 pt-3 border-t border-[#404040]">
                   <button
                     onClick={() => {
-                      // Build sentence-level context: pick the exact sentence containing the word
+                      // Build sentence-level context for the exact clicked token using stored indices
                       let ctx:
                         | {
                             hanzi?: string;
@@ -774,25 +782,36 @@ export default function LessonViewerPage() {
                             translation?: string;
                           }
                         | undefined;
-                      const paraIndex = segmentedParagraphs.findIndex((para) =>
-                        para.some((s) => s.text === popup.word)
-                      );
-                      if (paraIndex >= 0) {
+                      const paraIndex = popup.paraIndex ?? -1;
+                      const tokenIndex = popup.tokenIndex ?? -1;
+                      if (paraIndex >= 0 && tokenIndex >= 0) {
                         const paraHanzi = storyParagraphs[paraIndex] || "";
-                        // Split Chinese by sentence-ending punctuation, preserving punctuation
                         const hanziSentences = paraHanzi
                           .split(/(?<=[。！？!?])/)
                           .map((s) => s.trim())
                           .filter(Boolean);
-                        const sentenceIdx = hanziSentences.findIndex((s) =>
-                          s.includes(popup.word)
-                        );
+                        const tokens = segmentedParagraphs[paraIndex] || [];
+                        const tokenStart = tokens
+                          .slice(0, tokenIndex)
+                          .reduce((acc, s) => acc + (s.text?.length || 0), 0);
+                        let accLen = 0;
+                        let sentenceIdx = 0;
+                        for (let si = 0; si < hanziSentences.length; si++) {
+                          const sTxt = hanziSentences[si];
+                          const sLen = sTxt.length;
+                          if (
+                            tokenStart >= accLen &&
+                            tokenStart < accLen + sLen
+                          ) {
+                            sentenceIdx = si;
+                            break;
+                          }
+                          accLen += sLen;
+                        }
                         const chosenHanzi =
                           sentenceIdx >= 0
                             ? hanziSentences[sentenceIdx]
                             : hanziSentences[0] || paraHanzi;
-
-                        // Try to align translation by sentence index (best-effort)
                         const paraTrans =
                           translationParagraphs[paraIndex] || "";
                         const transSentences = paraTrans
@@ -803,21 +822,17 @@ export default function LessonViewerPage() {
                           sentenceIdx >= 0 && transSentences[sentenceIdx]
                             ? transSentences[sentenceIdx]
                             : undefined;
-
-                        // Build pinyin from story.pinyin as fallback for OOV names like 李梅
                         let chosenPinyin: string | undefined;
                         if (story?.pinyin) {
                           const storyCharPinyin = buildStoryCharPinyin(
                             story.hanzi,
                             story.pinyin
                           );
-                          // Map paragraph start offset within story
                           let storyOffset = 0;
                           for (let i = 0; i < paraIndex; i++) {
                             storyOffset +=
                               (storyParagraphs[i] || "").length + 2; // +2 for \n\n
                           }
-                          // Find sentence range within paragraph and map to story offsets
                           const paraStart = storyOffset;
                           const sentStartInPara = hanziSentences
                             .slice(0, sentenceIdx)
@@ -830,7 +845,6 @@ export default function LessonViewerPage() {
                           );
                           chosenPinyin = slice.join(" ");
                         }
-
                         ctx = {
                           hanzi: chosenHanzi,
                           pinyin: chosenPinyin,

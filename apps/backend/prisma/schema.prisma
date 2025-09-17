@@ -63,6 +63,7 @@ model VocabularyItem {
   createdAt   DateTime        @default(now())
   instances   WordInstance[]
   flashcards  Flashcard[]
+  senses      VocabularySense[]
   
   @@index([hanzi])
   @@index([hskLevel])
@@ -136,4 +137,16 @@ model Message {
   audioUrl        String?
   createdAt       DateTime      @default(now())
   wordInstances   WordInstance[]
+}
+
+model VocabularySense {
+  id               Int             @id @default(autoincrement())
+  vocabularyItem   VocabularyItem  @relation(fields: [vocabularyItemId], references: [id], onDelete: Cascade)
+  vocabularyItemId Int
+  pinyin           String?
+  definition       String
+  createdAt        DateTime        @default(now())
+
+  @@unique([vocabularyItemId, pinyin, definition])
+  @@index([vocabularyItemId])
 }
