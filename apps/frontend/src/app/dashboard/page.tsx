@@ -289,7 +289,7 @@ export default function DashboardPage() {
               <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
                 <span className="text-white text-xs font-bold">1</span>
               </div>
-              <p className="text-[#a6a6a6] font-inter">
+              <p className="text-[#ffffff] font-inter">
                 Take your placement test to determine your current level
               </p>
             </div>
