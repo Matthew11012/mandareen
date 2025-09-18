@@ -11,12 +11,21 @@
   /* Figma Design System Colors */
   --color-primary-bg: #222831;
   --color-secondary-bg: #2e323a;
+  --color-surface-1: #1f232a;
+  --color-surface-2: #2a2f39;
   --color-accent-blue: #4040f2;
   --color-text-primary: #ffffff;
   --color-text-secondary: #a6a6a6;
   --color-text-muted: #999999;
   --color-link: #1f73f2;
   --color-border: #a6a6a6;
+  --color-success: #22c55e;
+  --color-error: #ef4444;
+
+  /* Motion tokens */
+  --motion-duration-fast: 160ms;
+  --motion-duration-default: 360ms;
+  --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* Base styles */
@@ -33,6 +42,10 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 /* Custom utility classes */

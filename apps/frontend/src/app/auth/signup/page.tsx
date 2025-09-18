@@ -314,7 +314,7 @@ export default function SignUpPage() {
                   Already have an account?
                 </span>
                 <Link
-                  href="/auth/login"
+                  href="/auth?mode=login"
                   className="text-[#1f73f2] text-sm font-inter underline-offset-4 hover:underline"
                 >
                   Login here
