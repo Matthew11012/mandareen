@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Sparkles, MessageSquare, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 
 import { Input } from "@/components/ui/input";
@@ -87,32 +87,81 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#222831] flex items-center justify-center px-4 py-12 md:py-20 relative">
-      <div className="w-full max-w-md z-10 relative">
-        {/* Page Title */}
-        <div className="text-center mb-8">
-          <h1 className="font-inter font-extrabold text-5xl leading-tight text-white">
-            Login
+    <div className="min-h-screen bg-[#222831] flex items-center px-4 py-12 md:py-20">
+      <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+        {/* Left: Minimalist brand + value prop */}
+        <div className="space-y-6">
+          {/* Brand */}
+          <div className="flex items-center gap-5">
+            <div className="w-14 h-14 bg-gradient-to-br from-[#4040f2] to-[#6366f1] rounded-xl flex items-center justify-center">
+              <span className="text-white font-bold text-3xl">普</span>
+            </div>
+            <span className="text-white text-3xl font-inter font-bold">
+              Mandareen
+            </span>
+          </div>
+
+          {/* Headline */}
+          <h1 className="text-white font-inter font-extrabold text-4xl md:text-5xl leading-tight">
+            Improve your Mandarin with AI
           </h1>
+          <p className="text-[#a6a6a6] font-inter max-w-xl">
+            Personalized lessons, real conversations, and spaced-repetition
+            flashcards — all in one focused workspace.
+          </p>
+
+          {/* Key points */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 text-white">
+              <Sparkles className="w-5 h-5 text-[#c6ceff]" />
+              <span className="font-inter">
+                AI-crafted lessons tailored to you
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-white">
+              <MessageSquare className="w-5 h-5 text-[#c6ceff]" />
+              <span className="font-inter">
+                Speak with an AI partner, anytime
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-white">
+              <BookOpen className="w-5 h-5 text-[#c6ceff]" />
+              <span className="font-inter">
+                Smart flashcards that actually stick
+              </span>
+            </div>
+          </div>
+
+          {/* Secondary CTA */}
+          <div className="pt-2">
+            <Link
+              href="/auth/signup"
+              className="inline-flex items-center gap-2 text-[#9aa6ff] hover:text-white underline-offset-4 hover:underline font-inter"
+            >
+              Start learning free
+            </Link>
+          </div>
         </div>
 
-        {/* Main Form Container - Matching Figma styling exactly */}
-        <div className="bg-[#2e323a] rounded-[20px] border border-[#3a3f47] shadow-[0_8px_24px_rgba(0,0,0,0.35)] p-6 md:p-8 relative z-20">
-          <form
-            onSubmit={handleSubmit(onSubmit)}
-            className="space-y-6 relative z-30"
-          >
-            {/* Email Input */}
-            <Input
-              label="USERNAME"
-              type="email"
-              placeholder="john1233@gmail.com"
-              {...register("email")}
-              error={errors.email?.message}
-            />
+        {/* Right: Minimalist auth form */}
+        <div className="w-full max-w-md lg:ml-auto">
+          <div className="space-y-6">
+            <div className="mb-2">
+              <h2 className="font-inter font-semibold text-2xl text-white">
+                Log in
+              </h2>
+              <p className="text-[#a6a6a6] text-sm mt-1">Welcome back</p>
+            </div>
 
-            {/* Password Input */}
-            <div>
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+              <Input
+                label="EMAIL"
+                type="email"
+                placeholder="john1233@gmail.com"
+                {...register("email")}
+                error={errors.email?.message}
+              />
+
               <Input
                 label="PASSWORD"
                 type={showPassword ? "text" : "password"}
@@ -123,64 +172,59 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="hover:text-white transition-colors"
+                    className="hover:text-white transition-colors cursor-pointer"
                   >
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 }
               />
-            </div>
 
-            {/* Submit and Google OAuth Buttons */}
-            <div className="space-y-3 pt-1">
-              {/* Submit Button */}
-              <Button
-                type="submit"
-                variant="primary"
-                size="full"
-                loading={isLoading}
-                disabled={isLoading || googleLoading}
-              >
-                Submit
-              </Button>
-
-              {/* Divider */}
-              <div className="relative">
-                <div
-                  className="absolute inset-0 flex items-center"
-                  aria-hidden="true"
+              <div className="space-y-3 pt-1">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="full"
+                  loading={isLoading}
+                  disabled={isLoading || googleLoading}
                 >
-                  <div className="w-full border-t border-[#a6a6a6]/30" />
+                  Submit
+                </Button>
+
+                <div className="relative">
+                  <div
+                    className="absolute inset-0 flex items-center"
+                    aria-hidden="true"
+                  >
+                    <div className="w-full border-t border-[#a6a6a6]/30" />
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-[#222831] px-2 text-[#a6a6a6] text-xs font-inter">
+                      or
+                    </span>
+                  </div>
                 </div>
-                <div className="relative flex justify-center">
-                  <span className="bg-[#2e323a] px-2 text-[#a6a6a6] text-xs font-inter">
-                    or
-                  </span>
-                </div>
+
+                <GoogleButton
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  loading={googleLoading}
+                  disabled={isLoading || googleLoading}
+                />
               </div>
 
-              {/* Google OAuth Button */}
-              <GoogleButton
-                type="button"
-                onClick={handleGoogleLogin}
-                loading={googleLoading}
-                disabled={isLoading || googleLoading}
-              />
-            </div>
-
-            {/* Sign Up Link */}
-            <div className="flex items-center place-content-center gap-2 pt-2">
-              <span className="text-white text-sm font-inter">
-                Don&apos;t have an account?
-              </span>
-              <Link
-                href="/auth/signup"
-                className="text-[#1f73f2] text-sm font-inter underline-offset-4 hover:underline"
-              >
-                Sign up here
-              </Link>
-            </div>
-          </form>
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <span className="text-white text-sm font-inter">
+                  Don&apos;t have an account?
+                </span>
+                <Link
+                  href="/auth/signup"
+                  className="text-[#1f73f2] text-sm font-inter underline-offset-4 hover:underline"
+                >
+                  Sign up here
+                </Link>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>

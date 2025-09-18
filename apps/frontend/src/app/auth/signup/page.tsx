@@ -4,7 +4,15 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Eye, EyeOff, Check, X } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  Check,
+  X,
+  Sparkles,
+  MessageSquare,
+  BookOpen,
+} from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -110,191 +118,229 @@ export default function SignUpPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#222831] flex items-center justify-center px-4 py-12 md:py-20">
-      <div className="w-full max-w-md">
-        {/* Page Title */}
-        <div className="text-center mb-8">
-          <h1 className="font-inter font-extrabold text-5xl leading-tight text-white">
-            Sign Up
+    <div className="min-h-screen bg-[#222831] flex items-center px-4 py-12 md:py-20">
+      <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+        {/* Left: Minimalist brand + value prop */}
+        <div className="space-y-6">
+          {/* Brand */}
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-[#4040f2] to-[#6366f1] rounded-xl flex items-center justify-center">
+              <span className="text-white font-bold text-2xl">普</span>
+            </div>
+            <span className="text-white text-2xl font-inter font-bold">
+              Mandareen
+            </span>
+          </div>
+
+          {/* Headline */}
+          <h1 className="text-white font-inter font-extrabold text-4xl md:text-5xl leading-tight">
+            Master Mandarin, one focused session at a time
           </h1>
+          <p className="text-[#a6a6a6] font-inter max-w-xl">
+            Join thousands learning faster with conversation practice and
+            adaptive content.
+          </p>
+
+          {/* Key points */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 text-white">
+              <Sparkles className="w-5 h-5 text-[#c6ceff]" />
+              <span className="font-inter">
+                Curriculum that adapts to your level
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-white">
+              <MessageSquare className="w-5 h-5 text-[#c6ceff]" />
+              <span className="font-inter">
+                Real-time conversation feedback
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-white">
+              <BookOpen className="w-5 h-5 text-[#c6ceff]" />
+              <span className="font-inter">
+                Built-in review with SRS flashcards
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Main Form Container - Matching Figma styling */}
-        <div className="bg-[#2e323a] rounded-[20px] border border-[#3a3f47] shadow-[0_8px_24px_rgba(0,0,0,0.35)] p-6 md:p-8">
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            {/* Email Input */}
-            <Input
-              label="EMAIL"
-              type="email"
-              placeholder="Enter your email address"
-              {...register("email")}
-              error={errors.email?.message}
-            />
+        {/* Right: Minimalist sign up form */}
+        <div className="w-full max-w-md lg:ml-auto">
+          <div className="space-y-6">
+            <div className="mb-2">
+              <h2 className="font-inter font-semibold text-2xl text-white">
+                Create your account
+              </h2>
+              <p className="text-[#a6a6a6] text-sm mt-1">Start for free</p>
+            </div>
 
-            {/* Password Input with Strength Indicator */}
-            <div className="space-y-2">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <Input
-                label="PASSWORD"
-                type={showPassword ? "text" : "password"}
-                placeholder="Create a strong password"
-                {...register("password")}
-                error={errors.password?.message}
+                label="EMAIL"
+                type="email"
+                placeholder="Enter your email address"
+                {...register("email")}
+                error={errors.email?.message}
+              />
+
+              <div className="space-y-2">
+                <Input
+                  label="PASSWORD"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Create a strong password"
+                  {...register("password")}
+                  error={errors.password?.message}
+                  icon={
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="hover:text-white transition-colors cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  }
+                />
+
+                {password && (
+                  <div className="bg-[#393e46] rounded-lg p-3 space-y-2">
+                    <p className="text-white text-xs font-inter font-medium">
+                      Password Requirements:
+                    </p>
+                    <ul className="space-y-1">
+                      <li className="flex items-center gap-2 text-xs">
+                        {password.length >= 8 ? (
+                          <Check size={12} className="text-green-400" />
+                        ) : (
+                          <X size={12} className="text-red-400" />
+                        )}
+                        <span
+                          className={
+                            password.length >= 8
+                              ? "text-green-400"
+                              : "text-red-400"
+                          }
+                        >
+                          At least 8 characters
+                        </span>
+                      </li>
+                      <li className="flex items-center gap-2 text-xs">
+                        {/[a-z]/.test(password) ? (
+                          <Check size={12} className="text-green-400" />
+                        ) : (
+                          <X size={12} className="text-red-400" />
+                        )}
+                        <span
+                          className={
+                            /[a-z]/.test(password)
+                              ? "text-green-400"
+                              : "text-red-400"
+                          }
+                        >
+                          One lowercase letter
+                        </span>
+                      </li>
+                      <li className="flex items-center gap-2 text-xs">
+                        {/[A-Z]/.test(password) ? (
+                          <Check size={12} className="text-green-400" />
+                        ) : (
+                          <X size={12} className="text-red-400" />
+                        )}
+                        <span
+                          className={
+                            /[A-Z]/.test(password)
+                              ? "text-green-400"
+                              : "text-red-400"
+                          }
+                        >
+                          One uppercase letter
+                        </span>
+                      </li>
+                      <li className="flex items-center gap-2 text-xs">
+                        {/\d/.test(password) ? (
+                          <Check size={12} className="text-green-400" />
+                        ) : (
+                          <X size={12} className="text-red-400" />
+                        )}
+                        <span
+                          className={
+                            /\d/.test(password)
+                              ? "text-green-400"
+                              : "text-red-400"
+                          }
+                        >
+                          One number
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              <Input
+                label="CONFIRM PASSWORD"
+                type={showConfirmPassword ? "text" : "password"}
+                placeholder="Confirm your password"
+                {...register("confirmPassword")}
+                error={errors.confirmPassword?.message}
                 icon={
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="hover:text-white transition-colors"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="hover:text-white transition-colors cursor-pointer"
                   >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {showConfirmPassword ? (
+                      <EyeOff size={16} />
+                    ) : (
+                      <Eye size={16} />
+                    )}
                   </button>
                 }
               />
 
-              {/* Password Strength Indicator */}
-              {password && (
-                <div className="bg-[#393e46] rounded-lg p-3 space-y-2">
-                  <p className="text-white text-xs font-inter font-medium">
-                    Password Requirements:
-                  </p>
-                  <ul className="space-y-1">
-                    <li className="flex items-center gap-2 text-xs">
-                      {password.length >= 8 ? (
-                        <Check size={12} className="text-green-400" />
-                      ) : (
-                        <X size={12} className="text-red-400" />
-                      )}
-                      <span
-                        className={
-                          password.length >= 8
-                            ? "text-green-400"
-                            : "text-red-400"
-                        }
-                      >
-                        At least 8 characters
-                      </span>
-                    </li>
-                    <li className="flex items-center gap-2 text-xs">
-                      {/[a-z]/.test(password) ? (
-                        <Check size={12} className="text-green-400" />
-                      ) : (
-                        <X size={12} className="text-red-400" />
-                      )}
-                      <span
-                        className={
-                          /[a-z]/.test(password)
-                            ? "text-green-400"
-                            : "text-red-400"
-                        }
-                      >
-                        One lowercase letter
-                      </span>
-                    </li>
-                    <li className="flex items-center gap-2 text-xs">
-                      {/[A-Z]/.test(password) ? (
-                        <Check size={12} className="text-green-400" />
-                      ) : (
-                        <X size={12} className="text-red-400" />
-                      )}
-                      <span
-                        className={
-                          /[A-Z]/.test(password)
-                            ? "text-green-400"
-                            : "text-red-400"
-                        }
-                      >
-                        One uppercase letter
-                      </span>
-                    </li>
-                    <li className="flex items-center gap-2 text-xs">
-                      {/\d/.test(password) ? (
-                        <Check size={12} className="text-green-400" />
-                      ) : (
-                        <X size={12} className="text-red-400" />
-                      )}
-                      <span
-                        className={
-                          /\d/.test(password)
-                            ? "text-green-400"
-                            : "text-red-400"
-                        }
-                      >
-                        One number
-                      </span>
-                    </li>
-                  </ul>
-                </div>
-              )}
-            </div>
-
-            {/* Confirm Password Input */}
-            <Input
-              label="CONFIRM PASSWORD"
-              type={showConfirmPassword ? "text" : "password"}
-              placeholder="Confirm your password"
-              {...register("confirmPassword")}
-              error={errors.confirmPassword?.message}
-              icon={
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="hover:text-white transition-colors"
-                >
-                  {showConfirmPassword ? (
-                    <EyeOff size={16} />
-                  ) : (
-                    <Eye size={16} />
-                  )}
-                </button>
-              }
-            />
-
-            {/* Submit Button */}
-            <Button
-              type="submit"
-              variant="primary"
-              size="full"
-              loading={isLoading}
-              disabled={
-                isLoading || googleLoading || !passwordValidation.isValid
-              }
-            >
-              Create Account
-            </Button>
-
-            {/* Login Link */}
-            <div className="flex items-center justify-center gap-1">
-              <span className="text-white text-xs font-inter">
-                Already have an account?
-              </span>
-              <Link
-                href="/auth/login"
-                className="text-[#1f73f2] text-sm font-inter underline-offset-4 hover:underline"
+              <Button
+                type="submit"
+                variant="primary"
+                size="full"
+                loading={isLoading}
+                disabled={
+                  isLoading || googleLoading || !passwordValidation.isValid
+                }
               >
-                Login here
-              </Link>
-            </div>
-          </form>
+                Create Account
+              </Button>
 
-          {/* Divider */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[#a6a6a6]/30"></div>
+              <div className="flex items-center justify-center gap-1">
+                <span className="text-white text-xs font-inter">
+                  Already have an account?
+                </span>
+                <Link
+                  href="/auth/login"
+                  className="text-[#1f73f2] text-sm font-inter underline-offset-4 hover:underline"
+                >
+                  Login here
+                </Link>
+              </div>
+            </form>
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-[#a6a6a6]/30"></div>
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-[#222831] px-2 text-[#a6a6a6] font-inter">
+                  or
+                </span>
+              </div>
             </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-[#2e323a] px-2 text-[#a6a6a6] font-inter">
-                or
-              </span>
-            </div>
+
+            <GoogleButton
+              onClick={handleGoogleSignUp}
+              loading={googleLoading}
+              disabled={isLoading || googleLoading}
+            >
+              Sign Up with Google
+            </GoogleButton>
           </div>
-
-          {/* Google OAuth Button */}
-          <GoogleButton
-            onClick={handleGoogleSignUp}
-            loading={googleLoading}
-            disabled={isLoading || googleLoading}
-          >
-            Sign Up with Google
-          </GoogleButton>
         </div>
       </div>
     </div>
