@@ -567,7 +567,7 @@ export default function LessonViewerPage() {
                         return (
                           <span
                             key={`${ci}-${idx}`}
-                            className={`inline-flex ${isWord ? "flex-col items-center align-top" : "items-center"} mr-[2px]`}
+                            className={`inline-flex flex-col items-center align-top mr-[2px]`}
                           >
                             {isChunkPinyinOn(ci) ? (
                               isWord && seg.pinyin ? (
@@ -671,7 +671,7 @@ export default function LessonViewerPage() {
                         return (
                           <span
                             key={`${ti}-${idx}`}
-                            className={`inline-flex ${isWord ? "flex-col items-center align-top" : "items-center"} mr-[2px]`}
+                            className={`inline-flex flex-col items-center align-top mr-[2px]`}
                           >
                             {isTurnPinyinOn(ti) ? (
                               isWord && seg.pinyin ? (

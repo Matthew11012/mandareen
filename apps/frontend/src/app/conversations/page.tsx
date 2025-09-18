@@ -343,7 +343,7 @@ export default function ConversationsPage() {
               return (
                 <span
                   key={idx}
-                  className={`inline-flex ${isWord ? "flex-col items-center align-top" : "items-center"} mr-[2px]`}
+                  className={`inline-flex flex-col items-center align-top mr-[2px]`}
                 >
                   {showP ? (
                     isWord && seg.pinyin ? (
@@ -542,129 +542,139 @@ export default function ConversationsPage() {
       title="Conversations"
       subtitle="Practice natural dialogues"
     >
-      <div className="p-4 h-full flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 overflow-x-auto">
+      <div className="p-4 h-full flex gap-4">
+        {/* Sidebar */}
+        <aside className="w-64 shrink-0 bg-[#1b1f26] border border-[#2a2e36] rounded-xl p-3 flex flex-col gap-3">
+          <div className="px-2 text-xs uppercase tracking-wide text-[#8a8f99]">
+            Conversations
+          </div>
+          <div className="flex flex-col gap-1 overflow-y-auto max-h-[60vh] pr-1">
             {conversations.map((c) => (
               <button
                 key={c.id}
                 onClick={() => void selectConversation(c.id)}
-                className={`px-2 py-1 rounded border text-xs cursor-pointer ${
+                className={`w-full text-left px-3 py-2 rounded-lg border transition-colors duration-150 cursor-pointer ${
                   conversationId === c.id
-                    ? "border-[#4040f2] text-[#9aa6ff]"
-                    : "border-[#404040] text-[#a6a6a6]"
+                    ? "bg-[#232838] border-[#4040f2] text-[#c7cdff]"
+                    : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:border-[#4040f2]"
                 }`}
                 title={new Date(c.startedAt).toLocaleString()}
               >
-                Conv #{c.id}
+                <div className="text-sm font-medium">Conversation #{c.id}</div>
+                <div className="text-[10px] text-[#808080]">
+                  {new Date(c.startedAt).toLocaleString()}
+                </div>
               </button>
             ))}
           </div>
           <button
             onClick={() => void newConversation()}
-            className="px-2 py-1 rounded bg-[#4040f2] text-white text-xs hover:bg-[#3636d9] cursor-pointer"
+            className="mt-auto w-full py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] cursor-pointer"
           >
-            New Conversation
+            + New Conversation
           </button>
-        </div>
-        <div className="flex-1 overflow-y-auto space-y-3 bg-[#20242b] border border-[#2e2f36] rounded-xl p-4">
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              className={m.role === "user" ? "ml-auto" : "mr-auto"}
-            >
-              {m.role === "ai" ? (
-                <div className="mb-1 flex gap-2">
-                  <button
-                    onClick={() =>
-                      setAiShowPinyin((s) => ({ ...s, [m.id]: !s[m.id] }))
-                    }
-                    className={`px-2 py-1 text-xs rounded border ${
-                      aiShowPinyin[m.id]
-                        ? "border-[#4040f2] text-[#9aa6ff]"
-                        : "border-[#404040] text-[#a6a6a6]"
-                    } cursor-pointer`}
-                  >
-                    Pinyin {aiShowPinyin[m.id] ? "On" : "Off"}
-                  </button>
-                  <button
-                    onClick={() =>
-                      setAiShowTrans((s) => ({ ...s, [m.id]: !s[m.id] }))
-                    }
-                    className={`px-2 py-1 text-xs rounded border ${
-                      aiShowTrans[m.id]
-                        ? "border-[#4040f2] text-[#9aa6ff]"
-                        : "border-[#404040] text-[#a6a6a6]"
-                    } cursor-pointer`}
-                  >
-                    Translation {aiShowTrans[m.id] ? "On" : "Off"}
-                  </button>
-                </div>
-              ) : null}
+        </aside>
+
+        {/* Main chat column */}
+        <div className="flex-1 h-full flex flex-col gap-3">
+          <div className="flex-1 overflow-y-auto space-y-3 bg-[#20242b] border border-[#2e2f36] rounded-xl p-4">
+            {messages.map((m) => (
               <div
-                className={`max-w-[85%] w-fit rounded-lg px-3 py-2 border ${
-                  m.role === "user"
-                    ? "ml-auto bg-[#2e323a] border-[#3a3f47]"
-                    : "mr-auto bg-[#26322b] border-[#35503c]"
-                }`}
+                key={m.id}
+                className={m.role === "user" ? "ml-auto" : "mr-auto"}
               >
                 {m.role === "ai" ? (
-                  <AiMessage
-                    m={{
-                      ...m,
-                      segments:
-                        Array.isArray(m.segments) && m.segments.length > 0
-                          ? m.segments
-                          : buildFallbackSegments(m.hanzi, m.pinyin),
-                    }}
-                    showP={!!aiShowPinyin[m.id]}
-                    showT={!!aiShowTrans[m.id]}
-                  />
-                ) : (
-                  <div className="text-white font-inter text-[15px]">
-                    {m.hanzi}
+                  <div className="mb-1 flex gap-2">
+                    <button
+                      onClick={() =>
+                        setAiShowPinyin((s) => ({ ...s, [m.id]: !s[m.id] }))
+                      }
+                      className={`px-2 py-1 text-xs rounded border ${
+                        aiShowPinyin[m.id]
+                          ? "border-[#4040f2] text-[#9aa6ff]"
+                          : "border-[#404040] text-[#a6a6a6]"
+                      } cursor-pointer`}
+                    >
+                      Pinyin {aiShowPinyin[m.id] ? "On" : "Off"}
+                    </button>
+                    <button
+                      onClick={() =>
+                        setAiShowTrans((s) => ({ ...s, [m.id]: !s[m.id] }))
+                      }
+                      className={`px-2 py-1 text-xs rounded border ${
+                        aiShowTrans[m.id]
+                          ? "border-[#4040f2] text-[#9aa6ff]"
+                          : "border-[#404040] text-[#a6a6a6]"
+                      } cursor-pointer`}
+                    >
+                      Translation {aiShowTrans[m.id] ? "On" : "Off"}
+                    </button>
                   </div>
-                )}
-                <div className="text-[10px] text-[#808080] mt-1">
-                  {new Date(m.createdAt).toLocaleTimeString()}
+                ) : null}
+                <div
+                  className={`max-w-[85%] w-fit rounded-lg px-3 py-2 border ${
+                    m.role === "user"
+                      ? "ml-auto bg-[#2e323a] border-[#3a3f47]"
+                      : "mr-auto bg-[#26322b] border-[#35503c]"
+                  }`}
+                >
+                  {m.role === "ai" ? (
+                    <AiMessage
+                      m={{
+                        ...m,
+                        segments:
+                          Array.isArray(m.segments) && m.segments.length > 0
+                            ? m.segments
+                            : buildFallbackSegments(m.hanzi, m.pinyin),
+                      }}
+                      showP={!!aiShowPinyin[m.id]}
+                      showT={!!aiShowTrans[m.id]}
+                    />
+                  ) : (
+                    <div className="text-white font-inter text-[15px]">
+                      {m.hanzi}
+                    </div>
+                  )}
+                  <div className="text-[10px] text-[#808080] mt-1">
+                    {new Date(m.createdAt).toLocaleTimeString()}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        <div className="flex items-center gap-2">
-          {/* Per-message toggles exist inside each AI message now */}
-          <button
-            onMouseDown={startRecording}
-            onMouseUp={stopRecording}
-            onTouchStart={startRecording}
-            onTouchEnd={stopRecording}
-            className={`p-2 rounded-lg border transition-colors duration-200 cursor-pointer ${
-              recording
-                ? "bg-red-600/20 border-red-600/40 text-red-300"
-                : "bg-green-600/20 border-green-600/40 text-green-300 hover:border-green-600"
-            }`}
-            title={recording ? "Release to stop" : "Hold to speak"}
-          >
-            <Mic className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onMouseDown={startRecording}
+              onMouseUp={stopRecording}
+              onTouchStart={startRecording}
+              onTouchEnd={stopRecording}
+              className={`p-2 rounded-lg border transition-colors duration-200 cursor-pointer ${
+                recording
+                  ? "bg-red-600/20 border-red-600/40 text-red-300"
+                  : "bg-green-600/20 border-green-600/40 text-green-300 hover:border-green-600"
+              }`}
+              title={recording ? "Release to stop" : "Hold to speak"}
+            >
+              <Mic className="w-4 h-4" />
+            </button>
 
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") sendText();
-            }}
-            placeholder="Type your message in Chinese..."
-            className="flex-1 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-white outline-none"
-          />
-          <button
-            onClick={sendText}
-            className="p-2 rounded-lg bg-[#4040f2] text-white hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") sendText();
+              }}
+              placeholder="Type your message in Chinese..."
+              className="flex-1 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-white outline-none"
+            />
+            <button
+              onClick={sendText}
+              className="px-4 py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     </DashboardLayout>
