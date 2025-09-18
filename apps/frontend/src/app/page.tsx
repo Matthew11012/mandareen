@@ -26,7 +26,7 @@ export default function LandingPage() {
       {/* Header */}
       <header className="sticky top-4 z-40">
         <div className="max-w-6xl mx-auto px-4">
-          <div className="flex items-center justify-between rounded-2xl border border-[var(--color-surface-2)]/60 bg-[rgba(26,29,35,0.55)] backdrop-blur-xs px-4 py-3">
+          <div className="flex items-center justify-between rounded-4xl border border-[var(--color-surface-2)]/60 bg-[rgba(26,29,35,0.55)] backdrop-blur-xs pr-4 pl-8 py-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-[#4040f2] to-[#6366f1] rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold">普</span>

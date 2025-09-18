@@ -60,10 +60,18 @@ export class LessonsService {
 
       const turnsWithSegments = [] as any[];
       for (const t of turns) {
-        const segs = await this.segmentationService.segmentText(
-          t.hanzi || '',
-          vocabExtras,
-        );
+        let segs: any[] = [];
+        try {
+          segs = await this.segmentationService.segmentText(
+            t.hanzi || '',
+            vocabExtras,
+          );
+        } catch (err) {
+          this.logger.warn(
+            `Segmentation failed for a dialogue turn: ${String(err)}`,
+          );
+          segs = [];
+        }
 
         // Fill missing pinyin from the dialogue turn pinyin line (fallback per character)
         const filledSegsRaw = this.fillSegmentPinyinFromLine(
@@ -182,9 +190,15 @@ export class LessonsService {
     return { id: lesson.id };
   }
 
-  async listLessons(level?: number) {
+  async listLessons(level?: number, levels?: number[]) {
+    const where =
+      levels && levels.length > 0
+        ? { level: { in: levels } as any }
+        : level
+          ? { level }
+          : undefined;
     const lessons = await this.prismaService.lesson.findMany({
-      where: level ? { level } : undefined,
+      where,
       orderBy: { createdAt: 'desc' },
       include: {
         sections: {
@@ -210,10 +224,20 @@ export class LessonsService {
     });
   }
 
-  async listLessonsByCreator(createdBy: string, level?: number) {
+  async listLessonsByCreator(
+    createdBy: string,
+    level?: number,
+    levels?: number[],
+  ) {
+    const byLevel =
+      levels && levels.length > 0
+        ? { level: { in: levels } as any }
+        : level
+          ? { level }
+          : {};
     const lessons = await this.prismaService.lesson.findMany({
       where: {
-        ...(level ? { level } : {}),
+        ...byLevel,
         createdBy,
       },
       orderBy: { createdAt: 'desc' },

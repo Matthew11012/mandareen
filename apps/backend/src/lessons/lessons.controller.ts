@@ -39,7 +39,10 @@ export class LessonsController {
   }
 
   @Get()
-  async listLessons(@Query('level') level?: string): Promise<
+  async listLessons(
+    @Query('level') level?: string,
+    @Query('levels') levels?: string | string[],
+  ): Promise<
     Array<{
       id: number;
       title: string | null;
@@ -51,7 +54,18 @@ export class LessonsController {
     }>
   > {
     const lvl = level ? parseInt(level, 10) : undefined;
-    const lessons = await this.lessonsService.listLessons(lvl);
+    const levelsArr: number[] | undefined = Array.isArray(levels)
+      ? (levels as string[])
+          .flatMap((v) => v.split(','))
+          .map((v) => parseInt(v, 10))
+          .filter((n) => !isNaN(n))
+      : typeof levels === 'string'
+        ? levels
+            .split(',')
+            .map((v) => parseInt(v, 10))
+            .filter((n) => !isNaN(n))
+        : undefined;
+    const lessons = await this.lessonsService.listLessons(lvl, levelsArr);
     return lessons.map((l: any) => ({
       id: l.id,
       title: l.title ?? null,
@@ -67,6 +81,7 @@ export class LessonsController {
   async listMyLessons(
     @Req() req: AuthenticatedRequest,
     @Query('level') level?: string,
+    @Query('levels') levels?: string | string[],
   ): Promise<
     Array<{
       id: number;
@@ -79,9 +94,21 @@ export class LessonsController {
     }>
   > {
     const lvl = level ? parseInt(level, 10) : undefined;
+    const levelsArr: number[] | undefined = Array.isArray(levels)
+      ? (levels as string[])
+          .flatMap((v) => v.split(','))
+          .map((v) => parseInt(v, 10))
+          .filter((n) => !isNaN(n))
+      : typeof levels === 'string'
+        ? levels
+            .split(',')
+            .map((v) => parseInt(v, 10))
+            .filter((n) => !isNaN(n))
+        : undefined;
     const lessons = await this.lessonsService.listLessonsByCreator(
       req.user.email,
       lvl,
+      levelsArr,
     );
     return lessons.map((l: any) => ({
       id: l.id,

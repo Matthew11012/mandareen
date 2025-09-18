@@ -78,8 +78,17 @@ export const useAuth = () => {
  * Redirects to login if not authenticated
  */
 export const useRequireAuth = () => {
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const store = useAuthStore();
+  const { isAuthenticated, isLoading } = store;
+  const initialize = (store as unknown as { initialize?: () => void })
+    .initialize;
   const router = useRouter();
+
+  useEffect(() => {
+    // Ensure auth state is restored from token on first load
+    initialize?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {

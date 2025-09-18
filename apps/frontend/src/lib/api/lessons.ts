@@ -46,15 +46,27 @@ export const lessonsApi = {
     const res = await api.post<{ id: number }>("/lessons/generate", params);
     return res.data;
   },
-  async list(level?: number) {
+  async list(params?: { level?: number; levels?: number[] }) {
     const res = await api.get<LessonListItem[]>("/lessons", {
-      params: { level },
+      params: {
+        level: params?.level,
+        levels:
+          params?.levels && params.levels.length > 0
+            ? params.levels.join(",")
+            : undefined,
+      },
     });
     return res.data;
   },
-  async listMine(level?: number) {
+  async listMine(params?: { level?: number; levels?: number[] }) {
     const res = await api.get<LessonListItem[]>("/lessons/mine", {
-      params: { level },
+      params: {
+        level: params?.level,
+        levels:
+          params?.levels && params.levels.length > 0
+            ? params.levels.join(",")
+            : undefined,
+      },
     });
     return res.data;
   },

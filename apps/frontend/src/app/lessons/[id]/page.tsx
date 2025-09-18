@@ -888,6 +888,45 @@ export default function LessonViewerPage() {
                           pinyin: chosenPinyin,
                           translation: chosenTrans,
                         };
+                      } else if (dialogue) {
+                        // Fallback for dialogue popup (no para/token indices): use the turn containing the word
+                        const found = (dialogue.turns || []).find((t) =>
+                          t.hanzi?.includes(popup.word)
+                        );
+                        if (found) {
+                          let perCharPinyin: string | undefined = found.pinyin;
+                          if (!perCharPinyin && Array.isArray(found.segments)) {
+                            const chars = Array.from(found.hanzi || "");
+                            const per: string[] = new Array(chars.length).fill(
+                              ""
+                            );
+                            let ci = 0;
+                            for (const s of found.segments) {
+                              const chineseLen = Array.from(
+                                s.text || ""
+                              ).filter((c) => /[\u3400-\u9FFF]/.test(c)).length;
+                              const toks = (s.pinyin || "")
+                                .split(/\s+/)
+                                .filter(Boolean);
+                              for (let k = 0; k < chineseLen; k++) {
+                                while (
+                                  ci < chars.length &&
+                                  !/[\u3400-\u9FFF]/.test(chars[ci])
+                                )
+                                  ci++;
+                                if (ci >= chars.length) break;
+                                per[ci] = toks[k] || toks[0] || "";
+                                ci++;
+                              }
+                            }
+                            perCharPinyin = per.join(" ");
+                          }
+                          ctx = {
+                            hanzi: found.hanzi,
+                            pinyin: perCharPinyin,
+                            translation: found.translation,
+                          };
+                        }
                       }
                       // Derive vocab metadata from popup/segment
                       let vocabDef: string | undefined = undefined;
