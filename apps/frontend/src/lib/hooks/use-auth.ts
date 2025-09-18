@@ -53,11 +53,11 @@ export const useAuth = () => {
   const logoutWithRedirect = async () => {
     try {
       await logout();
-      router.push("/auth/login");
+      router.push("/auth");
     } catch (error) {
       // Even if logout fails, redirect to login
       console.error("Logout error:", error);
-      router.push("/auth/login");
+      router.push("/auth");
     }
   };
 
