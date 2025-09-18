@@ -210,6 +210,37 @@ export class LessonsService {
     });
   }
 
+  async listLessonsByCreator(createdBy: string, level?: number) {
+    const lessons = await this.prismaService.lesson.findMany({
+      where: {
+        ...(level ? { level } : {}),
+        createdBy,
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        sections: {
+          select: { sectionType: true, content: true },
+          take: 1,
+          orderBy: { id: 'asc' },
+        },
+      },
+    });
+    return lessons.map((l) => {
+      const first = l.sections[0];
+      const content: any = first?.content || {};
+      const lessonType = first?.sectionType || 'story';
+      return {
+        id: l.id,
+        title: l.title,
+        level: l.level,
+        createdAt: l.createdAt,
+        lessonType,
+        titlePinyin: content.titlePinyin || null,
+        titleTranslation: content.titleTranslation || null,
+      } as any;
+    });
+  }
+
   async getLessonById(id: number) {
     return this.prismaService.lesson.findUniqueOrThrow({
       where: { id },

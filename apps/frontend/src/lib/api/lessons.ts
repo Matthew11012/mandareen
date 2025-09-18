@@ -52,6 +52,12 @@ export const lessonsApi = {
     });
     return res.data;
   },
+  async listMine(level?: number) {
+    const res = await api.get<LessonListItem[]>("/lessons/mine", {
+      params: { level },
+    });
+    return res.data;
+  },
   async getById(id: number) {
     const res = await api.get<LessonDetail>(`/lessons/${id}`);
     return res.data;

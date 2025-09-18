@@ -12,13 +12,16 @@ export default function LessonsPage() {
   const { isLoading: authLoading } = useRequireAuth();
   const router = useRouter();
   const [items, setItems] = useState<LessonListItem[]>([]);
+  const [myItems, setMyItems] = useState<LessonListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [storiesPage, setStoriesPage] = useState(0);
   const [dialoguesPage, setDialoguesPage] = useState(0);
+  const [myPage, setMyPage] = useState(0);
   const storiesRef = useRef<HTMLDivElement | null>(null);
   const dialoguesRef = useRef<HTMLDivElement | null>(null);
+  const myRef = useRef<HTMLDivElement | null>(null);
 
   const [topic, setTopic] = useState("");
   const suggestions = [
@@ -34,8 +37,12 @@ export default function LessonsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await lessonsApi.list();
-      setItems(data);
+      const [allData, mineData] = await Promise.all([
+        lessonsApi.list(),
+        lessonsApi.listMine(),
+      ]);
+      setItems(allData);
+      setMyItems(mineData);
     } catch {
       setError("Failed to load lessons");
     } finally {
@@ -128,7 +135,7 @@ export default function LessonsPage() {
             <button
               onClick={handleGenerate}
               disabled={generating}
-              className="px-4 py-2 bg-orange-500/80 text-white rounded-lg hover:bg-orange-600 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-orange-500/70 text-white rounded-lg hover:bg-orange-600/70 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <div className="flex items-center gap-2">
                 <Plus className="w-4 h-4" />
@@ -172,12 +179,127 @@ export default function LessonsPage() {
             <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
             <span className="font-inter text-sm">Loading...</span>
           </div>
-        ) : items.length === 0 ? (
+        ) : items.length === 0 && myItems.length === 0 ? (
           <div className="text-[#a6a6a6] font-inter text-sm">
             No lessons yet. Click &quot;Generate Story&quot; to create one.
           </div>
         ) : (
           <div className="space-y-8">
+            {/* My Lessons Section */}
+            <div className="space-y-3">
+              <h3 className="text-white font-inter font-semibold">
+                My Lessons
+              </h3>
+              {myItems.length === 0 ? (
+                <p className="text-[#a6a6a6] font-inter text-sm">
+                  You haven&apos;t generated any lessons yet.
+                </p>
+              ) : (
+                <div className="overflow-hidden">
+                  <div
+                    ref={myRef}
+                    onScroll={() => {
+                      const el = myRef.current;
+                      if (!el) return;
+                      const idx = Math.round(el.scrollLeft / el.clientWidth);
+                      if (idx !== myPage) setMyPage(idx);
+                    }}
+                    className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2"
+                  >
+                    {myItems
+                      .reduce(
+                        (
+                          pages: LessonListItem[][],
+                          item: LessonListItem,
+                          idx: number
+                        ) => {
+                          const pageIdx = Math.floor(idx / 9);
+                          if (!pages[pageIdx]) pages[pageIdx] = [];
+                          pages[pageIdx].push(item);
+                          return pages;
+                        },
+                        []
+                      )
+                      .map((page, i) => (
+                        <div
+                          key={i}
+                          className="min-w-full snap-start grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                        >
+                          {page.map((l: LessonListItem) => (
+                            <div
+                              key={l.id}
+                              className="bg-[#2e323a] rounded-xl p-4 border border-[#404040] hover:border-[#4040f2] transition-all duration-200 cursor-pointer"
+                              onClick={() => router.push(`/lessons/${l.id}`)}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div
+                                  className={`w-10 h-10 ${l.lessonType === "story" ? "bg-orange-500/20" : "bg-purple-600/20"} rounded-lg flex items-center justify-center`}
+                                >
+                                  {l.lessonType === "story" ? (
+                                    <BookOpen className="w-5 h-5 text-orange-400" />
+                                  ) : (
+                                    <MessageSquare className="w-5 h-5 text-purple-500" />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-white font-inter font-semibold truncate">
+                                      {l.title || `Lesson #${l.id}`}
+                                    </p>
+                                    <span
+                                      className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                    >
+                                      HSK {l.level}
+                                    </span>
+                                  </div>
+                                  {l.titlePinyin && (
+                                    <p className="text-[#9aa6ff] font-inter text-xs truncate">
+                                      {l.titlePinyin}
+                                    </p>
+                                  )}
+                                  {l.titleTranslation && (
+                                    <p className="text-[#a6a6a6] font-inter text-xs truncate">
+                                      {l.titleTranslation}
+                                    </p>
+                                  )}
+                                  <p className="text-[#a6a6a6] font-inter text-xs mt-1">
+                                    {new Date(l.createdAt).toLocaleString()}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                  </div>
+                  <div className="mt-2 flex items-center justify-center gap-2">
+                    {Array.from({
+                      length: Math.max(1, Math.ceil(myItems.length / 9)),
+                    }).map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          const el = myRef.current;
+                          if (!el) return;
+                          el.scrollTo({
+                            left: i * el.clientWidth,
+                            behavior: "smooth",
+                          });
+                          setMyPage(i);
+                        }}
+                        className={`w-2 h-2 rounded-full ${
+                          myPage === i ? "bg-[#9aa6ff]" : "bg-[#404040]"
+                        }`}
+                        aria-label={`Go to page ${i + 1}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="h-px bg-[#3a3a3a]" />
+
             {/* Stories Section */}
             <div className="space-y-3">
               <h3 className="text-white font-inter font-semibold">Stories</h3>
@@ -193,6 +315,7 @@ export default function LessonsPage() {
                   className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2"
                 >
                   {items
+                    .filter((i) => !new Set(myItems.map((m) => m.id)).has(i.id))
                     .filter((i) => i.lessonType === "story")
                     .reduce(
                       (
@@ -258,7 +381,11 @@ export default function LessonsPage() {
                     length: Math.max(
                       1,
                       Math.ceil(
-                        items.filter((i) => i.lessonType === "story").length / 9
+                        items
+                          .filter(
+                            (i) => !new Set(myItems.map((m) => m.id)).has(i.id)
+                          )
+                          .filter((i) => i.lessonType === "story").length / 9
                       )
                     ),
                   }).map((_, i) => (
@@ -300,6 +427,7 @@ export default function LessonsPage() {
                   className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2"
                 >
                   {items
+                    .filter((i) => !new Set(myItems.map((m) => m.id)).has(i.id))
                     .filter((i) => i.lessonType === "dialogue")
                     .reduce(
                       (
@@ -365,8 +493,11 @@ export default function LessonsPage() {
                     length: Math.max(
                       1,
                       Math.ceil(
-                        items.filter((i) => i.lessonType === "dialogue")
-                          .length / 9
+                        items
+                          .filter(
+                            (i) => !new Set(myItems.map((m) => m.id)).has(i.id)
+                          )
+                          .filter((i) => i.lessonType === "dialogue").length / 9
                       )
                     ),
                   }).map((_, i) => (

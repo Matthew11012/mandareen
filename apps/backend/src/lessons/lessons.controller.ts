@@ -63,6 +63,37 @@ export class LessonsController {
     }));
   }
 
+  @Get('mine')
+  async listMyLessons(
+    @Req() req: AuthenticatedRequest,
+    @Query('level') level?: string,
+  ): Promise<
+    Array<{
+      id: number;
+      title: string | null;
+      level: number;
+      createdAt: string;
+      lessonType: string;
+      titlePinyin: string | null;
+      titleTranslation: string | null;
+    }>
+  > {
+    const lvl = level ? parseInt(level, 10) : undefined;
+    const lessons = await this.lessonsService.listLessonsByCreator(
+      req.user.email,
+      lvl,
+    );
+    return lessons.map((l: any) => ({
+      id: l.id,
+      title: l.title ?? null,
+      level: l.level,
+      createdAt: l.createdAt.toISOString(),
+      lessonType: l.lessonType,
+      titlePinyin: l.titlePinyin,
+      titleTranslation: l.titleTranslation,
+    }));
+  }
+
   @Get(':id')
   async getLessonById(@Param('id') id: string): Promise<{
     id: number;
