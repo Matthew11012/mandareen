@@ -65,17 +65,26 @@ export default function FlashcardsPage() {
     return (
       <div className="leading-8 text-white font-inter text-[18px]">
         {chars.map((ch, idx) => {
-          const top =
-            revealPinyin[current.id] && isCJK(ch) ? tokens[pi++] || "" : "";
+          const showTop = !!revealPinyin[current.id];
+          let top = "";
+          if (showTop && isCJK(ch)) {
+            top = tokens[pi++] || "";
+          }
           return (
             <span
               key={idx}
               className="inline-flex flex-col items-center align-top mr-[2px]"
             >
-              {top ? (
-                <span className="text-xs text-[#c6ceff] leading-none mb-[2px]">
-                  {top}
-                </span>
+              {showTop ? (
+                top ? (
+                  <span className="text-xs text-[#c6ceff] leading-none mb-[2px]">
+                    {top}
+                  </span>
+                ) : (
+                  <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
+                    •
+                  </span>
+                )
               ) : null}
               <span className="px-[1px] rounded">{ch}</span>
             </span>
