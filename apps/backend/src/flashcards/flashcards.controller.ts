@@ -28,13 +28,23 @@ export class FlashcardsController {
       sentenceHanzi?: string;
       sentencePinyin?: string;
       sentenceTranslation?: string;
+      vocabPinyin?: string;
+      vocabDefinition?: string;
+      vocabHskLevel?: number;
     },
   ) {
     const userId = req.user.id;
 
     let vocabId = body.vocabId;
     if (!vocabId && body.hanzi) {
-      const vocab = await this.service.ensureVocabByHanzi(body.hanzi.trim());
+      const vocab = await this.service.ensureVocabByHanzi(body.hanzi.trim(), {
+        pinyin: body.vocabPinyin || body.sentencePinyin,
+        definition: body.vocabDefinition || body.sentenceTranslation,
+        hskLevel:
+          typeof body.vocabHskLevel === 'number'
+            ? body.vocabHskLevel
+            : undefined,
+      });
       vocabId = vocab.id;
     }
 

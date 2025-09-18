@@ -142,16 +142,45 @@ export class FlashcardsService {
     return perChar.join(' ');
   }
 
-  async ensureVocabByHanzi(hanzi: string) {
+  async ensureVocabByHanzi(
+    hanzi: string,
+    opts?: { pinyin?: string; definition?: string; hskLevel?: number },
+  ) {
     const existing = await this.prisma.vocabularyItem.findFirst({
       where: { hanzi },
     });
-    if (existing) return existing;
+    if (existing) {
+      const updates: any = {};
+      if (
+        (!existing.pinyin || existing.pinyin.trim().length === 0) &&
+        opts?.pinyin
+      ) {
+        updates.pinyin = (opts.pinyin || '').toLowerCase();
+      }
+      if (
+        (!existing.definition || existing.definition.trim().length === 0) &&
+        opts?.definition
+      ) {
+        updates.definition = opts.definition;
+      }
+      if (existing.hskLevel == null && typeof opts?.hskLevel === 'number') {
+        updates.hskLevel = opts.hskLevel;
+      }
+      if (Object.keys(updates).length > 0) {
+        return this.prisma.vocabularyItem.update({
+          where: { id: existing.id },
+          data: updates,
+        });
+      }
+      return existing;
+    }
     const created = await this.prisma.vocabularyItem.create({
       data: {
         hanzi,
-        pinyin: '',
-        definition: '',
+        pinyin: (opts?.pinyin || '').toLowerCase(),
+        definition: opts?.definition || '',
+        hskLevel:
+          typeof opts?.hskLevel === 'number' ? opts!.hskLevel : undefined,
         isCustom: true,
       },
     });
@@ -182,7 +211,7 @@ export class FlashcardsService {
             translation: sentence.translation ?? null,
           },
         });
-        
+
         if (!exact) {
           const pinyin =
             sentence.pinyin && sentence.pinyin.trim().length > 0

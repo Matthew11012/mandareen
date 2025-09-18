@@ -82,6 +82,7 @@ export default function LessonViewerPage() {
     pinyin?: string;
     definition?: string;
     definitions?: string[];
+    hskLevel?: number;
   };
   const story = storySection?.content as
     | {
@@ -180,7 +181,8 @@ export default function LessonViewerPage() {
 
   const addSingleToFlashcards = async (
     hanzi: string,
-    context?: { hanzi?: string; pinyin?: string; translation?: string }
+    context?: { hanzi?: string; pinyin?: string; translation?: string },
+    vocab?: { pinyin?: string; definition?: string; hskLevel?: number }
   ) => {
     try {
       await fetch(
@@ -200,6 +202,9 @@ export default function LessonViewerPage() {
             sentenceHanzi: context?.hanzi,
             sentencePinyin: context?.pinyin,
             sentenceTranslation: context?.translation,
+            vocabPinyin: vocab?.pinyin,
+            vocabDefinition: vocab?.definition,
+            vocabHskLevel: vocab?.hskLevel,
           }),
         }
       );
@@ -303,6 +308,39 @@ export default function LessonViewerPage() {
               sentenceHanzi: sentenceCtx?.hanzi,
               sentencePinyin: sentenceCtx?.pinyin,
               sentenceTranslation: sentenceCtx?.translation,
+              vocabPinyin: w.pinyin,
+              vocabDefinition: (() => {
+                if (
+                  typeof w.paraIndex === "number" &&
+                  typeof w.tokenIndex === "number"
+                ) {
+                  const seg = (segmentedParagraphs[w.paraIndex] || [])[
+                    w.tokenIndex
+                  ] as LessonToken | undefined;
+                  if (seg) {
+                    if (
+                      Array.isArray(seg.definitions) &&
+                      seg.definitions.length > 0
+                    )
+                      return seg.definitions[0];
+                    if (seg.definition) return seg.definition;
+                  }
+                }
+                return undefined;
+              })(),
+              vocabHskLevel: (() => {
+                if (
+                  typeof w.paraIndex === "number" &&
+                  typeof w.tokenIndex === "number"
+                ) {
+                  const seg = (segmentedParagraphs[w.paraIndex] || [])[
+                    w.tokenIndex
+                  ] as LessonToken | undefined;
+                  if (seg && typeof seg.hskLevel === "number")
+                    return seg.hskLevel;
+                }
+                return undefined;
+              })(),
             }),
           }
         );
@@ -851,7 +889,32 @@ export default function LessonViewerPage() {
                           translation: chosenTrans,
                         };
                       }
-                      void addSingleToFlashcards(popup.word, ctx);
+                      // Derive vocab metadata from popup/segment
+                      let vocabDef: string | undefined = undefined;
+                      if (
+                        Array.isArray(popup.definitions) &&
+                        popup.definitions.length > 0
+                      ) {
+                        vocabDef = popup.definitions[0];
+                      } else if (popup.definition) {
+                        vocabDef = popup.definition;
+                      }
+                      let vocabHskLevel: number | undefined = undefined;
+                      if (
+                        typeof popup.paraIndex === "number" &&
+                        typeof popup.tokenIndex === "number"
+                      ) {
+                        const seg = (segmentedParagraphs[popup.paraIndex] ||
+                          [])[popup.tokenIndex] as LessonToken | undefined;
+                        if (seg && typeof seg.hskLevel === "number") {
+                          vocabHskLevel = seg.hskLevel;
+                        }
+                      }
+                      void addSingleToFlashcards(popup.word, ctx, {
+                        pinyin: popup.pinyin,
+                        definition: vocabDef,
+                        hskLevel: vocabHskLevel,
+                      });
                       setPopup((p) => ({ ...p, open: false }));
                     }}
                     className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"

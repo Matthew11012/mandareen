@@ -30,12 +30,18 @@ export class LessonsService {
     const readTimeMinutes = options.readTimeMinutes ?? 10;
     const topic = options.topic?.trim();
 
-    const generated = await this.openaiGenerateLesson({
-      level,
-      type,
-      readTimeMinutes,
-      topic,
-    });
+    const generated =
+      type === 'dialogue'
+        ? await this.openaiGenerateDialogueLesson({
+            level,
+            readTimeMinutes,
+            topic,
+          })
+        : await this.openaiGenerateStoryLesson({
+            level,
+            readTimeMinutes,
+            topic,
+          });
 
     // Persist lesson
     let lesson;
@@ -220,91 +226,120 @@ export class LessonsService {
     return latest?.levelPlaced ?? 1;
   }
 
-  private async openaiGenerateLesson({
+  private async openaiGenerateStoryLesson({
     level,
-    type,
     readTimeMinutes,
     topic,
   }: {
     level: number;
-    type: 'story' | 'dialogue';
     readTimeMinutes: number;
     topic?: string;
   }) {
     const preferredModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const client = (this.openAIService as any)
       .openai as import('openai').default;
-
-    type ChatMessage = { role: 'system' | 'user'; content: string };
-    const messages: ChatMessage[] = [
+    const approxChars = Math.min(readTimeMinutes * 300, 6000);
+    const topicLine = topic
+      ? `\nTOPIC (mandatory): ${topic}\n.You MUST center the entire story on this TOPIC. The title MUST include at least one keyword from the topic. Use domain-specific vocabulary related to the topic and include those items in the vocabulary list.`
+      : `\nNo topic provided: choose a fresh everyday-life theme distinct from generic themes. Avoid those unless explicitly requested.`;
+    const messages = [
       {
-        role: 'system',
+        role: 'system' as const,
         content:
           'You are a native Mandarin speaker and a senior Mandarin curriculum and lesson designer with much creativity in creating engaging lessons types and topics. Generate long, engaging lessons strictly as JSON. Do not include any extra commentary.',
       },
       {
-        role: 'user',
-        content: this.buildLessonPrompt(level, type, readTimeMinutes, topic),
+        role: 'user' as const,
+        content: `Generate a Mandarin Chinese story lesson tailored to HSK level ${level}. Tell a coherent, engaging story strictly about the TOPIC. Length target: ~${approxChars} characters. Provide rich content. Use HSK-${level} vocab and grammar, with a few stretch words.${topicLine}
+
+Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
+{
+  "title": "string || null",
+  "titlePinyin": "string || null",
+  "titleTranslation": "string || null",
+    lines)",
+  "lessonType": "story",
+  "level": ${level},
+  "story": {
+    "hanzi": "string (full Chinese text)",
+    "pinyin": "string (full text pinyin, line aligned if possible; keep paragraph breaks)",
+    "translation": "string (full English translation; mirror paragraph breaks with blank 
+    lines)"
+  },
+  "vocabulary": [
+    { "hanzi": "string", "pinyin": "string", "translation": "string", "hskLevel": ${level} }
+  ]
+}`,
       },
     ];
-
     const completion = await client.chat.completions.create({
       model: preferredModel,
-      messages,
+      messages: messages as any,
       response_format: { type: 'json_object' },
     } as any);
-
     const content = completion.choices[0].message.content;
     if (!content) throw new Error('Empty OpenAI response');
-    const data = JSON.parse(content);
-    return data;
+    return JSON.parse(content);
   }
 
-  private buildLessonPrompt(
-    level: number,
-    type: 'story' | 'dialogue',
-    readTimeMinutes: number,
-    topic?: string,
-  ): string {
-    const approxChars = Math.min(readTimeMinutes * 300, 6000);
+  private async openaiGenerateDialogueLesson({
+    level,
+    readTimeMinutes,
+    topic,
+  }: {
+    level: number;
+    readTimeMinutes: number;
+    topic?: string;
+  }) {
+    const preferredModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const client = (this.openAIService as any)
+      .openai as import('openai').default;
+    const approxTurns = Math.max(
+      Math.min(Math.floor(readTimeMinutes * 2), 22),
+      12,
+    );
     const topicLine = topic
-      ? `\nTOPIC (mandatory): ${topic}\n.You MUST center the entire ${type} on this topic. The title MUST include at least one keyword from the topic. Use domain-specific vocabulary related to the topic throughout the text and include those items in the vocabulary list.`
-      : `\nNo topic provided: choose a fresh everyday-life theme distinct from generic themes. Avoid those unless explicitly requested.`;
-    const genreHint =
-      type === 'dialogue'
-        ? 'Use realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC.'
-        : 'Tell a coherent, engaging story strictly about the TOPIC: develop scenes and actions that focus on the TOPIC.';
+      ? `\nTOPIC (mandatory): ${topic}\n.Use realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC. Include topic-specific vocabulary in the vocabulary list.`
+      : `\nNo topic provided: choose a practical everyday-life scenario (not generic).`;
+    const messages = [
+      {
+        role: 'system' as const,
+        content:
+          'You are a native Mandarin speaker and an expert lesson designer. Return STRICT JSON only.',
+      },
+      {
+        role: 'user' as const,
+        content: `Generate a Mandarin Chinese dialogue lesson tailored to HSK level ${level}. Provide ${approxTurns} turns of natural conversation. Use HSK-${level} vocab and grammar, with a few stretch words.${topicLine}
 
-    return `
-Generate a Mandarin Chinese ${type} lesson tailored to HSK level ${level}. ${genreHint} Length target: approximately ${readTimeMinutes} minutes read (~${approxChars} characters). Provide rich content (avoid being short). Use HSK-${level} vocab and grammar, with a few stretch words.${topicLine}
-
-Return ONLY valid JSON with this exact structure (no extra keys, no comments):
+Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
 {
   "title": "string | null",
   "titlePinyin": "string | null",
   "titleTranslation": "string | null",
-  "lessonType": "${type}",
+  "lessonType": "dialogue",
   "level": ${level},
-  "story": { // if type is story
-    "hanzi": "string (full Chinese text)",
-    "pinyin": "string (full text pinyin, line aligned if possible; keep paragraph breaks)",
-    "translation": "string (full English translation; mirror paragraph breaks with blank lines)"
-  },
-  "dialogue": { // if type is dialogue, else null
+  "dialogue": {
     "turns": [ // 18-22 turns of practical daily conversation suitable for HSK-${level}
-      { "speaker": "<Character name 1>|<Character name 2>|<Narrator>", "hanzi": "string", "pinyin": "string", "translation": "string" }
+      { "speaker": ""<Character name 1>|<Character name 2>|<Narrator or Third person (such as waiter(in restaurant setting), etc.)>"", "hanzi": "string", "pinyin": "string", "translation": "string" }
     ]
   },
   "vocabulary": [
     { "hanzi": "string", "pinyin": "string", "translation": "string", "hskLevel": ${level} }
   ]
 }
-
-Strict requirements:
-- If TOPIC is provided, the ${type} MUST revolve around it. Do NOT default to generic themes (moving to a new city, weekend travel, Huangshan) unless explicitly in the TOPIC.
-- The title MUST include a keyword from the TOPIC (if provided).
-- Use topic-specific vocabulary and include it in the vocabulary list.
-- Keep JSON concise but content-rich. No markdown, no commentary, JSON only.`;
+  - The title MUST include a keyword from the TOPIC (if provided).
+  - Use topic-specific vocabulary and include it in the vocabulary list.
+  - Keep JSON concise but content-rich. No markdown, no commentary, JSON only.`,
+      },
+    ];
+    const completion = await client.chat.completions.create({
+      model: preferredModel,
+      messages: messages as any,
+      response_format: { type: 'json_object' },
+    } as any);
+    const content = completion.choices[0].message.content;
+    if (!content) throw new Error('Empty OpenAI response');
+    return JSON.parse(content);
   }
 
   private fillSegmentPinyinFromLine(
