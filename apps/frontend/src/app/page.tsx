@@ -1,11 +1,65 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { ChevronDown, Sparkles, MessageSquare, BookOpen } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function LandingPage() {
   const [open, setOpen] = useState<number | null>(0);
+  const screenshots: { src: string; alt: string; caption: string }[] = [
+    { src: "/dashboard.png", alt: "Dashboard", caption: "Dashboard overview" },
+    {
+      src: "/placement_test.png",
+      alt: "Placement test",
+      caption: "Adaptive placement test",
+    },
+    { src: "/lessons.png", alt: "Lessons", caption: "Lessons library" },
+    {
+      src: "/lessons_viewer_story.png",
+      alt: "Story lesson",
+      caption: "Story lesson viewer",
+    },
+    {
+      src: "/lessons_viewer_dialogue.png",
+      alt: "Dialogue lesson",
+      caption: "Dialogue lesson viewer",
+    },
+    {
+      src: "/flashcards.png",
+      alt: "Flashcards",
+      caption: "Spaced repetition flashcards",
+    },
+    {
+      src: "/conversations.png",
+      alt: "Conversations",
+      caption: "AI conversation practice",
+    },
+    
+    {
+      src: "/Popup_info_and_addtoflashcard.png",
+      alt: "Popup info",
+      caption: "Quick add to flashcards",
+    },
+  ];
+  const [heroSlide, setHeroSlide] = useState(0);
+  const goToSlide = (index: number) => {
+    const total = screenshots.length;
+    setHeroSlide(((index % total) + total) % total);
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") {
+        setHeroSlide((prev) => (prev + 1) % screenshots.length);
+      } else if (e.key === "ArrowLeft") {
+        setHeroSlide(
+          (prev) => (prev - 1 + screenshots.length) % screenshots.length
+        );
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [screenshots.length]);
   const faqs = [
     {
       q: "How does Mandareen help me learn?",
@@ -26,7 +80,7 @@ export default function LandingPage() {
       {/* Header */}
       <header className="sticky top-4 z-40">
         <div className="max-w-6xl mx-auto px-4">
-          <div className="flex items-center justify-between rounded-4xl border border-[var(--color-surface-2)]/60 bg-[rgba(26,29,35,0.55)] backdrop-blur-xs pr-4 pl-8 py-3">
+          <div className="flex items-center justify-between rounded-4xl bg-white/2.5 border border-white/50 backdrop-blur-sm before:absolute before:inset-0 before:rounded-full before:from-white/60 before:via-transparent before:to-transparent before:opacity-70 before:pointer-events-none transition antialiased pr-4 pl-8 py-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-[#4040f2] to-[#6366f1] rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold">普</span>
@@ -71,32 +125,96 @@ export default function LandingPage() {
 
       {/* Hero */}
       <section className="max-w-6xl mx-auto px-4 py-16 md:py-24">
-        <h1 className="font-inter font-extrabold text-4xl md:text-5xl leading-tight max-w-3xl">
-          Learn Mandarin with clarity — AI-guided, distraction-free
-        </h1>
-        <p className="text-[var(--color-text-secondary)] mt-4 max-w-2xl font-inter">
-          Short sessions that stick: lessons, conversations, and reviews in one
-          minimal workspace.
-        </p>
-        <div className="mt-8 flex items-center gap-3">
-          <Link
-            href="/auth?mode=signup"
-            className="px-5 py-3 rounded-full bg-[var(--color-accent-blue)] hover:opacity-90 text-white font-inter"
-          >
-            Get Started
-          </Link>
-          <Link
-            href="/auth"
-            className="text-[var(--color-text-secondary)] hover:text-white font-inter"
-          >
-            I already have an account
-          </Link>
+        <div className="grid grid-cols-1 md:grid-cols-2 items-center">
+          <div>
+            <h1 className="font-inter font-extrabold text-4xl md:text-5xl leading-tight max-w-3xl">
+              Learn Mandarin with clarity — AI-guided, distraction-free
+            </h1>
+            <p className="text-[var(--color-text-secondary)] mt-4 max-w-2xl font-inter">
+              Short sessions that stick: lessons, conversations, and reviews in
+              one minimal workspace.
+            </p>
+            <div className="mt-8 flex items-center gap-3">
+              <Link
+                href="/auth?mode=signup"
+                className="px-5 py-3 rounded-full bg-[var(--color-accent-blue)] hover:opacity-90 text-white font-inter"
+              >
+                Get Started
+              </Link>
+              <Link
+                href="/auth"
+                className="text-[var(--color-text-secondary)] hover:text-white font-inter"
+              >
+                I already have an account
+              </Link>
+            </div>
+          </div>
+          <div>
+            <div className="relative rounded-2xl border border-[var(--color-surface-2)] bg-[var(--color-surface-1)] overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
+              <div className="relative h-64 md:h-80">
+                <div
+                  className="flex h-full w-full transition-transform duration-500 ease-[var(--motion-ease)]"
+                  style={{ transform: `translateX(-${heroSlide * 100}%)` }}
+                  aria-live="polite"
+                >
+                  {screenshots.map((s, idx) => (
+                    <div
+                      key={idx}
+                      className="min-w-full h-full relative select-none"
+                    >
+                      <Image
+                        src={s.src}
+                        alt={s.alt}
+                        fill
+                        className="object-cover"
+                        sizes="(min-width: 768px) 50vw, 100vw"
+                        priority={idx === 0}
+                      />
+                      <div className="absolute inset-x-0 bottom-0 p-3">
+                        <span className="inline-flex items-center px-2 py-1 text-[10px] md:text-xs rounded-full text-white/90 bg-black/35 backdrop-blur-sm border border-white/10">
+                          {s.caption}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  aria-label="Previous screenshot"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/40 hover:bg-black/60 text-white grid place-items-center border border-white/10 cursor-pointer"
+                  onClick={() => goToSlide(heroSlide - 1)}
+                >
+                  <span className="sr-only">Previous</span>‹  
+                </button>
+                <button
+                  aria-label="Next screenshot"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/40 hover:bg-black/60 text-white grid place-items-center border border-white/10 cursor-pointer"
+                  onClick={() => goToSlide(heroSlide + 1)}
+                >
+                  <span className="sr-only">Next</span>›
+                </button>
+              </div>
+              <div className="flex items-center justify-center gap-2 py-3">
+                {screenshots.map((_, i) => (
+                  <button
+                    key={i}
+                    aria-label={`Go to screenshot ${i + 1}`}
+                    className={`h-1.5 rounded-full transition-all ${
+                      heroSlide === i
+                        ? "w-6 bg-[var(--color-accent-blue)]"
+                        : "w-2 bg-white/30 hover:bg-white/50"
+                    }`}
+                    onClick={() => goToSlide(i)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Feature summary (engaging, minimalist) */}
+      {/* Feature summary */}
       <section id="features" className="max-w-6xl mx-auto px-4 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:items-center">
           <div className="group rounded-2xl border border-[var(--color-surface-2)] bg-[var(--color-surface-1)] p-6 transition-all duration-300 hover:border-[var(--color-accent-blue)]/60 hover:shadow-[0_10px_30px_rgba(64,64,242,0.15)] hover:-translate-y-0.5">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#4040f2] to-[#6366f1] flex items-center justify-center">
               <Sparkles className="w-5 h-5 text-white" />
@@ -150,77 +268,284 @@ export default function LandingPage() {
         <p className="text-[var(--color-text-secondary)] mb-8">
           Simple, transparent plans. Start free and upgrade anytime.
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="rounded-2xl border border-[var(--color-surface-2)] bg-[var(--color-surface-1)] p-6">
-            <h3 className="font-inter text-xl font-semibold">Free</h3>
-            <p className="text-[var(--color-text-secondary)] mt-1">
-              Get started
-            </p>
-            <div className="mt-4 text-3xl font-bold">
-              $0
-              <span className="text-base font-normal text-[var(--color-text-secondary)]">
-                /mo
-              </span>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:items-center">
+          <div className="w-full h-fit rounded-lg border shadow-sm overflow-hidden bg-[var(--color-surface-1)] border-[var(--color-surface-2)] shadow-black/5 ">
+            <div className="p-6 text-center border-b border-[var(--color-surface-2)]">
+              <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-[var(--color-secondary-bg)] text-white border border-[var(--color-secondary-bg)]">
+                Free Plan
+              </div>
+              <div className="mt-4">
+                <span className="text-4xl font-bold text-white">$0</span>
+                <span className="text-[var(--color-text-secondary)]">
+                  /month
+                </span>
+              </div>
+              <p className="text-[var(--color-text-secondary)] text-sm mt-2">
+                Get started
+              </p>
             </div>
-            <ul className="mt-6 space-y-2 text-[var(--color-text-secondary)]">
-              <li>AI lessons (limited)</li>
-              <li>Basic conversation practice</li>
-              <li>Flashcards with SRS</li>
-            </ul>
-            <Link
-              href="/auth?mode=signup"
-              className="mt-6 inline-block px-4 py-2 rounded-lg bg-[var(--color-accent-blue)] text-white hover:opacity-90"
-            >
-              Get Started
-            </Link>
+            <div className="p-6">
+              <ul className="space-y-4">
+                <li className="flex items-start gap-3">
+                  <svg
+                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    ></path>
+                  </svg>
+                  <span className="text-[var(--color-text-secondary)]">
+                    AI lessons (limited)
+                  </span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg
+                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    ></path>
+                  </svg>
+                  <span className="text-[var(--color-text-secondary)]">
+                    Basic conversation practice
+                  </span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg
+                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    ></path>
+                  </svg>
+                  <span className="text-[var(--color-text-secondary)]">
+                    Flashcards with SRS
+                  </span>
+                </li>
+              </ul>
+            </div>
+            <div className="p-6 pt-0">
+              <Link
+                href="/auth?mode=signup"
+                className="w-full inline-flex items-center justify-center border align-middle select-none font-sans font-medium text-center duration-300 ease-in disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed focus:shadow-none text-sm py-2 px-4 shadow-sm hover:shadow-md bg-transparent border-[var(--color-surface-2)] text-white rounded-lg hover:bg-[var(--color-surface-2)]"
+              >
+                Get Started
+              </Link>
+            </div>
           </div>
-          <div className="rounded-2xl border-2 border-[var(--color-accent-blue)] bg-[var(--color-surface-1)] p-6 shadow-[0_8px_24px_rgba(64,64,242,0.15)]">
-            <h3 className="font-inter text-xl font-semibold">Pro</h3>
-            <p className="text-[var(--color-text-secondary)] mt-1">
-              Best for most
-            </p>
-            <div className="mt-4 text-3xl font-bold">
-              $12
-              <span className="text-base font-normal text-[var(--color-text-secondary)]">
-                /mo
-              </span>
+
+          {/* Pro Card (highlighted) */}
+          <div className="w-full rounded-lg border-2 shadow-sm overflow-visible bg-[var(--color-surface-1)] border-[var(--color-accent-blue)] shadow-[0_8px_24px_rgba(64,64,242,0.15)] relative md:min-h-[520px]">
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-medium bg-[var(--color-accent-blue)] text-white border border-[var(--color-accent-blue)] shadow-sm">
+              Most Popular
             </div>
-            <ul className="mt-6 space-y-2 text-[var(--color-text-secondary)]">
-              <li>Unlimited AI lessons</li>
-              <li>Advanced conversation coach</li>
-              <li>Custom vocab packs</li>
-              <li>Priority review scheduling</li>
-            </ul>
-            <Link
-              href="/auth?mode=signup"
-              className="mt-6 inline-block px-4 py-2 rounded-lg bg-[var(--color-accent-blue)] text-white hover:opacity-90"
-            >
-              Start Pro
-            </Link>
+            <div className="p-8 text-center border-b border-[var(--color-surface-2)]">
+              <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-[var(--color-accent-blue)] text-white border border-[var(--color-accent-blue)]">
+                Pro Plan
+              </div>
+              <div className="mt-4">
+                <span className="text-4xl font-bold text-white">$12</span>
+                <span className="text-[var(--color-text-secondary)]">
+                  /month
+                </span>
+              </div>
+              <p className="text-[var(--color-text-secondary)] text-sm mt-2">
+                Best for most
+              </p>
+            </div>
+            <div className="p-8">
+              <ul className="space-y-4">
+                <li className="flex items-start gap-3">
+                  <svg
+                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    ></path>
+                  </svg>
+                  <span className="text-[var(--color-text-secondary)]">
+                    Unlimited AI lessons
+                  </span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg
+                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    ></path>
+                  </svg>
+                  <span className="text-[var(--color-text-secondary)]">
+                    Advanced conversation coach
+                  </span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg
+                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    ></path>
+                  </svg>
+                  <span className="text-[var(--color-text-secondary)]">
+                    Custom vocab packs
+                  </span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg
+                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    ></path>
+                  </svg>
+                  <span className="text-[var(--color-text-secondary)]">
+                    Priority review scheduling
+                  </span>
+                </li>
+              </ul>
+            </div>
+            <div className="p-8 pt-0">
+              <Link
+                href="/auth?mode=signup"
+                className="w-full inline-flex items-center justify-center border align-middle select-none font-sans font-medium text-center duration-300 ease-in disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed focus:shadow-none text-sm py-2 px-4 shadow-sm hover:shadow-md bg-[var(--color-accent-blue)] text-white rounded-lg"
+              >
+                Start Pro
+              </Link>
+            </div>
           </div>
-          <div className="rounded-2xl border border-[var(--color-surface-2)] bg-[var(--color-surface-1)] p-6">
-            <h3 className="font-inter text-xl font-semibold">Teams</h3>
-            <p className="text-[var(--color-text-secondary)] mt-1">
-              For classrooms & orgs
-            </p>
-            <div className="mt-4 text-3xl font-bold">
-              $29
-              <span className="text-base font-normal text-[var(--color-text-secondary)]">
-                /mo
-              </span>
+
+          {/* Teams Card */}
+          <div className="w-full h-fit rounded-lg border shadow-sm overflow-hidden bg-[var(--color-surface-1)] border-[var(--color-surface-2)] shadow-black/5">
+            <div className="p-6 text-center border-b border-[var(--color-surface-2)]">
+              <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-[#15803d] text-white border border-[#15803d]">
+                Teams Plan
+              </div>
+              <div className="mt-4">
+                <span className="text-4xl font-bold text-white">$29</span>
+                <span className="text-[var(--color-text-secondary)]">
+                  /month
+                </span>
+              </div>
+              <p className="text-[var(--color-text-secondary)] text-sm mt-2">
+                For classrooms & orgs
+              </p>
             </div>
-            <ul className="mt-6 space-y-2 text-[var(--color-text-secondary)]">
-              <li>All Pro features</li>
-              <li>Shared progress dashboard</li>
-              <li>Admin controls</li>
-              <li>Priority support</li>
-            </ul>
-            <Link
-              href="/auth?mode=signup"
-              className="mt-6 inline-block px-4 py-2 rounded-lg border border-[var(--color-surface-2)] text-white hover:bg-[var(--color-surface-2)]"
-            >
-              Contact Sales
-            </Link>
+            <div className="p-6">
+              <ul className="space-y-4">
+                <li className="flex items-start gap-3">
+                  <svg
+                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    ></path>
+                  </svg>
+                  <span className="text-[var(--color-text-secondary)]">
+                    All Pro features
+                  </span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg
+                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    ></path>
+                  </svg>
+                  <span className="text-[var(--color-text-secondary)]">
+                    Shared progress dashboard
+                  </span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg
+                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    ></path>
+                  </svg>
+                  <span className="text-[var(--color-text-secondary)]">
+                    Admin controls
+                  </span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg
+                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    ></path>
+                  </svg>
+                  <span className="text-[var(--color-text-secondary)]">
+                    Priority support
+                  </span>
+                </li>
+              </ul>
+            </div>
+            <div className="p-6 pt-0">
+              <Link
+                href="/auth?mode=signup"
+                className="w-full inline-flex items-center justify-center border align-middle select-none font-sans font-medium text-center duration-300 ease-in disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed focus:shadow-none text-sm py-2 px-4 shadow-sm hover:shadow-md bg-[#15803d] border-[#15803d] text-white rounded-lg hover:bg-[#166534]"
+              >
+                Contact Sales
+              </Link>
+            </div>
           </div>
         </div>
       </section>
