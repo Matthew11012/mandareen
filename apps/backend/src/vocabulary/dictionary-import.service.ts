@@ -173,8 +173,8 @@ export class DictionaryImportService {
       .map((d) => d.trim())
       .filter((d) => d);
 
-    // Skip entries that are too long or contain non-Chinese characters
-    if (simplified.length > 10 || !/^[\u4e00-\u9fff]+$/.test(simplified)) {
+    // Skip entries that contain non-Chinese characters
+    if (!/^[\u4e00-\u9fff]+$/.test(simplified)) {
       return null;
     }
 
