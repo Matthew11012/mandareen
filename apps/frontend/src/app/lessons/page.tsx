@@ -8,6 +8,7 @@ import { Plus, RefreshCw, BookOpen, MessageSquare } from "lucide-react";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { useRouter } from "next/navigation";
 import { useCurrentLevel } from "@/lib/hooks/use-current-level";
+import { AnimatePresence, motion, LayoutGroup } from "framer-motion";
 
 export default function LessonsPage() {
   const { isLoading: authLoading } = useRequireAuth();
@@ -80,16 +81,7 @@ export default function LessonsPage() {
     if (!authLoading) load();
   }, [authLoading]);
 
-  // Smooth filtering animation & derived filtered data
-  const [isFiltering, setIsFiltering] = useState(false);
-  const myLevelsKey = myLevels.join(",");
-  const storyLevelsKey = storyLevels.join(",");
-  const dialogueLevelsKey = dialogueLevels.join(",");
-  useEffect(() => {
-    setIsFiltering(true);
-    const t = window.setTimeout(() => setIsFiltering(false), 200);
-    return () => window.clearTimeout(t);
-  }, [myLevelsKey, storyLevelsKey, dialogueLevelsKey]);
+  // Derived filtered data
 
   const myIdSet = new Set(myItems.map((m) => m.id));
   const myStoriesFiltered = myItems
@@ -164,7 +156,7 @@ export default function LessonsPage() {
               <button
                 key={s}
                 onClick={() => setTopic(s)}
-                className={`px-3 py-1 rounded-full text-xs font-inter border ${topic === s ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer hover:border-[#4040f2]`}
+                className={`px-3 py-1 rounded-full text-xs font-inter border ${topic === s ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer `}
               >
                 {s}
               </button>
@@ -194,7 +186,7 @@ export default function LessonsPage() {
                       active
                         ? "border-[#4040f2] text-[#9aa6ff]"
                         : "border-[#404040] text-[#a6a6a6]"
-                    } cursor-pointer hover:border-[#4040f2]`}
+                    } cursor-pointer `}
                   >
                     HSK {lvl}
                   </button>
@@ -202,7 +194,7 @@ export default function LessonsPage() {
               })}
               <button
                 onClick={() => setGenLevel(null)}
-                className="px-3 py-1 rounded-full text-xs font-inter border border-[#404040] text-[#a6a6a6] cursor-pointer hover:border-[#4040f2]"
+                className="px-3 py-1 rounded-full text-xs font-inter border border-[#404040] text-[#a6a6a6] cursor-pointer "
               >
                 Auto (my level)
               </button>
@@ -266,9 +258,7 @@ export default function LessonsPage() {
             No lessons yet. Click &quot;Generate Story&quot; to create one.
           </div>
         ) : (
-          <div
-            className={`space-y-8 transition-opacity duration-300 ${isFiltering ? "opacity-70" : "opacity-100"}`}
-          >
+          <div className="space-y-8">
             {/* My Lessons Section (split + filters) */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -289,7 +279,7 @@ export default function LessonsPage() {
                         className={`px-2 py-1 rounded text-xs font-inter border cursor-pointer transition-colors duration-200 ${
                           on
                             ? "border-[#4040f2] text-[#9aa6ff] bg-[#4040f2]/10"
-                            : "border-[#404040] text-[#a6a6a6] hover:border-[#4040f2] hover:bg-[#4040f2]/10"
+                            : "border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10"
                         }`}
                         title={`Filter HSK ${lvl}`}
                       >
@@ -299,7 +289,7 @@ export default function LessonsPage() {
                   })}
                   <button
                     onClick={() => setMyLevels([])}
-                    className="px-2 py-1 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6] hover:border-[#4040f2] hover:bg-[#4040f2]/10 transition-colors duration-200"
+                    className="px-2 py-1 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10 transition-colors duration-200"
                   >
                     Clear
                   </button>
@@ -321,98 +311,135 @@ export default function LessonsPage() {
                         No My Stories match selected HSK filters.
                       </p>
                     ) : (
-                      <div className="overflow-hidden">
-                        <div
-                          ref={myStoriesRef}
-                          onScroll={() => {
-                            const el = myStoriesRef.current;
-                            if (!el) return;
-                            const idx = Math.round(
-                              el.scrollLeft / el.clientWidth
-                            );
-                            if (idx !== myStoriesPage) setMyStoriesPage(idx);
-                          }}
-                          className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2"
-                        >
-                          {myStoriesFiltered
-                            .reduce(
-                              (
-                                pages: LessonListItem[][],
-                                item: LessonListItem,
-                                idx: number
-                              ) => {
-                                const pageIdx = Math.floor(idx / 9);
-                                if (!pages[pageIdx]) pages[pageIdx] = [];
-                                pages[pageIdx].push(item);
-                                return pages;
-                              },
-                              []
-                            )
-                            .map((page, i) => {
-                              const padCount = Math.max(0, 9 - page.length);
-                              const padded = [
-                                ...page,
-                                ...Array(padCount).fill(null),
-                              ];
-                              return (
-                                <div
-                                  key={i}
-                                  className="min-w-full snap-start grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-                                >
-                                  {padded.map(
-                                    (l: LessonListItem | null, idx2) =>
-                                      l ? (
-                                        <div
-                                          key={l.id}
-                                          className={`bg-[#2e323a] rounded-xl p-4 border border-[#404040] hover:border-[#4040f2] transition-all duration-300 cursor-pointer ${isFiltering ? "translate-y-0.5" : "translate-y-0"}`}
-                                          onClick={() =>
-                                            router.push(`/lessons/${l.id}`)
-                                          }
-                                        >
-                                          <div className="flex items-start gap-3">
-                                            <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
-                                              <BookOpen className="w-5 h-5 text-orange-400" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                              <div className="flex items-center justify-between gap-2">
-                                                <p className="text-white font-inter font-semibold truncate">
-                                                  {l.title || `Lesson #${l.id}`}
-                                                </p>
-                                                <span
-                                                  className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                >
-                                                  HSK {l.level}
-                                                </span>
-                                              </div>
-                                              {l.titlePinyin && (
-                                                <p className="text-[#9aa6ff] font-inter text-xs truncate">
-                                                  {l.titlePinyin}
-                                                </p>
-                                              )}
-                                              {l.titleTranslation && (
-                                                <p className="text-[#a6a6a6] font-inter text-xs truncate">
-                                                  {l.titleTranslation}
-                                                </p>
-                                              )}
-                                              <p className="text-[#a6a6a6] font-inter text-xs mt-1">
-                                                {new Date(
-                                                  l.createdAt
-                                                ).toLocaleString()}
-                                              </p>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div
-                                          key={`pad-ms-${idx2}`}
-                                          className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
-                                        />
-                                      )
-                                  )}
-                                </div>
+                      <div className="overflow-hidden py-2">
+                        <LayoutGroup>
+                          <div
+                            ref={myStoriesRef}
+                            onScroll={() => {
+                              const el = myStoriesRef.current;
+                              if (!el) return;
+                              const idx = Math.round(
+                                el.scrollLeft / el.clientWidth
                               );
-                            })}
-                        </div>
+                              if (idx !== myStoriesPage) setMyStoriesPage(idx);
+                            }}
+                            className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4"
+                          >
+                            <AnimatePresence mode="popLayout">
+                              {myStoriesFiltered
+                                .reduce(
+                                  (
+                                    pages: LessonListItem[][],
+                                    item: LessonListItem,
+                                    idx: number
+                                  ) => {
+                                    const pageIdx = Math.floor(idx / 9);
+                                    if (!pages[pageIdx]) pages[pageIdx] = [];
+                                    pages[pageIdx].push(item);
+                                    return pages;
+                                  },
+                                  []
+                                )
+                                .map((page, i) => {
+                                  const padCount = Math.max(0, 9 - page.length);
+                                  const padded = [
+                                    ...page,
+                                    ...Array(padCount).fill(null),
+                                  ];
+                                  return (
+                                    <motion.div
+                                      key={i}
+                                      layout
+                                      className="min-w-full snap-start grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2"
+                                    >
+                                      <AnimatePresence mode="popLayout">
+                                        {padded.map(
+                                          (l: LessonListItem | null, idx2) =>
+                                            l ? (
+                                              <motion.div
+                                                key={l.id}
+                                                layout
+                                                initial={{
+                                                  opacity: 0,
+                                                  scale: 0.8,
+                                                  y: 20,
+                                                }}
+                                                animate={{
+                                                  opacity: 1,
+                                                  scale: 1,
+                                                  y: 0,
+                                                  borderColor: "#404040",
+                                                }}
+                                                exit={{
+                                                  opacity: 0,
+                                                  scale: 0.8,
+                                                  y: -20,
+                                                }}
+                                                transition={{
+                                                  duration: 0.3,
+                                                  delay: idx2 * 0.05,
+                                                  layout: { duration: 0.4 },
+                                                }}
+                                                className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
+                                                onClick={() =>
+                                                  router.push(
+                                                    `/lessons/${l.id}`
+                                                  )
+                                                }
+                                                whileHover={{
+                                                  scale: 1.02,
+                                                  borderColor: "#4040f2",
+                                                }}
+                                                whileTap={{ scale: 0.98 }}
+                                              >
+                                                <div className="flex items-start gap-3">
+                                                  <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
+                                                    <BookOpen className="w-5 h-5 text-orange-400" />
+                                                  </div>
+                                                  <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                      <p className="text-white font-inter font-semibold truncate">
+                                                        {l.title ||
+                                                          `Lesson #${l.id}`}
+                                                      </p>
+                                                      <span
+                                                        className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                                      >
+                                                        HSK {l.level}
+                                                      </span>
+                                                    </div>
+                                                    {l.titlePinyin && (
+                                                      <p className="text-[#9aa6ff] font-inter text-xs truncate">
+                                                        {l.titlePinyin}
+                                                      </p>
+                                                    )}
+                                                    {l.titleTranslation && (
+                                                      <p className="text-[#a6a6a6] font-inter text-xs truncate">
+                                                        {l.titleTranslation}
+                                                      </p>
+                                                    )}
+                                                    <p className="text-[#a6a6a6] font-inter text-xs mt-1">
+                                                      {new Date(
+                                                        l.createdAt
+                                                      ).toLocaleString()}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                              </motion.div>
+                                            ) : (
+                                              <div
+                                                key={`pad-ms-${idx2}`}
+                                                className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
+                                              />
+                                            )
+                                        )}
+                                      </AnimatePresence>
+                                    </motion.div>
+                                  );
+                                })}
+                            </AnimatePresence>
+                          </div>
+                        </LayoutGroup>
                         <div className="mt-2 flex items-center justify-center gap-2">
                           {Array.from({
                             length: Math.max(
@@ -454,100 +481,136 @@ export default function LessonsPage() {
                         No My Dialogues match selected HSK filters.
                       </p>
                     ) : (
-                      <div className="overflow-hidden">
-                        <div
-                          ref={myDialoguesRef}
-                          onScroll={() => {
-                            const el = myDialoguesRef.current;
-                            if (!el) return;
-                            const idx = Math.round(
-                              el.scrollLeft / el.clientWidth
-                            );
-                            if (idx !== myDialoguesPage)
-                              setMyDialoguesPage(idx);
-                          }}
-                          className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2"
-                        >
-                          {myDialoguesFiltered
-                            .reduce(
-                              (
-                                pages: LessonListItem[][],
-                                item: LessonListItem,
-                                idx: number
-                              ) => {
-                                const pageIdx = Math.floor(idx / 9);
-                                if (!pages[pageIdx]) pages[pageIdx] = [];
-                                pages[pageIdx].push(item);
-                                return pages;
-                              },
-                              []
-                            )
-                            .map((page, i) => {
-                              const padCount = Math.max(0, 9 - page.length);
-                              const padded = [
-                                ...page,
-                                ...Array(padCount).fill(null),
-                              ];
-                              return (
-                                <div
-                                  key={i}
-                                  className="min-w-full snap-start grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-                                >
-                                  {padded.map(
-                                    (l: LessonListItem | null, idx2) =>
-                                      l ? (
-                                        <div
-                                          key={l.id}
-                                          className="bg-[#2e323a] rounded-xl p-4 border border-[#404040] hover:border-[#4040f2] transition-all duration-200 cursor-pointer"
-                                          onClick={() =>
-                                            router.push(`/lessons/${l.id}`)
-                                          }
-                                        >
-                                          <div className="flex items-start gap-3">
-                                            <div className="w-10 h-10 bg-purple-600/20 rounded-lg flex items-center justify-center">
-                                              <MessageSquare className="w-5 h-5 text-purple-500" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                              <div className="flex items-center justify-between gap-2">
-                                                <p className="text-white font-inter font-semibold truncate">
-                                                  {l.title ||
-                                                    `Dialogue #${l.id}`}
-                                                </p>
-                                                <span
-                                                  className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                >
-                                                  HSK {l.level}
-                                                </span>
-                                              </div>
-                                              {l.titlePinyin && (
-                                                <p className="text-[#9aa6ff] font-inter text-xs truncate">
-                                                  {l.titlePinyin}
-                                                </p>
-                                              )}
-                                              {l.titleTranslation && (
-                                                <p className="text-[#a6a6a6] font-inter text-xs truncate">
-                                                  {l.titleTranslation}
-                                                </p>
-                                              )}
-                                              <p className="text-[#a6a6a6] font-inter text-xs mt-1">
-                                                {new Date(
-                                                  l.createdAt
-                                                ).toLocaleString()}
-                                              </p>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div
-                                          key={`pad-md-${idx2}`}
-                                          className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
-                                        />
-                                      )
-                                  )}
-                                </div>
+                      <div className="overflow-hidden py-2">
+                        <LayoutGroup>
+                          <div
+                            ref={myDialoguesRef}
+                            onScroll={() => {
+                              const el = myDialoguesRef.current;
+                              if (!el) return;
+                              const idx = Math.round(
+                                el.scrollLeft / el.clientWidth
                               );
-                            })}
-                        </div>
+                              if (idx !== myDialoguesPage)
+                                setMyDialoguesPage(idx);
+                            }}
+                            className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4"
+                          >
+                            <AnimatePresence mode="popLayout">
+                              {myDialoguesFiltered
+                                .reduce(
+                                  (
+                                    pages: LessonListItem[][],
+                                    item: LessonListItem,
+                                    idx: number
+                                  ) => {
+                                    const pageIdx = Math.floor(idx / 9);
+                                    if (!pages[pageIdx]) pages[pageIdx] = [];
+                                    pages[pageIdx].push(item);
+                                    return pages;
+                                  },
+                                  []
+                                )
+                                .map((page, i) => {
+                                  const padCount = Math.max(0, 9 - page.length);
+                                  const padded = [
+                                    ...page,
+                                    ...Array(padCount).fill(null),
+                                  ];
+                                  return (
+                                    <motion.div
+                                      key={i}
+                                      layout
+                                      className="min-w-full snap-start grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2"
+                                    >
+                                      <AnimatePresence mode="popLayout">
+                                        {padded.map(
+                                          (l: LessonListItem | null, idx2) =>
+                                            l ? (
+                                              <motion.div
+                                                key={l.id}
+                                                layout
+                                                initial={{
+                                                  opacity: 0,
+                                                  scale: 0.8,
+                                                  y: 20,
+                                                }}
+                                                animate={{
+                                                  opacity: 1,
+                                                  scale: 1,
+                                                  y: 0,
+                                                  borderColor: "#404040",
+                                                }}
+                                                exit={{
+                                                  opacity: 0,
+                                                  scale: 0.8,
+                                                  y: -20,
+                                                }}
+                                                transition={{
+                                                  duration: 0.3,
+                                                  delay: idx2 * 0.05,
+                                                  layout: { duration: 0.4 },
+                                                }}
+                                                className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
+                                                onClick={() =>
+                                                  router.push(
+                                                    `/lessons/${l.id}`
+                                                  )
+                                                }
+                                                whileHover={{
+                                                  scale: 1.02,
+                                                  borderColor: "#4040f2",
+                                                }}
+                                                whileTap={{ scale: 0.98 }}
+                                              >
+                                                <div className="flex items-start gap-3">
+                                                  <div className="w-10 h-10 bg-purple-600/20 rounded-lg flex items-center justify-center">
+                                                    <MessageSquare className="w-5 h-5 text-purple-500" />
+                                                  </div>
+                                                  <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                      <p className="text-white font-inter font-semibold truncate">
+                                                        {l.title ||
+                                                          `Dialogue #${l.id}`}
+                                                      </p>
+                                                      <span
+                                                        className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                                      >
+                                                        HSK {l.level}
+                                                      </span>
+                                                    </div>
+                                                    {l.titlePinyin && (
+                                                      <p className="text-[#9aa6ff] font-inter text-xs truncate">
+                                                        {l.titlePinyin}
+                                                      </p>
+                                                    )}
+                                                    {l.titleTranslation && (
+                                                      <p className="text-[#a6a6a6] font-inter text-xs truncate">
+                                                        {l.titleTranslation}
+                                                      </p>
+                                                    )}
+                                                    <p className="text-[#a6a6a6] font-inter text-xs mt-1">
+                                                      {new Date(
+                                                        l.createdAt
+                                                      ).toLocaleString()}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                              </motion.div>
+                                            ) : (
+                                              <div
+                                                key={`pad-md-${idx2}`}
+                                                className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
+                                              />
+                                            )
+                                        )}
+                                      </AnimatePresence>
+                                    </motion.div>
+                                  );
+                                })}
+                            </AnimatePresence>
+                          </div>
+                        </LayoutGroup>
                         <div className="mt-2 flex items-center justify-center gap-2">
                           {Array.from({
                             length: Math.max(
@@ -608,7 +671,7 @@ export default function LessonsPage() {
                         className={`px-2 py-1 rounded text-xs font-inter border cursor-pointer transition-colors duration-200 ${
                           on
                             ? "border-[#4040f2] text-[#9aa6ff] bg-[#4040f2]/10"
-                            : "border-[#404040] text-[#a6a6a6] hover:border-[#4040f2] hover:bg-[#4040f2]/10"
+                            : "border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10"
                         }`}
                         title={`HSK ${lvl}`}
                       >
@@ -618,101 +681,141 @@ export default function LessonsPage() {
                   })}
                   <button
                     onClick={() => setStoryLevels([])}
-                    className="px-2 py-1 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6] hover:border-[#4040f2] hover:bg-[#4040f2]/10 transition-colors duration-200"
+                    className="px-2 py-1 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10 transition-colors duration-200"
                   >
                     Clear
                   </button>
                 </div>
               </div>
-              <div className="overflow-hidden">
+              <div className="overflow-hidden py-2">
                 {storiesFiltered.length === 0 ? (
                   <p className="text-[#a6a6a6] font-inter text-sm">
                     No Stories match selected HSK filters.
                   </p>
                 ) : (
-                  <div
-                    ref={storiesRef}
-                    onScroll={() => {
-                      const el = storiesRef.current;
-                      if (!el) return;
-                      const idx = Math.round(el.scrollLeft / el.clientWidth);
-                      if (idx !== storiesPage) setStoriesPage(idx);
-                    }}
-                    className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2"
-                  >
-                    {storiesFiltered
-                      .reduce(
-                        (
-                          pages: LessonListItem[][],
-                          item: LessonListItem,
-                          idx: number
-                        ) => {
-                          const pageIdx = Math.floor(idx / 9);
-                          if (!pages[pageIdx]) pages[pageIdx] = [];
-                          pages[pageIdx].push(item);
-                          return pages;
-                        },
-                        []
-                      )
-                      .map((page, i) => {
-                        const padCount = Math.max(0, 9 - page.length);
-                        const padded = [...page, ...Array(padCount).fill(null)];
-                        return (
-                          <div
-                            key={i}
-                            className="min-w-full snap-start grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-                          >
-                            {padded.map((l: LessonListItem | null, idx2) =>
-                              l ? (
-                                <div
-                                  key={l.id}
-                                  className={`bg-[#2e323a] rounded-xl p-4 border border-[#404040] hover:border-[#4040f2] transition-all duration-300 cursor-pointer ${isFiltering ? "translate-y-0.5" : "translate-y-0"}`}
-                                  onClick={() =>
-                                    router.push(`/lessons/${l.id}`)
-                                  }
-                                >
-                                  <div className="flex items-start gap-3">
-                                    <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
-                                      <BookOpen className="w-5 h-5 text-orange-400" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <p className="text-white font-inter font-semibold truncate">
-                                          {l.title || `Lesson #${l.id}`}
-                                        </p>
-                                        <span
-                                          className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                  <LayoutGroup>
+                    <div
+                      ref={storiesRef}
+                      onScroll={() => {
+                        const el = storiesRef.current;
+                        if (!el) return;
+                        const idx = Math.round(el.scrollLeft / el.clientWidth);
+                        if (idx !== storiesPage) setStoriesPage(idx);
+                      }}
+                      className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4"
+                    >
+                      <AnimatePresence mode="popLayout">
+                        {storiesFiltered
+                          .reduce(
+                            (
+                              pages: LessonListItem[][],
+                              item: LessonListItem,
+                              idx: number
+                            ) => {
+                              const pageIdx = Math.floor(idx / 9);
+                              if (!pages[pageIdx]) pages[pageIdx] = [];
+                              pages[pageIdx].push(item);
+                              return pages;
+                            },
+                            []
+                          )
+                          .map((page, i) => {
+                            const padCount = Math.max(0, 9 - page.length);
+                            const padded = [
+                              ...page,
+                              ...Array(padCount).fill(null),
+                            ];
+                            return (
+                              <motion.div
+                                key={i}
+                                layout
+                                className="min-w-full snap-start grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2"
+                              >
+                                <AnimatePresence mode="popLayout">
+                                  {padded.map(
+                                    (l: LessonListItem | null, idx2) =>
+                                      l ? (
+                                        <motion.div
+                                          key={l.id}
+                                          layout
+                                          initial={{
+                                            opacity: 0,
+                                            scale: 0.8,
+                                            y: 20,
+                                          }}
+                                          animate={{
+                                            opacity: 1,
+                                            scale: 1,
+                                            y: 0,
+                                            borderColor: "#404040",
+                                          }}
+                                          exit={{
+                                            opacity: 0,
+                                            scale: 0.8,
+                                            y: -20,
+                                          }}
+                                          transition={{
+                                            duration: 0.3,
+                                            delay: idx2 * 0.05,
+                                            layout: { duration: 0.4 },
+                                          }}
+                                          className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
+                                          onClick={() =>
+                                            router.push(`/lessons/${l.id}`)
+                                          }
+                                          whileHover={{
+                                            scale: 1.02,
+                                            borderColor: "#4040f2",
+                                          }}
+                                          whileTap={{ scale: 0.98 }}
                                         >
-                                          HSK {l.level}
-                                        </span>
-                                      </div>
-                                      {l.titlePinyin && (
-                                        <p className="text-[#9aa6ff] font-inter text-xs truncate">
-                                          {l.titlePinyin}
-                                        </p>
-                                      )}
-                                      {l.titleTranslation && (
-                                        <p className="text-[#a6a6a6] font-inter text-xs truncate">
-                                          {l.titleTranslation}
-                                        </p>
-                                      )}
-                                      <p className="text-[#a6a6a6] font-inter text-xs mt-1">
-                                        {new Date(l.createdAt).toLocaleString()}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div
-                                  key={`pad-s-${idx2}`}
-                                  className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
-                                />
-                              )
-                            )}
-                          </div>
-                        );
-                      })}
-                  </div>
+                                          <div className="flex items-start gap-3">
+                                            <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
+                                              <BookOpen className="w-5 h-5 text-orange-400" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center justify-between gap-2">
+                                                <p className="text-white font-inter font-semibold truncate">
+                                                  {l.title || `Lesson #${l.id}`}
+                                                </p>
+                                                <span
+                                                  className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                                >
+                                                  HSK {l.level}
+                                                </span>
+                                              </div>
+                                              {l.titlePinyin && (
+                                                <p className="text-[#9aa6ff] font-inter text-xs truncate">
+                                                  {l.titlePinyin}
+                                                </p>
+                                              )}
+                                              {l.titleTranslation && (
+                                                <p className="text-[#a6a6a6] font-inter text-xs truncate">
+                                                  {l.titleTranslation}
+                                                </p>
+                                              )}
+                                              <p className="text-[#a6a6a6] font-inter text-xs mt-1">
+                                                {new Date(
+                                                  l.createdAt
+                                                ).toLocaleString()}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </motion.div>
+                                      ) : (
+                                        <div
+                                          key={`pad-s-${idx2}`}
+                                          className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
+                                        />
+                                      )
+                                  )}
+                                </AnimatePresence>
+                              </motion.div>
+                            );
+                          })}
+                      </AnimatePresence>
+                    </div>
+                  </LayoutGroup>
                 )}
                 <div className="mt-2 flex items-center justify-center gap-2">
                   {Array.from({
@@ -763,7 +866,7 @@ export default function LessonsPage() {
                         className={`px-2 py-1 rounded text-xs font-inter border cursor-pointer transition-colors duration-200 ${
                           on
                             ? "border-[#4040f2] text-[#9aa6ff] bg-[#4040f2]/10"
-                            : "border-[#404040] text-[#a6a6a6] hover:border-[#4040f2] hover:bg-[#4040f2]/10"
+                            : "border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10"
                         }`}
                         title={`HSK ${lvl}`}
                       >
@@ -773,100 +876,139 @@ export default function LessonsPage() {
                   })}
                   <button
                     onClick={() => setDialogueLevels([])}
-                    className="px-2 py-1 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6] hover:border-[#4040f2] hover:bg-[#4040f2]/10 transition-colors duration-200"
+                    className="px-2 py-1 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10 transition-colors duration-200"
                   >
                     Clear
                   </button>
                 </div>
               </div>
-              <div className="overflow-hidden">
-                <div
-                  ref={dialoguesRef}
-                  onScroll={() => {
-                    const el = dialoguesRef.current;
-                    if (!el) return;
-                    const idx = Math.round(el.scrollLeft / el.clientWidth);
-                    if (idx !== dialoguesPage) setDialoguesPage(idx);
-                  }}
-                  className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2"
-                >
-                  {allDialogues
-                    .filter((i) => !new Set(myItems.map((m) => m.id)).has(i.id))
-                    .filter((i) =>
-                      dialogueLevels.length > 0
-                        ? dialogueLevels.includes(i.level)
-                        : true
-                    )
-                    .reduce(
-                      (
-                        pages: LessonListItem[][],
-                        item: LessonListItem,
-                        idx: number
-                      ) => {
-                        const pageIdx = Math.floor(idx / 9);
-                        if (!pages[pageIdx]) pages[pageIdx] = [];
-                        pages[pageIdx].push(item);
-                        return pages;
-                      },
-                      []
-                    )
-                    .map((page, i) => {
-                      const padCount = Math.max(0, 9 - page.length);
-                      const padded = [...page, ...Array(padCount).fill(null)];
-                      return (
-                        <div
-                          key={i}
-                          className="min-w-full snap-start grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-                        >
-                          {padded.map((l: LessonListItem | null, idx2) =>
-                            l ? (
-                              <div
-                                key={l.id}
-                                className="bg-[#2e323a] rounded-xl p-4 border border-[#404040] hover:border-[#4040f2] transition-all duration-200 cursor-pointer"
-                                onClick={() => router.push(`/lessons/${l.id}`)}
-                              >
-                                <div className="flex items-start gap-3">
-                                  <div className="w-10 h-10 bg-purple-600/20 rounded-lg flex items-center justify-center">
-                                    <MessageSquare className="w-5 h-5 text-purple-500" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <p className="text-white font-inter font-semibold truncate">
-                                        {l.title || `Dialogue #${l.id}`}
-                                      </p>
-                                      <span
-                                        className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                      >
-                                        HSK {l.level}
-                                      </span>
-                                    </div>
-                                    {l.titlePinyin && (
-                                      <p className="text-[#9aa6ff] font-inter text-xs truncate">
-                                        {l.titlePinyin}
-                                      </p>
-                                    )}
-                                    {l.titleTranslation && (
-                                      <p className="text-[#a6a6a6] font-inter text-xs truncate">
-                                        {l.titleTranslation}
-                                      </p>
-                                    )}
-                                    <p className="text-[#a6a6a6] font-inter text-xs mt-1">
-                                      {new Date(l.createdAt).toLocaleString()}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            ) : (
-                              <div
-                                key={`pad-d-${idx2}`}
-                                className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
-                              />
-                            )
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
+              <div className="overflow-hidden py-2">
+                <LayoutGroup>
+                  <div
+                    ref={dialoguesRef}
+                    onScroll={() => {
+                      const el = dialoguesRef.current;
+                      if (!el) return;
+                      const idx = Math.round(el.scrollLeft / el.clientWidth);
+                      if (idx !== dialoguesPage) setDialoguesPage(idx);
+                    }}
+                    className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4"
+                  >
+                    <AnimatePresence mode="popLayout">
+                      {allDialogues
+                        .filter(
+                          (i) => !new Set(myItems.map((m) => m.id)).has(i.id)
+                        )
+                        .filter((i) =>
+                          dialogueLevels.length > 0
+                            ? dialogueLevels.includes(i.level)
+                            : true
+                        )
+                        .reduce(
+                          (
+                            pages: LessonListItem[][],
+                            item: LessonListItem,
+                            idx: number
+                          ) => {
+                            const pageIdx = Math.floor(idx / 9);
+                            if (!pages[pageIdx]) pages[pageIdx] = [];
+                            pages[pageIdx].push(item);
+                            return pages;
+                          },
+                          []
+                        )
+                        .map((page, i) => {
+                          const padCount = Math.max(0, 9 - page.length);
+                          const padded = [
+                            ...page,
+                            ...Array(padCount).fill(null),
+                          ];
+                          return (
+                            <motion.div
+                              key={i}
+                              layout
+                              className="min-w-full snap-start grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2"
+                            >
+                              <AnimatePresence mode="popLayout">
+                                {padded.map((l: LessonListItem | null, idx2) =>
+                                  l ? (
+                                    <motion.div
+                                      key={l.id}
+                                      layout
+                                      initial={{
+                                        opacity: 0,
+                                        scale: 0.8,
+                                        y: 20,
+                                      }}
+                                      animate={{
+                                        opacity: 1,
+                                        scale: 1,
+                                        y: 0,
+                                        borderColor: "#404040",
+                                      }}
+                                      exit={{ opacity: 0, scale: 0.8, y: -20 }}
+                                      transition={{
+                                        duration: 0.3,
+                                        delay: idx2 * 0.05,
+                                        layout: { duration: 0.4 },
+                                      }}
+                                      className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
+                                      onClick={() =>
+                                        router.push(`/lessons/${l.id}`)
+                                      }
+                                      whileHover={{
+                                        scale: 1.02,
+                                        borderColor: "#4040f2",
+                                      }}
+                                      whileTap={{ scale: 0.98 }}
+                                    >
+                                      <div className="flex items-start gap-3">
+                                        <div className="w-10 h-10 bg-purple-600/20 rounded-lg flex items-center justify-center">
+                                          <MessageSquare className="w-5 h-5 text-purple-500" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center justify-between gap-2">
+                                            <p className="text-white font-inter font-semibold truncate">
+                                              {l.title || `Dialogue #${l.id}`}
+                                            </p>
+                                            <span
+                                              className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                            >
+                                              HSK {l.level}
+                                            </span>
+                                          </div>
+                                          {l.titlePinyin && (
+                                            <p className="text-[#9aa6ff] font-inter text-xs truncate">
+                                              {l.titlePinyin}
+                                            </p>
+                                          )}
+                                          {l.titleTranslation && (
+                                            <p className="text-[#a6a6a6] font-inter text-xs truncate">
+                                              {l.titleTranslation}
+                                            </p>
+                                          )}
+                                          <p className="text-[#a6a6a6] font-inter text-xs mt-1">
+                                            {new Date(
+                                              l.createdAt
+                                            ).toLocaleString()}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </motion.div>
+                                  ) : (
+                                    <div
+                                      key={`pad-d-${idx2}`}
+                                      className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
+                                    />
+                                  )
+                                )}
+                              </AnimatePresence>
+                            </motion.div>
+                          );
+                        })}
+                    </AnimatePresence>
+                  </div>
+                </LayoutGroup>
                 <div className="mt-2 flex items-center justify-center gap-2">
                   {Array.from({
                     length: Math.max(
