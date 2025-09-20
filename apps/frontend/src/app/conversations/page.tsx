@@ -7,7 +7,7 @@ import {
   type Message,
   type ConversationSummary,
 } from "@/lib/api/conversations";
-import { Mic, Send, Plus } from "lucide-react";
+import { Mic, Send, Plus, MessageCircle, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 
 export default function ConversationsPage() {
@@ -21,6 +21,11 @@ export default function ConversationsPage() {
   // Per-message toggles are inside AiMessage; no global toggles here
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  // Mobile responsiveness state
+  const [isMobile, setIsMobile] = useState(false);
+  const [showConversationsSidebar, setShowConversationsSidebar] =
+    useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -56,6 +61,20 @@ export default function ConversationsPage() {
     init();
   }, []);
 
+  // Mobile detection and sidebar management
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      // On desktop, always show sidebar. On mobile, hide by default.
+      setShowConversationsSidebar(!mobile);
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const selectConversation = async (id: number) => {
     if (conversationId === id) return;
     setConversationId(id);
@@ -82,6 +101,10 @@ export default function ConversationsPage() {
     } catch {
       toast.error("Failed to start conversation");
     }
+  };
+
+  const toggleConversationsSidebar = () => {
+    setShowConversationsSidebar(!showConversationsSidebar);
   };
 
   const addSingleToFlashcards = async (
@@ -542,9 +565,29 @@ export default function ConversationsPage() {
       title="Conversations"
       subtitle="Practice natural dialogues"
     >
-      <div className="p-4 h-full flex gap-4">
+      <div className="p-4 h-full flex gap-4 relative">
+        {/* Mobile Overlay */}
+        {isMobile && showConversationsSidebar && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+            onClick={toggleConversationsSidebar}
+          />
+        )}
+
         {/* Sidebar */}
-        <aside className="w-64 shrink-0 bg-[#1b1f26] border border-[#2a2e36] rounded-xl p-3 flex flex-col gap-3">
+        <aside
+          className={`bg-[#1b1f26] border border-[#2a2e36] rounded-xl p-3 flex flex-col gap-3 transition-all duration-300 ease-in-out ${
+            isMobile
+              ? `fixed inset-y-0 left-0 z-50 w-64 ${
+                  showConversationsSidebar
+                    ? "translate-x-0"
+                    : "-translate-x-full"
+                }`
+              : showConversationsSidebar
+                ? "w-64 shrink-0"
+                : "w-64 shrink-0"
+          }`}
+        >
           <div className="px-2 text-xs uppercase tracking-wide text-[#8a8f99]">
             Conversations
           </div>
@@ -552,7 +595,12 @@ export default function ConversationsPage() {
             {conversations.map((c) => (
               <button
                 key={c.id}
-                onClick={() => void selectConversation(c.id)}
+                onClick={() => {
+                  void selectConversation(c.id);
+                  if (isMobile) {
+                    setShowConversationsSidebar(false);
+                  }
+                }}
                 className={`w-full text-left px-3 py-2 rounded-lg border transition-colors duration-150 cursor-pointer ${
                   conversationId === c.id
                     ? "bg-[#232838] border-[#4040f2] text-[#c7cdff]"
@@ -568,15 +616,56 @@ export default function ConversationsPage() {
             ))}
           </div>
           <button
-            onClick={() => void newConversation()}
+            onClick={() => {
+              void newConversation();
+              if (isMobile) {
+                setShowConversationsSidebar(false);
+              }
+            }}
             className="mt-auto w-full py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] cursor-pointer"
           >
             + New Conversation
           </button>
         </aside>
 
+        {/* Conversations Toggle Button */}
+        {isMobile && (
+          <button
+            onClick={toggleConversationsSidebar}
+            className={`fixed z-30 p-3 rounded-lg transition-all duration-200 cursor-pointer md:hidden ${
+              showConversationsSidebar
+                ? "top-20 left-4 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
+                : "top-22 left-4 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
+            }`}
+            title={
+              showConversationsSidebar
+                ? "Hide conversations"
+                : "Show conversations"
+            }
+          >
+            <div className="flex items-center gap-2">
+              {showConversationsSidebar ? (
+                <ChevronLeft className="w-4 h-4 text-white" />
+              ) : (
+                <MessageCircle className="w-4 h-4 text-[#a6a6a6]" />
+              )}
+              <span
+                className={`text-xs font-inter ${
+                  showConversationsSidebar ? "text-white" : "text-[#a6a6a6]"
+                }`}
+              >
+                {showConversationsSidebar ? "Hide" : "Chats"}
+              </span>
+            </div>
+          </button>
+        )}
+
         {/* Main chat column */}
-        <div className="flex-1 h-full flex flex-col gap-3">
+        <div
+          className={`flex-1 h-full flex flex-col gap-3 transition-all duration-300 ease-in-out ${
+            isMobile && showConversationsSidebar ? "hidden" : ""
+          }`}
+        >
           <div className="flex-1 overflow-y-auto space-y-3 bg-[#20242b] border border-[#2e2f36] rounded-xl p-4">
             {messages.map((m) => (
               <div

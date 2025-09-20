@@ -178,7 +178,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
       {/* Toggle Button */}
       <button
         onClick={onToggle}
-        className="absolute -right-3 top-20 w-6 h-6 bg-[#2e323a] border border-[#404040] rounded-full flex items-center justify-center hover:bg-[#3a3f47] transition-colors duration-200 z-10 cursor-pointer"
+        className="absolute -right-3 top-20 w-6 h-6 bg-[#2e323a] border border-[#404040] rounded-full flex items-center justify-center hover:bg-[#3a3f47] transition-colors duration-200 z-10 cursor-pointer hidden md:flex "
       >
         {isCollapsed ? (
           <ChevronRight className="w-3 h-3 text-[#a6a6a6]" />
