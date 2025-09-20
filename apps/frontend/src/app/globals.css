@@ -57,6 +57,15 @@ html {
   font-family: var(--font-roboto);
 }
 
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* Focus styles for accessibility */
 .focus-visible:focus {
   outline: 2px solid var(--color-accent-blue);

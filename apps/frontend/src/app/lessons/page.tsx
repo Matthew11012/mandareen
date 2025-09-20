@@ -23,6 +23,7 @@ export default function LessonsPage() {
   const [dialoguesPage, setDialoguesPage] = useState(0);
   const [myStoriesPage, setMyStoriesPage] = useState(0);
   const [myDialoguesPage, setMyDialoguesPage] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
   const storiesRef = useRef<HTMLDivElement | null>(null);
   const dialoguesRef = useRef<HTMLDivElement | null>(null);
   const myStoriesRef = useRef<HTMLDivElement | null>(null);
@@ -30,10 +31,22 @@ export default function LessonsPage() {
 
   const { currentLevel } = useCurrentLevel();
   const [genLevel, setGenLevel] = useState<number | null>(null);
+  const cardsPerPage = isMobile ? 4 : 9;
   useEffect(() => {
     if (currentLevel && !genLevel) setGenLevel(currentLevel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLevel]);
+
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkScreenSize();
+    window.addEventListener("resize", checkScreenSize);
+
+    return () => window.removeEventListener("resize", checkScreenSize);
+  }, []);
 
   const [myLevels, setMyLevels] = useState<number[]>([]);
   const [storyLevels, setStoryLevels] = useState<number[]>([]);
@@ -174,7 +187,7 @@ export default function LessonsPage() {
             <div className="text-white font-inter font-semibold mb-2 text-sm">
               HSK Level
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1 sm:gap-2">
               {Array.from({ length: 7 }).map((_, idx) => {
                 const lvl = idx + 1;
                 const active = genLevel === lvl;
@@ -182,7 +195,7 @@ export default function LessonsPage() {
                   <button
                     key={lvl}
                     onClick={() => setGenLevel(active ? null : lvl)}
-                    className={`px-3 py-1 rounded-full text-xs font-inter border ${
+                    className={`px-2 py-1 sm:px-3 rounded-full text-xs sm:text-xs font-inter border ${
                       active
                         ? "border-[#4040f2] text-[#9aa6ff]"
                         : "border-[#404040] text-[#a6a6a6]"
@@ -194,7 +207,7 @@ export default function LessonsPage() {
               })}
               <button
                 onClick={() => setGenLevel(null)}
-                className="px-3 py-1 rounded-full text-xs font-inter border border-[#404040] text-[#a6a6a6] cursor-pointer "
+                className="px-2 py-1 sm:px-3 rounded-full text-xs sm:text-xs font-inter border border-[#404040] text-[#a6a6a6] cursor-pointer "
               >
                 Auto (my level)
               </button>
@@ -202,40 +215,44 @@ export default function LessonsPage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:justify-between">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
             <button
               onClick={handleGenerate}
               disabled={generating}
-              className="px-4 py-2 bg-orange-500/70 text-white rounded-lg hover:bg-orange-600/70 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 sm:px-4 bg-orange-500/70 text-white rounded-lg hover:bg-orange-600/70 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 justify-center sm:justify-start">
                 <Plus className="w-4 h-4" />
-                <span className="font-inter">Generate Story</span>
+                <span className="font-inter text-sm sm:text-base">
+                  Generate Story
+                </span>
               </div>
             </button>
             <button
               onClick={handleGenerateDialogue}
               disabled={generating}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 sm:px-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 justify-center sm:justify-start">
                 <MessageSquare className="w-4 h-4" />
-                <span className="font-inter">Generate Dialogue</span>
+                <span className="font-inter text-sm sm:text-base">
+                  Generate Dialogue
+                </span>
               </div>
             </button>
             <button
               onClick={() => setTopic("")}
               disabled={generating}
-              className="px-3 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 sm:px-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
             >
-              Clear
+              <span className="font-inter text-sm sm:text-base">Clear</span>
             </button>
           </div>
           <button
             onClick={load}
             disabled={loading}
-            className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed sm:ml-4"
             title="Refresh"
           >
             <RefreshCw
@@ -259,15 +276,18 @@ export default function LessonsPage() {
           </div>
         ) : (
           <div className="space-y-8">
-            {/* My Lessons Section (split + filters) */}
+            {/* My Lessons Section */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex gap-2 flex-col md:flex-row md:items-center justify-between ">
                 <h3 className="text-white font-inter font-semibold">
                   My Lessons
                 </h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#a6a6a6] mr-1">
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <span className="text-xs text-[#a6a6a6] mr-1 hidden sm:inline">
                     Filter by HSK:
+                  </span>
+                  <span className="text-xs text-[#a6a6a6] mr-1 sm:hidden">
+                    HSK:
                   </span>
                   {Array.from({ length: 7 }).map((_, idx) => {
                     const lvl = idx + 1;
@@ -276,20 +296,20 @@ export default function LessonsPage() {
                       <button
                         key={lvl}
                         onClick={() => toggleLevel(myLevels, setMyLevels, lvl)}
-                        className={`px-2 py-1 rounded text-xs font-inter border cursor-pointer transition-colors duration-200 ${
+                        className={`px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border cursor-pointer transition-colors duration-200 ${
                           on
                             ? "border-[#4040f2] text-[#9aa6ff] bg-[#4040f2]/10"
                             : "border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10"
                         }`}
                         title={`Filter HSK ${lvl}`}
                       >
-                        HSK {lvl}
+                        {lvl}
                       </button>
                     );
                   })}
                   <button
                     onClick={() => setMyLevels([])}
-                    className="px-2 py-1 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10 transition-colors duration-200"
+                    className="px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10 transition-colors duration-200"
                   >
                     Clear
                   </button>
@@ -323,7 +343,7 @@ export default function LessonsPage() {
                               );
                               if (idx !== myStoriesPage) setMyStoriesPage(idx);
                             }}
-                            className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4"
+                            className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide"
                           >
                             <AnimatePresence mode="popLayout">
                               {myStoriesFiltered
@@ -333,7 +353,9 @@ export default function LessonsPage() {
                                     item: LessonListItem,
                                     idx: number
                                   ) => {
-                                    const pageIdx = Math.floor(idx / 9);
+                                    const pageIdx = Math.floor(
+                                      idx / cardsPerPage
+                                    );
                                     if (!pages[pageIdx]) pages[pageIdx] = [];
                                     pages[pageIdx].push(item);
                                     return pages;
@@ -341,7 +363,10 @@ export default function LessonsPage() {
                                   []
                                 )
                                 .map((page, i) => {
-                                  const padCount = Math.max(0, 9 - page.length);
+                                  const padCount = Math.max(
+                                    0,
+                                    cardsPerPage - page.length
+                                  );
                                   const padded = [
                                     ...page,
                                     ...Array(padCount).fill(null),
@@ -444,7 +469,9 @@ export default function LessonsPage() {
                           {Array.from({
                             length: Math.max(
                               1,
-                              Math.ceil(myStoriesFiltered.length / 9)
+                              Math.ceil(
+                                myStoriesFiltered.length / (isMobile ? 4 : 9)
+                              )
                             ),
                           }).map((_, i) => (
                             <button
@@ -494,7 +521,7 @@ export default function LessonsPage() {
                               if (idx !== myDialoguesPage)
                                 setMyDialoguesPage(idx);
                             }}
-                            className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4"
+                            className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide"
                           >
                             <AnimatePresence mode="popLayout">
                               {myDialoguesFiltered
@@ -504,7 +531,9 @@ export default function LessonsPage() {
                                     item: LessonListItem,
                                     idx: number
                                   ) => {
-                                    const pageIdx = Math.floor(idx / 9);
+                                    const pageIdx = Math.floor(
+                                      idx / cardsPerPage
+                                    );
                                     if (!pages[pageIdx]) pages[pageIdx] = [];
                                     pages[pageIdx].push(item);
                                     return pages;
@@ -512,7 +541,10 @@ export default function LessonsPage() {
                                   []
                                 )
                                 .map((page, i) => {
-                                  const padCount = Math.max(0, 9 - page.length);
+                                  const padCount = Math.max(
+                                    0,
+                                    cardsPerPage - page.length
+                                  );
                                   const padded = [
                                     ...page,
                                     ...Array(padCount).fill(null),
@@ -618,7 +650,7 @@ export default function LessonsPage() {
                               Math.ceil(
                                 myItems.filter(
                                   (i) => i.lessonType === "dialogue"
-                                ).length / 9
+                                ).length / (isMobile ? 4 : 9)
                               )
                             ),
                           }).map((_, i) => (
@@ -653,11 +685,14 @@ export default function LessonsPage() {
 
             {/* Stories Section */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex gap-2 flex-col md:flex-row md:items-center justify-between">
                 <h3 className="text-white font-inter font-semibold">Stories</h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#a6a6a6] mr-1">
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <span className="text-xs text-[#a6a6a6] mr-1 hidden sm:inline">
                     Filter by HSK:
+                  </span>
+                  <span className="text-xs text-[#a6a6a6] mr-1 sm:hidden">
+                    HSK:
                   </span>
                   {Array.from({ length: 7 }).map((_, idx) => {
                     const lvl = idx + 1;
@@ -668,20 +703,20 @@ export default function LessonsPage() {
                         onClick={() =>
                           toggleLevel(storyLevels, setStoryLevels, lvl)
                         }
-                        className={`px-2 py-1 rounded text-xs font-inter border cursor-pointer transition-colors duration-200 ${
+                        className={`px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border cursor-pointer transition-colors duration-200 ${
                           on
                             ? "border-[#4040f2] text-[#9aa6ff] bg-[#4040f2]/10"
                             : "border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10"
                         }`}
                         title={`HSK ${lvl}`}
                       >
-                        HSK {lvl}
+                        {lvl}
                       </button>
                     );
                   })}
                   <button
                     onClick={() => setStoryLevels([])}
-                    className="px-2 py-1 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10 transition-colors duration-200"
+                    className="px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10 transition-colors duration-200"
                   >
                     Clear
                   </button>
@@ -712,7 +747,7 @@ export default function LessonsPage() {
                               item: LessonListItem,
                               idx: number
                             ) => {
-                              const pageIdx = Math.floor(idx / 9);
+                              const pageIdx = Math.floor(idx / cardsPerPage);
                               if (!pages[pageIdx]) pages[pageIdx] = [];
                               pages[pageIdx].push(item);
                               return pages;
@@ -720,7 +755,10 @@ export default function LessonsPage() {
                             []
                           )
                           .map((page, i) => {
-                            const padCount = Math.max(0, 9 - page.length);
+                            const padCount = Math.max(
+                              0,
+                              cardsPerPage - page.length
+                            );
                             const padded = [
                               ...page,
                               ...Array(padCount).fill(null),
@@ -817,28 +855,33 @@ export default function LessonsPage() {
                     </div>
                   </LayoutGroup>
                 )}
-                <div className="mt-2 flex items-center justify-center gap-2">
-                  {Array.from({
-                    length: Math.max(1, Math.ceil(storiesFiltered.length / 9)),
-                  }).map((_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        const el = storiesRef.current;
-                        if (!el) return;
-                        el.scrollTo({
-                          left: i * el.clientWidth,
-                          behavior: "smooth",
-                        });
-                        setStoriesPage(i);
-                      }}
-                      className={`w-2 h-2 rounded-full ${
-                        storiesPage === i ? "bg-[#9aa6ff]" : "bg-[#404040]"
-                      }`}
-                      aria-label={`Go to page ${i + 1}`}
-                    />
-                  ))}
-                </div>
+                {storiesFiltered.length > 0 && (
+                  <div className="mt-2 flex items-center justify-center gap-2">
+                    {Array.from({
+                      length: Math.max(
+                        1,
+                        Math.ceil(storiesFiltered.length / (isMobile ? 4 : 9))
+                      ),
+                    }).map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          const el = storiesRef.current;
+                          if (!el) return;
+                          el.scrollTo({
+                            left: i * el.clientWidth,
+                            behavior: "smooth",
+                          });
+                          setStoriesPage(i);
+                        }}
+                        className={`w-2 h-2 rounded-full ${
+                          storiesPage === i ? "bg-[#9aa6ff]" : "bg-[#404040]"
+                        }`}
+                        aria-label={`Go to page ${i + 1}`}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -846,13 +889,16 @@ export default function LessonsPage() {
 
             {/* Dialogues Section */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex gap-2 flex-col md:flex-row md:items-center justify-between">
                 <h3 className="text-white font-inter font-semibold">
                   Dialogues
                 </h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#a6a6a6] mr-1">
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <span className="text-xs text-[#a6a6a6] mr-1 hidden sm:inline">
                     Filter by HSK:
+                  </span>
+                  <span className="text-xs text-[#a6a6a6] mr-1 sm:hidden">
+                    HSK:
                   </span>
                   {Array.from({ length: 7 }).map((_, idx) => {
                     const lvl = idx + 1;
@@ -863,20 +909,20 @@ export default function LessonsPage() {
                         onClick={() =>
                           toggleLevel(dialogueLevels, setDialogueLevels, lvl)
                         }
-                        className={`px-2 py-1 rounded text-xs font-inter border cursor-pointer transition-colors duration-200 ${
+                        className={`px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border cursor-pointer transition-colors duration-200 ${
                           on
                             ? "border-[#4040f2] text-[#9aa6ff] bg-[#4040f2]/10"
                             : "border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10"
                         }`}
                         title={`HSK ${lvl}`}
                       >
-                        HSK {lvl}
+                        {lvl}
                       </button>
                     );
                   })}
                   <button
                     onClick={() => setDialogueLevels([])}
-                    className="px-2 py-1 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10 transition-colors duration-200"
+                    className="px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10 transition-colors duration-200"
                   >
                     Clear
                   </button>
@@ -1009,41 +1055,50 @@ export default function LessonsPage() {
                     </AnimatePresence>
                   </div>
                 </LayoutGroup>
-                <div className="mt-2 flex items-center justify-center gap-2">
-                  {Array.from({
-                    length: Math.max(
-                      1,
-                      Math.ceil(
-                        allDialogues
-                          .filter(
-                            (i) => !new Set(myItems.map((m) => m.id)).has(i.id)
-                          )
-                          .filter((i) =>
-                            dialogueLevels.length > 0
-                              ? dialogueLevels.includes(i.level)
-                              : true
-                          ).length / 9
-                      )
-                    ),
-                  }).map((_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        const el = dialoguesRef.current;
-                        if (!el) return;
-                        el.scrollTo({
-                          left: i * el.clientWidth,
-                          behavior: "smooth",
-                        });
-                        setDialoguesPage(i);
-                      }}
-                      className={`w-2 h-2 rounded-full ${
-                        dialoguesPage === i ? "bg-[#9aa6ff]" : "bg-[#404040]"
-                      }`}
-                      aria-label={`Go to page ${i + 1}`}
-                    />
-                  ))}
-                </div>
+                {allDialogues
+                  .filter((i) => !new Set(myItems.map((m) => m.id)).has(i.id))
+                  .filter((i) =>
+                    dialogueLevels.length > 0
+                      ? dialogueLevels.includes(i.level)
+                      : true
+                  ).length > 0 && (
+                  <div className="mt-2 flex items-center justify-center gap-2">
+                    {Array.from({
+                      length: Math.max(
+                        1,
+                        Math.ceil(
+                          allDialogues
+                            .filter(
+                              (i) =>
+                                !new Set(myItems.map((m) => m.id)).has(i.id)
+                            )
+                            .filter((i) =>
+                              dialogueLevels.length > 0
+                                ? dialogueLevels.includes(i.level)
+                                : true
+                            ).length / (isMobile ? 4 : 9)
+                        )
+                      ),
+                    }).map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          const el = dialoguesRef.current;
+                          if (!el) return;
+                          el.scrollTo({
+                            left: i * el.clientWidth,
+                            behavior: "smooth",
+                          });
+                          setDialoguesPage(i);
+                        }}
+                        className={`w-2 h-2 rounded-full ${
+                          dialoguesPage === i ? "bg-[#9aa6ff]" : "bg-[#404040]"
+                        }`}
+                        aria-label={`Go to page ${i + 1}`}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
