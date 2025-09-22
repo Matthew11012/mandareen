@@ -19,6 +19,35 @@ export class OpenAIService {
       apiKey: process.env.OPENAI_API_KEY,
     });
   }
+
+  async analyzeChineseSentence(
+    text: string,
+  ): Promise<{ pinyin: string; translation: string }> {
+    const model = process.env.OPENAI_MODEL_TRANSLATE || 'gpt-4o-mini';
+    const completion = await this.openai.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a Mandarin assistant. For the given text (which may or may not be Chinese), if it is Chinese, return STRICT JSON with keys pinyin and translation for the exact input. If it is not Chinese, return {"pinyin":"","translation":""}. No commentary.',
+        },
+        { role: 'user', content: text },
+      ],
+      response_format: { type: 'json_object' },
+    } as any);
+    const content = completion.choices?.[0]?.message?.content;
+    if (!content) return { pinyin: '', translation: '' };
+    try {
+      const data = JSON.parse(content);
+      return {
+        pinyin: (data.pinyin || '').toLowerCase(),
+        translation: data.translation || '',
+      };
+    } catch {
+      return { pinyin: '', translation: '' };
+    }
+  }
   /**
    * Transcribe an audio buffer into Mandarin text using OpenAI STT.
    * Accepts common MIME types like audio/webm, audio/mpeg, audio/mp4, audio/wav, audio/ogg, audio/m4a.
@@ -106,6 +135,17 @@ export class OpenAIService {
       hskLevel?: number;
     }>
   > {
+    // Disabled via configuration (default OFF). Return no extra vocab to rely on DB segmentation only.
+    const flag = (process.env.ENABLE_ANNOTATE_CHINESE || '').toLowerCase();
+    if (
+      flag === '' ||
+      flag === '0' ||
+      flag === 'false' ||
+      flag === 'off' ||
+      flag === 'disabled'
+    ) {
+      return [];
+    }
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const completion = await this.openai.chat.completions.create({
       model,
@@ -118,7 +158,6 @@ export class OpenAIService {
         { role: 'user', content: text },
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.2,
     } as any);
     const content = completion.choices?.[0]?.message?.content;
     if (!content) return [];

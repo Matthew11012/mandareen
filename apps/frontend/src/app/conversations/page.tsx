@@ -220,6 +220,32 @@ export default function ConversationsPage() {
                   : m
               )
             );
+          } else if (payload.type === "user-update" && payload.data) {
+            try {
+              const data = JSON.parse(payload.data);
+              setMessages((prev) => {
+                const next = prev.map((m) =>
+                  m.id === data.id
+                    ? {
+                        ...m,
+                        pinyin:
+                          typeof data.pinyin === "string"
+                            ? data.pinyin
+                            : m.pinyin,
+                        translation:
+                          typeof data.translation === "string"
+                            ? data.translation
+                            : m.translation,
+                        segments: Array.isArray(data.segments)
+                          ? data.segments
+                          : undefined,
+                      }
+                    : m
+                );
+                return next;
+              });
+              // Avoid destructive refetch during SSE; keep AI placeholder intact
+            } catch {}
           } else if (payload.type === "final" && payload.data) {
             const data = JSON.parse(payload.data);
             setMessages((prev) =>
@@ -243,6 +269,33 @@ export default function ConversationsPage() {
           }
         } catch {}
       };
+      es.addEventListener("user-update", (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(
+            (e as unknown as MessageEvent).data as string
+          );
+          setMessages((prev) => {
+            const next = prev.map((m) =>
+              m.id === data.id
+                ? {
+                    ...m,
+                    pinyin:
+                      typeof data.pinyin === "string" ? data.pinyin : m.pinyin,
+                    translation:
+                      typeof data.translation === "string"
+                        ? data.translation
+                        : m.translation,
+                    segments: Array.isArray(data.segments)
+                      ? data.segments
+                      : undefined,
+                  }
+                : m
+            );
+            return next;
+          });
+          // Avoid destructive refetch during SSE; keep AI placeholder intact
+        } catch {}
+      });
       es.addEventListener("final", (e: MessageEvent) => {
         try {
           const data = JSON.parse(
@@ -381,6 +434,28 @@ export default function ConversationsPage() {
                       : m
                   )
                 );
+              } else if (payload.type === "user-update" && payload.data) {
+                const data = JSON.parse(payload.data);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === data.id
+                      ? {
+                          ...m,
+                          pinyin:
+                            typeof data.pinyin === "string"
+                              ? data.pinyin
+                              : m.pinyin,
+                          translation:
+                            typeof data.translation === "string"
+                              ? data.translation
+                              : m.translation,
+                          segments: Array.isArray(data.segments)
+                            ? data.segments
+                            : undefined,
+                        }
+                      : m
+                  )
+                );
               } else if (payload.type === "final" && payload.data) {
                 const data = JSON.parse(payload.data);
                 setMessages((prev) =>
@@ -404,6 +479,33 @@ export default function ConversationsPage() {
               }
             } catch {}
           };
+          es.addEventListener("user-update", (e: MessageEvent) => {
+            try {
+              const data = JSON.parse(
+                (e as unknown as MessageEvent).data as string
+              );
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === data.id
+                    ? {
+                        ...m,
+                        pinyin:
+                          typeof data.pinyin === "string"
+                            ? data.pinyin
+                            : m.pinyin,
+                        translation:
+                          typeof data.translation === "string"
+                            ? data.translation
+                            : m.translation,
+                        segments: Array.isArray(data.segments)
+                          ? data.segments
+                          : undefined,
+                      }
+                    : m
+                )
+              );
+            } catch {}
+          });
           es.addEventListener("final", (e: MessageEvent) => {
             try {
               const data = JSON.parse(
@@ -803,82 +905,92 @@ export default function ConversationsPage() {
           >
             {messages.map((m) => (
               <div
-                key={m.id}
+                key={`${m.id}-${m.createdAt}`}
                 className={m.role === "user" ? "ml-auto" : "mr-auto"}
               >
-                {m.role === "ai" ? (
-                  <div className="mb-1 flex gap-2">
-                    {m.audioUrl ? (
-                      <>
-                        <audio
-                          id={`audio-${m.id}`}
-                          src={resolveMediaUrl(m.audioUrl)}
-                          preload="none"
-                        />
-                        <button
-                          onClick={() => {
-                            const el = document.getElementById(
-                              `audio-${m.id}`
-                            ) as HTMLAudioElement | null;
-                            if (!el) return;
-                            if (el.paused) {
-                              void el.play();
-                              setPlaying((s) => ({ ...s, [m.id]: true }));
-                              el.onended = () =>
-                                setPlaying((s) => ({ ...s, [m.id]: false }));
-                            } else {
-                              el.pause();
+                <div
+                  className={`mb-1 flex gap-2 w-fit ${
+                    m.role === "user" ? "ml-auto" : ""
+                  }`}
+                >
+                  {m.role === "ai" && m.audioUrl ? (
+                    <>
+                      <audio
+                        id={`audio-${m.id}`}
+                        src={resolveMediaUrl(m.audioUrl)}
+                        preload="none"
+                      />
+                      <button
+                        onClick={() => {
+                          const el = document.getElementById(
+                            `audio-${m.id}`
+                          ) as HTMLAudioElement | null;
+                          if (!el) return;
+                          if (el.paused) {
+                            void el.play();
+                            setPlaying((s) => ({ ...s, [m.id]: true }));
+                            el.onended = () =>
                               setPlaying((s) => ({ ...s, [m.id]: false }));
-                            }
-                          }}
-                          className={`px-2 py-1 text-xs rounded border cursor-pointer ${
-                            playing[m.id]
-                              ? "border-[#4040f2] text-[#9aa6ff]"
-                              : "border-[#404040] text-[#a6a6a6]"
-                          }`}
-                          title={playing[m.id] ? "Pause audio" : "Play audio"}
-                        >
-                          <div className="flex items-center gap-1">
-                            <Volume2 className="w-4 h-4" />
-                            <span>{playing[m.id] ? "Pause" : "Play"}</span>
-                          </div>
-                        </button>
-                      </>
-                    ) : null}
-                    {Array.isArray(m.segments) && m.segments.length > 0 ? (
-                      <>
-                        <button
-                          onClick={() =>
-                            setAiShowPinyin((s) => ({ ...s, [m.id]: !s[m.id] }))
+                          } else {
+                            el.pause();
+                            setPlaying((s) => ({ ...s, [m.id]: false }));
                           }
-                          className={`px-2 py-1 text-xs rounded border ${
-                            aiShowPinyin[m.id]
-                              ? "border-[#4040f2] text-[#9aa6ff]"
-                              : "border-[#404040] text-[#a6a6a6]"
-                          } cursor-pointer`}
-                        >
-                          Pinyin {aiShowPinyin[m.id] ? "On" : "Off"}
-                        </button>
-                        <button
-                          onClick={() =>
-                            setAiShowTrans((s) => ({ ...s, [m.id]: !s[m.id] }))
-                          }
-                          className={`px-2 py-1 text-xs rounded border ${
-                            aiShowTrans[m.id]
-                              ? "border-[#4040f2] text-[#9aa6ff]"
-                              : "border-[#404040] text-[#a6a6a6]"
-                          } cursor-pointer`}
-                        >
-                          Translation {aiShowTrans[m.id] ? "On" : "Off"}
-                        </button>
-                      </>
-                    ) : (
-                      <div className="text-[10px] text-[#808080] px-2 py-1 border border-dashed border-[#404040] rounded">
+                        }}
+                        className={`px-2 py-1 text-xs rounded border cursor-pointer ${
+                          playing[m.id]
+                            ? "border-[#4040f2] text-[#9aa6ff]"
+                            : "border-[#404040] text-[#a6a6a6]"
+                        }`}
+                        title={playing[m.id] ? "Pause audio" : "Play audio"}
+                      >
+                        <div className="flex items-center gap-1">
+                          <Volume2 className="w-4 h-4" />
+                          <span>{playing[m.id] ? "Pause" : "Play"}</span>
+                        </div>
+                      </button>
+                    </>
+                  ) : null}
+                  {(Array.isArray(m.segments) && m.segments.length > 0) ||
+                  (m.pinyin && m.pinyin.trim().length > 0) ||
+                  (m.translation && m.translation.trim().length > 0) ? (
+                    <>
+                      <button
+                        onClick={() =>
+                          setAiShowPinyin((s) => ({ ...s, [m.id]: !s[m.id] }))
+                        }
+                        className={`px-2 py-1 text-xs rounded border ${
+                          aiShowPinyin[m.id]
+                            ? "border-[#4040f2] text-[#9aa6ff]"
+                            : "border-[#404040] text-[#a6a6a6]"
+                        } cursor-pointer`}
+                      >
+                        Pinyin {aiShowPinyin[m.id] ? "On" : "Off"}
+                      </button>
+                      <button
+                        onClick={() =>
+                          setAiShowTrans((s) => ({ ...s, [m.id]: !s[m.id] }))
+                        }
+                        className={`px-2 py-1 text-xs rounded border ${
+                          aiShowTrans[m.id]
+                            ? "border-[#4040f2] text-[#9aa6ff]"
+                            : "border-[#404040] text-[#a6a6a6]"
+                        } cursor-pointer`}
+                      >
+                        Translation {aiShowTrans[m.id] ? "On" : "Off"}
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2 text-[10px] text-[#a6a6a6] px-2 py-1 border border-dashed border-[#404040] rounded">
+                      <span className="relative inline-flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4040f2] opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-[#4040f2]"></span>
+                      </span>
+                      <span>
                         Processing… pinyin & translation will appear shortly
-                      </div>
-                    )}
-                  </div>
-                ) : null}
+                      </span>
+                    </div>
+                  )}
+                </div>
                 <div
                   className={`max-w-[85%] w-fit rounded-lg px-3 py-2 border ${
                     m.role === "user"
@@ -886,23 +998,17 @@ export default function ConversationsPage() {
                       : "mr-auto bg-[#26322b] border-[#35503c]"
                   }`}
                 >
-                  {m.role === "ai" ? (
-                    <AiMessage
-                      m={{
-                        ...m,
-                        segments:
-                          Array.isArray(m.segments) && m.segments.length > 0
-                            ? m.segments
-                            : buildFallbackSegments(m.hanzi, m.pinyin),
-                      }}
-                      showP={!!aiShowPinyin[m.id]}
-                      showT={!!aiShowTrans[m.id]}
-                    />
-                  ) : (
-                    <div className="text-white font-inter text-[15px]">
-                      {m.hanzi}
-                    </div>
-                  )}
+                  <AiMessage
+                    m={{
+                      ...m,
+                      segments:
+                        Array.isArray(m.segments) && m.segments.length > 0
+                          ? m.segments
+                          : buildFallbackSegments(m.hanzi, m.pinyin),
+                    }}
+                    showP={!!aiShowPinyin[m.id]}
+                    showT={!!aiShowTrans[m.id]}
+                  />
                   <div className="text-[10px] text-[#808080] mt-1">
                     {new Date(m.createdAt).toLocaleTimeString()}
                   </div>

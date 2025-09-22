@@ -34,11 +34,13 @@ export class ConversationsService {
     // Attach segmentation for AI messages so frontend can render multi-word clickable tokens
     const enriched = await Promise.all(
       msgs.map(async (m) => {
-        if (m.role !== 'ai') return m as any;
         try {
-          const segs = await this.segmentationService.segmentText(
-            m.hanzi || '',
+          const text = m.hanzi || '';
+          const hasChinese = Array.from(text).some((ch) =>
+            this.isChineseChar(ch),
           );
+          if (!hasChinese) return m as any;
+          const segs = await this.segmentationService.segmentText(text);
           const charPinyinArray = (m.pinyin || '')
             .split(/\s+/)
             .map((s) => s.trim())
@@ -46,7 +48,7 @@ export class ConversationsService {
           const segments = segs.map((s) => {
             let segPinyin = (s.pinyin || '').toLowerCase();
             if (!segPinyin || segPinyin.trim().length === 0) {
-              const hann = (m.hanzi || '') as string;
+              const hann = text as string;
               const slice = charPinyinArray
                 .slice(s.startIndex, s.endIndex)
                 .filter((_, idx) =>
@@ -107,7 +109,6 @@ export class ConversationsService {
       // Fallback: create if not found
       convo = await this.prisma.conversation.create({ data: { userId } });
     }
-
     const userMsg = await this.prisma.message.create({
       data: {
         conversationId,
@@ -117,8 +118,7 @@ export class ConversationsService {
         translation: '',
       },
     });
-
-    // Return quickly; AI reply will be produced via SSE stream
+    // Return quickly; AI reply will be produced via SSE stream, and user enrichment will be sent via SSE as well
     return { user: userMsg } as any;
   }
 
@@ -227,6 +227,85 @@ export class ConversationsService {
             }
             fullText += delta;
             subscriber.next({ data: JSON.stringify({ hanziDelta: delta }) });
+          }
+
+          // User message enrichment (pinyin/translation + segments)
+          // Ensure this emits before we send 'final' so the client doesn't miss it
+          try {
+            const text = hanzi;
+            const hasChinese = Array.from(text).some((ch) =>
+              this.isChineseChar(ch as any),
+            );
+            if (hasChinese) {
+              const analyzed = await (
+                this.openai as any
+              ).analyzeChineseSentence(text);
+              const segs = await this.segmentationService.segmentText(text);
+              // Build char-level pinyin array from analyzed pinyin for fallback filling
+              const charPinyinArray = (analyzed.pinyin || '')
+                .split(/\s+/)
+                .map((s: string) => s.trim())
+                .filter((s: string) => s.length > 0);
+              const segments = segs.map((s) => {
+                let segPinyin = (s.pinyin || '').toLowerCase();
+                if (!segPinyin || segPinyin.trim().length === 0) {
+                  const hann = text as string;
+                  const slice = charPinyinArray
+                    .slice(s.startIndex, s.endIndex)
+                    .filter((_, idx) =>
+                      this.isChineseChar(hann[s.startIndex + idx]),
+                    )
+                    .filter((p) => (p || '').trim().length > 0);
+                  if (slice.length > 0) segPinyin = slice.join(' ');
+                }
+                const segPinyinTone = this.toToneMarks(segPinyin);
+                return {
+                  text: s.word,
+                  startIndex: s.startIndex,
+                  endIndex: s.endIndex,
+                  isWord: s.isWord,
+                  hskLevel: s.hskLevel,
+                  pinyin: segPinyinTone,
+                  definition: s.definition,
+                  definitions: s.definitions,
+                };
+              });
+              // Update latest user message with tone-mark pinyin
+              const latestUser = await this.prisma.message.findFirst({
+                where: { conversationId, role: 'user' },
+                orderBy: { createdAt: 'desc' },
+              });
+              if (latestUser) {
+                await this.prisma.message.update({
+                  where: { id: latestUser.id },
+                  data: {
+                    pinyin: this.toToneMarks(analyzed.pinyin) || '',
+                    translation: analyzed.translation || '',
+                  },
+                });
+                // Emit a user-update event so frontend can show toggles immediately
+                const userUpdatePayload = JSON.stringify({
+                  id: latestUser.id,
+                  segments,
+                  pinyin: this.toToneMarks(analyzed.pinyin) || '',
+                  translation: analyzed.translation || '',
+                });
+                // Default event for onmessage handlers
+                subscriber.next({
+                  data: JSON.stringify({
+                    type: 'user-update',
+                    data: userUpdatePayload,
+                  }),
+                });
+                // Named event for addEventListener('user-update') handlers
+                subscriber.next({
+                  event: 'user-update',
+                  data: userUpdatePayload,
+                });
+              }
+            }
+          } catch (err) {
+            this.logger.warn('User enrichment failed', err as any);
           }
 
           // After stream ends, get final structured fields using our non-stream api with context
