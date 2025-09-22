@@ -46,6 +46,7 @@ export class SegmentationService {
       select: {
         id: true,
         hanzi: true,
+        traditional: true,
         pinyin: true,
         definition: true,
         hskLevel: true,
@@ -63,6 +64,20 @@ export class SegmentationService {
       this.maxTokenLength = Math.max(this.maxTokenLength, item.hanzi.length);
       this.firstCharSet.add(item.hanzi.charAt(0));
       idToHanzi.set(item.id, item.hanzi);
+      // Also index traditional if present
+      if (item.traditional && !this.dictionary.has(item.traditional)) {
+        this.dictionary.set(item.traditional, {
+          hskLevel: item.hskLevel ?? undefined,
+          pinyin: (item.pinyin || '').toLowerCase() || undefined,
+          definition: item.definition || undefined,
+          definitions: item.definition ? [item.definition] : undefined,
+        });
+        this.maxTokenLength = Math.max(
+          this.maxTokenLength,
+          item.traditional.length,
+        );
+        this.firstCharSet.add(item.traditional.charAt(0));
+      }
     }
 
     // 2) Load senses and aggregate richer definitions/pinyin
