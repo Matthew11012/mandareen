@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Passage } from '../assessment/models/passage.model';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -16,6 +18,85 @@ export class OpenAIService {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
+  }
+  /**
+   * Transcribe an audio buffer into Mandarin text using OpenAI STT.
+   * Accepts common MIME types like audio/webm, audio/mpeg, audio/mp4, audio/wav, audio/ogg, audio/m4a.
+   */
+  async transcribeAudio(buffer: Buffer, mimeType: string): Promise<string> {
+    const model = process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe';
+    // Persist to a temp file to ensure compatibility with OpenAI SDK file upload
+    const ext = this.mimeToExtension(mimeType) || 'webm';
+    const tempDir = path.resolve(process.cwd(), 'uploads', 'tmp');
+    await fs.promises.mkdir(tempDir, { recursive: true });
+    const tempFile = path.join(tempDir, `stt-${Date.now()}.${ext}`);
+    await fs.promises.writeFile(tempFile, buffer);
+    try {
+      const fileStream = fs.createReadStream(tempFile);
+      const result = await this.openai.audio.transcriptions.create({
+        file: fileStream as any,
+        model,
+        // language can be set to zh if needed: language: 'zh',
+      } as any);
+      const text = (result as any)?.text || '';
+      return (text || '').trim();
+    } finally {
+      // Clean up temp file
+      fs.promises.unlink(tempFile).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Synthesize Mandarin speech (TTS) from text. Returns audio Buffer and content type.
+   */
+  async synthesizeSpeech(
+    text: string,
+    voice?: string,
+  ): Promise<{
+    audioBuffer: Buffer;
+    contentType: string;
+    fileExtension: string;
+  }> {
+    const model = process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts';
+    const chosenVoice = voice || process.env.OPENAI_TTS_VOICE || 'alloy';
+    const format = (process.env.OPENAI_TTS_FORMAT || 'mp3').toLowerCase();
+    const resp = await (this.openai as any).audio.speech.create({
+      model,
+      voice: chosenVoice,
+      input: text,
+      format,
+    } as any);
+    // The SDK returns a web-like Response
+    const arrayBuffer = await resp.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const contentType = this.extensionToContentType(format) || 'audio/mpeg';
+    return { audioBuffer: buffer, contentType, fileExtension: format };
+  }
+
+  private mimeToExtension(mime: string): string | undefined {
+    const map: Record<string, string> = {
+      'audio/webm': 'webm',
+      'audio/mpeg': 'mp3',
+      'audio/mp3': 'mp3',
+      'audio/mp4': 'm4a',
+      'audio/x-m4a': 'm4a',
+      'audio/ogg': 'ogg',
+      'audio/wav': 'wav',
+      'audio/x-wav': 'wav',
+    };
+    return map[mime]?.toLowerCase();
+  }
+
+  private extensionToContentType(ext: string): string | undefined {
+    const map: Record<string, string> = {
+      mp3: 'audio/mpeg',
+      m4a: 'audio/mp4',
+      wav: 'audio/wav',
+      webm: 'audio/webm',
+      ogg: 'audio/ogg',
+      opus: 'audio/ogg',
+    };
+    return map[ext.toLowerCase()];
   }
   async annotateChinese(text: string): Promise<
     Array<{

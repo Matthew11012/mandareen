@@ -7,7 +7,15 @@ import {
   type Message,
   type ConversationSummary,
 } from "@/lib/api/conversations";
-import { Mic, Send, Plus, MessageCircle, ChevronLeft } from "lucide-react";
+import {
+  Mic,
+  Send,
+  Plus,
+  MessageCircle,
+  ChevronLeft,
+  Volume2,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export default function ConversationsPage() {
@@ -18,9 +26,21 @@ export default function ConversationsPage() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [aiShowPinyin, setAiShowPinyin] = useState<Record<number, boolean>>({});
   const [aiShowTrans, setAiShowTrans] = useState<Record<number, boolean>>({});
+  const [playing, setPlaying] = useState<Record<number, boolean>>({});
   // Per-message toggles are inside AiMessage; no global toggles here
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const [recPrompt, setRecPrompt] = useState<string>("Tap to speak");
+  const [uploadingAudio, setUploadingAudio] = useState<boolean>(false);
+  const apiBase = (
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
+  ).replace(/\/api$/, "");
+  const resolveMediaUrl = (u?: string) => {
+    if (!u) return undefined;
+    if (/^https?:\/\//i.test(u)) return u;
+    if (u.startsWith("/")) return `${apiBase}${u}`;
+    return `${apiBase}/${u}`;
+  };
 
   // Mobile responsiveness state
   const [isMobile, setIsMobile] = useState(false);
@@ -306,12 +326,107 @@ export default function ConversationsPage() {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       rec.onstop = async () => {
-        // const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        // Placeholder: You can wire this to a speech-to-text API and set the result into input
-        toast("Audio recorded. Transcription not yet implemented.");
+        try {
+          if (!conversationId) return;
+          const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+          setUploadingAudio(true);
+          const { user } = await conversationsApi.sendAudio(
+            conversationId,
+            blob
+          );
+          // Append user message
+          setMessages((prev) => [...prev, user]);
+          // Start SSE stream for AI reply using the transcribed hanzi
+          const url = conversationsApi.streamUrl(
+            conversationId,
+            user.hanzi || ""
+          );
+          const es = new EventSource(url);
+          const aiMsgId = Date.now() + 1;
+          const createdAt = new Date().toISOString();
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: aiMsgId,
+              role: "ai",
+              hanzi: "",
+              pinyin: "",
+              translation: "",
+              createdAt,
+            } as Message,
+          ]);
+          es.onmessage = (e) => {
+            try {
+              const payload = JSON.parse(e.data);
+              if (payload.hanziDelta) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMsgId
+                      ? { ...m, hanzi: (m.hanzi || "") + payload.hanziDelta }
+                      : m
+                  )
+                );
+              } else if (payload.type === "final" && payload.data) {
+                const data = JSON.parse(payload.data);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMsgId
+                      ? {
+                          ...m,
+                          id: data.id ?? m.id,
+                          hanzi: data.hanzi || m.hanzi,
+                          pinyin: data.pinyin || "",
+                          translation: data.translation || "",
+                          audioUrl: data.audioUrl || undefined,
+                          segments: Array.isArray(data.segments)
+                            ? data.segments
+                            : undefined,
+                        }
+                      : m
+                  )
+                );
+                es.close();
+              }
+            } catch {}
+          };
+          es.addEventListener("final", (e: MessageEvent) => {
+            try {
+              const data = JSON.parse(
+                (e as unknown as MessageEvent).data as string
+              );
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === aiMsgId
+                    ? {
+                        ...m,
+                        id: data.id ?? m.id,
+                        hanzi: data.hanzi || m.hanzi,
+                        pinyin: data.pinyin || "",
+                        translation: data.translation || "",
+                        audioUrl: data.audioUrl || undefined,
+                        segments: Array.isArray(data.segments)
+                          ? data.segments
+                          : undefined,
+                      }
+                    : m
+                )
+              );
+            } catch {}
+            es.close();
+          });
+          es.onerror = () => {
+            es.close();
+          };
+        } catch {
+          toast.error("Failed to send audio");
+        } finally {
+          setUploadingAudio(false);
+          setRecPrompt("Tap to speak");
+        }
       };
       rec.start();
       setRecording(true);
+      setRecPrompt("Listening... Tap when done");
     } catch {
       toast.error("Mic permission denied");
     }
@@ -322,6 +437,7 @@ export default function ConversationsPage() {
     if (rec && rec.state !== "inactive") {
       rec.stop();
       setRecording(false);
+      setRecPrompt("Processing...");
     }
   };
 
@@ -674,6 +790,43 @@ export default function ConversationsPage() {
               >
                 {m.role === "ai" ? (
                   <div className="mb-1 flex gap-2">
+                    {m.audioUrl ? (
+                      <>
+                        <audio
+                          id={`audio-${m.id}`}
+                          src={resolveMediaUrl(m.audioUrl)}
+                          preload="none"
+                        />
+                        <button
+                          onClick={() => {
+                            const el = document.getElementById(
+                              `audio-${m.id}`
+                            ) as HTMLAudioElement | null;
+                            if (!el) return;
+                            if (el.paused) {
+                              void el.play();
+                              setPlaying((s) => ({ ...s, [m.id]: true }));
+                              el.onended = () =>
+                                setPlaying((s) => ({ ...s, [m.id]: false }));
+                            } else {
+                              el.pause();
+                              setPlaying((s) => ({ ...s, [m.id]: false }));
+                            }
+                          }}
+                          className={`px-2 py-1 text-xs rounded border cursor-pointer ${
+                            playing[m.id]
+                              ? "border-[#4040f2] text-[#9aa6ff]"
+                              : "border-[#404040] text-[#a6a6a6]"
+                          }`}
+                          title={playing[m.id] ? "Pause audio" : "Play audio"}
+                        >
+                          <div className="flex items-center gap-1">
+                            <Volume2 className="w-4 h-4" />
+                            <span>{playing[m.id] ? "Pause" : "Play"}</span>
+                          </div>
+                        </button>
+                      </>
+                    ) : null}
                     <button
                       onClick={() =>
                         setAiShowPinyin((s) => ({ ...s, [m.id]: !s[m.id] }))
@@ -734,18 +887,42 @@ export default function ConversationsPage() {
 
           <div className="flex items-center gap-2">
             <button
-              onMouseDown={startRecording}
-              onMouseUp={stopRecording}
-              onTouchStart={startRecording}
-              onTouchEnd={stopRecording}
-              className={`p-2 rounded-lg border transition-colors duration-200 cursor-pointer ${
+              onClick={() => {
+                if (!recording) startRecording();
+                else stopRecording();
+              }}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors duration-200 cursor-pointer ${
                 recording
-                  ? "bg-red-600/20 border-red-600/40 text-red-300"
-                  : "bg-green-600/20 border-green-600/40 text-green-300 hover:border-green-600"
+                  ? "bg-red-600/10 border-red-600/40 text-red-200"
+                  : "bg-[#1b1f26] border-[#2e323a] text-[#a6a6a6] hover:border-[#4040f2]"
               }`}
-              title={recording ? "Release to stop" : "Hold to speak"}
+              title={recording ? "Tap when done" : "Tap to speak"}
             >
-              <Mic className="w-4 h-4" />
+              <div className="relative">
+                <div
+                  className={`rounded-full p-2 ${
+                    recording ? "bg-red-600/20" : "bg-green-600/20"
+                  }`}
+                >
+                  <Mic className="w-4 h-4" />
+                </div>
+                {recording ? (
+                  <span className="absolute inset-0 rounded-full ring-2 ring-red-500 animate-ping" />
+                ) : null}
+              </div>
+              <div className="flex flex-col items-start">
+                <span className="text-xs font-medium text-white">
+                  {recPrompt}
+                </span>
+                <span className="text-[10px] text-[#808080]">
+                  {recording
+                    ? "Start speaking • Tap when done"
+                    : "Mic uses your browser audio"}
+                </span>
+              </div>
+              {uploadingAudio ? (
+                <Loader2 className="w-4 h-4 animate-spin ml-2" />
+              ) : null}
             </button>
 
             <input

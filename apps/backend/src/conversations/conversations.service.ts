@@ -12,9 +12,9 @@ export class ConversationsService {
     private readonly openai: OpenAIService,
     private readonly segmentationService: SegmentationService,
   ) {
-    void this.prisma;
-    void this.openai;
-    void this.segmentationService;
+    void prisma;
+    void openai;
+    void segmentationService;
   }
 
   async startConversation(userId: number) {
@@ -122,6 +122,40 @@ export class ConversationsService {
     return { user: userMsg } as any;
   }
 
+  async sendUserAudioMessage({
+    conversationId,
+    userId,
+    audioBuffer,
+    mimeType,
+  }: {
+    conversationId: number;
+    userId: number;
+    audioBuffer: Buffer;
+    mimeType: string;
+  }) {
+    let convo = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, userId },
+    });
+    if (!convo) {
+      convo = await this.prisma.conversation.create({ data: { userId } });
+    }
+    // Transcribe audio to text (Mandarin)
+    const hanzi = await (this.openai as any).transcribeAudio(
+      audioBuffer,
+      mimeType,
+    );
+    const userMsg = await this.prisma.message.create({
+      data: {
+        conversationId,
+        role: 'user',
+        hanzi,
+        pinyin: '',
+        translation: '',
+      },
+    });
+    return { user: userMsg } as any;
+  }
+
   streamReply({
     conversationId,
     userId,
@@ -211,7 +245,7 @@ export class ConversationsService {
           const charPinyinArray = await this.computeSentencePinyinArray(
             ai.hanzi || fullText,
           );
-          const aiMsg = await this.prisma.message.create({
+          let aiMsg = await this.prisma.message.create({
             data: {
               conversationId,
               role: 'ai',
@@ -263,6 +297,26 @@ export class ConversationsService {
               definitions: s.definitions,
             };
           });
+          // Generate TTS audio and persist file, then update message.audioUrl
+          try {
+            const { audioBuffer, fileExtension } = await (
+              this.openai as any
+            ).synthesizeSpeech(ai.hanzi || fullText);
+            const fs = await import('fs');
+            const path = await import('path');
+            const baseDir = path.resolve(process.cwd(), 'uploads', 'audio');
+            await fs.promises.mkdir(baseDir, { recursive: true });
+            const fileName = `conv-${conversationId}-msg-${aiMsg.id}-${Date.now()}.${fileExtension}`;
+            const filePath = path.join(baseDir, fileName);
+            await fs.promises.writeFile(filePath, audioBuffer);
+            const publicUrl = `/media/audio/${fileName}`;
+            aiMsg = await this.prisma.message.update({
+              where: { id: aiMsg.id },
+              data: { audioUrl: publicUrl },
+            });
+          } catch (err) {
+            this.logger.warn('TTS synthesis failed (stream final)', err as any);
+          }
           subscriber.next({
             event: 'final',
             data: JSON.stringify({ ...aiMsg, segments }),
@@ -324,7 +378,7 @@ export class ConversationsService {
                 definitions: s.definitions,
               };
             });
-            const aiMsg = await this.prisma.message.create({
+            let aiMsg = await this.prisma.message.create({
               data: {
                 conversationId,
                 role: 'ai',
@@ -333,6 +387,26 @@ export class ConversationsService {
                 translation: fallback.translation || '',
               },
             });
+            // Attempt TTS so audioUrl is included in final payload as well
+            try {
+              const { audioBuffer, fileExtension } = await (
+                this.openai as any
+              ).synthesizeSpeech(fallback.hanzi || '');
+              const fs = await import('fs');
+              const path = await import('path');
+              const baseDir = path.resolve(process.cwd(), 'uploads', 'audio');
+              await fs.promises.mkdir(baseDir, { recursive: true });
+              const fileName = `conv-${conversationId}-msg-${aiMsg.id}-${Date.now()}.${fileExtension}`;
+              const filePath = path.join(baseDir, fileName);
+              await fs.promises.writeFile(filePath, audioBuffer);
+              const publicUrl = `/media/audio/${fileName}`;
+              aiMsg = await this.prisma.message.update({
+                where: { id: aiMsg.id },
+                data: { audioUrl: publicUrl },
+              });
+            } catch (err) {
+              this.logger.warn('TTS synthesis failed (fallback)', err as any);
+            }
             subscriber.next({
               event: 'final',
               data: JSON.stringify({ ...aiMsg, segments: segments2 }),

@@ -19,6 +19,7 @@ export interface Message {
   pinyin: string;
   translation: string;
   createdAt: string;
+  audioUrl?: string;
   segments?: Array<{
     text: string;
     startIndex: number;
@@ -57,6 +58,21 @@ export const conversationsApi = {
       { hanzi }
     );
     return res.data;
+  },
+  async sendAudio(id: number, audio: Blob): Promise<{ user: Message }> {
+    const form = new FormData();
+    form.append("audio", audio, "input.webm");
+    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+    const url = `${base.replace(/\/api$/, "")}/api/conversations/${id}/audio`;
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: form,
+    });
+    if (!res.ok) throw new Error("Audio upload failed");
+    return res.json();
   },
   streamUrl(id: number, hanzi: string): string {
     const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";

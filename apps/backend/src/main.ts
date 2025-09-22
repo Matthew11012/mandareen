@@ -2,6 +2,8 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import * as express from 'express';
+import * as path from 'path';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -27,6 +29,26 @@ async function bootstrap() {
 
   // Add global prefix to all routes
   app.setGlobalPrefix('api');
+
+  // Serve static media (audio) from /media
+  app.use(
+    '/media',
+    express.static(path.join(process.cwd(), 'uploads'), {
+      fallthrough: true,
+      redirect: false,
+      setHeaders: (res) => {
+        res.setHeader(
+          'Access-Control-Allow-Origin',
+          process.env.FRONTEND_URL || 'http://localhost:3001',
+        );
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader(
+          'Access-Control-Allow-Headers',
+          'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control',
+        );
+      },
+    }),
+  );
 
   // Enable validation
   app.useGlobalPipes(
