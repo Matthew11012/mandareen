@@ -30,6 +30,7 @@ export default function ConversationsPage() {
   // Per-message toggles are inside AiMessage; no global toggles here
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [recPrompt, setRecPrompt] = useState<string>("Tap to speak");
   const [uploadingAudio, setUploadingAudio] = useState<boolean>(false);
   const apiBase = (
@@ -80,6 +81,17 @@ export default function ConversationsPage() {
     };
     init();
   }, []);
+
+  // Auto-scroll to bottom whenever messages update (new message or AI stream)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    try {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    } catch {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages]);
 
   // Mobile detection and sidebar management
   useEffect(() => {
@@ -785,7 +797,10 @@ export default function ConversationsPage() {
             isMobile && showConversationsSidebar ? "hidden" : ""
           }`}
         >
-          <div className="flex-1 overflow-y-auto space-y-3 bg-[#20242b] border border-[#2e2f36] rounded-xl p-4">
+          <div
+            ref={scrollRef}
+            className="flex-1 overflow-y-auto space-y-3 bg-[#20242b] border border-[#2e2f36] rounded-xl p-4"
+          >
             {messages.map((m) => (
               <div
                 key={m.id}
@@ -896,20 +911,20 @@ export default function ConversationsPage() {
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full flex-wrap">
             <button
               onClick={() => {
                 if (!recording) startRecording();
                 else stopRecording();
               }}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors duration-200 cursor-pointer ${
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors duration-200 cursor-pointer max-w-full ${
                 recording
                   ? "bg-red-600/10 border-red-600/40 text-red-200"
                   : "bg-[#1b1f26] border-[#2e323a] text-[#a6a6a6] hover:border-[#4040f2]"
               }`}
               title={recording ? "Tap when done" : "Tap to speak"}
             >
-              <div className="relative">
+              <div className="relative shrink-0">
                 <div
                   className={`rounded-full p-2 ${
                     recording ? "bg-red-600/20" : "bg-green-600/20"
@@ -921,18 +936,18 @@ export default function ConversationsPage() {
                   <span className="absolute inset-0 rounded-full ring-2 ring-red-500 animate-ping" />
                 ) : null}
               </div>
-              <div className="flex flex-col items-start">
-                <span className="text-xs font-medium text-white">
+              <div className="flex flex-col items-start min-w-0 overflow-hidden hidden sm:block">
+                <span className="text-xs font-medium text-white truncate max-w-[55vw] sm:max-w-none">
                   {recPrompt}
                 </span>
-                <span className="text-[10px] text-[#808080]">
+                <span className="text-[10px] text-[#808080] hidden sm:block">
                   {recording
                     ? "Start speaking • Tap when done"
                     : "Mic uses your browser audio"}
                 </span>
               </div>
               {uploadingAudio ? (
-                <Loader2 className="w-4 h-4 animate-spin ml-2" />
+                <Loader2 className="w-4 h-4 animate-spin ml-2 shrink-0" />
               ) : null}
             </button>
 
@@ -942,12 +957,12 @@ export default function ConversationsPage() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") sendText();
               }}
-              placeholder="Type your message in Chinese..."
-              className="flex-1 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-white outline-none"
+              placeholder="Type your message ..."
+              className="flex-1 min-w-0 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-white outline-none"
             />
             <button
               onClick={sendText}
-              className="px-4 py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+              className="px-4 py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer shrink-0"
             >
               <Send className="w-4 h-4" />
             </button>
