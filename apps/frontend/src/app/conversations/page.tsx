@@ -193,6 +193,8 @@ export default function ConversationsPage() {
           pinyin: "",
           translation: "",
           createdAt,
+          // mark streaming state so toggles can be hidden until final
+          segments: undefined,
         } as Message,
       ]);
       es.onmessage = (e) => {
@@ -217,6 +219,7 @@ export default function ConversationsPage() {
                       hanzi: data.hanzi || m.hanzi,
                       pinyin: data.pinyin || "",
                       translation: data.translation || "",
+                      audioUrl: data.audioUrl || undefined,
                       segments: Array.isArray(data.segments)
                         ? data.segments
                         : undefined,
@@ -827,30 +830,38 @@ export default function ConversationsPage() {
                         </button>
                       </>
                     ) : null}
-                    <button
-                      onClick={() =>
-                        setAiShowPinyin((s) => ({ ...s, [m.id]: !s[m.id] }))
-                      }
-                      className={`px-2 py-1 text-xs rounded border ${
-                        aiShowPinyin[m.id]
-                          ? "border-[#4040f2] text-[#9aa6ff]"
-                          : "border-[#404040] text-[#a6a6a6]"
-                      } cursor-pointer`}
-                    >
-                      Pinyin {aiShowPinyin[m.id] ? "On" : "Off"}
-                    </button>
-                    <button
-                      onClick={() =>
-                        setAiShowTrans((s) => ({ ...s, [m.id]: !s[m.id] }))
-                      }
-                      className={`px-2 py-1 text-xs rounded border ${
-                        aiShowTrans[m.id]
-                          ? "border-[#4040f2] text-[#9aa6ff]"
-                          : "border-[#404040] text-[#a6a6a6]"
-                      } cursor-pointer`}
-                    >
-                      Translation {aiShowTrans[m.id] ? "On" : "Off"}
-                    </button>
+                    {Array.isArray(m.segments) && m.segments.length > 0 ? (
+                      <>
+                        <button
+                          onClick={() =>
+                            setAiShowPinyin((s) => ({ ...s, [m.id]: !s[m.id] }))
+                          }
+                          className={`px-2 py-1 text-xs rounded border ${
+                            aiShowPinyin[m.id]
+                              ? "border-[#4040f2] text-[#9aa6ff]"
+                              : "border-[#404040] text-[#a6a6a6]"
+                          } cursor-pointer`}
+                        >
+                          Pinyin {aiShowPinyin[m.id] ? "On" : "Off"}
+                        </button>
+                        <button
+                          onClick={() =>
+                            setAiShowTrans((s) => ({ ...s, [m.id]: !s[m.id] }))
+                          }
+                          className={`px-2 py-1 text-xs rounded border ${
+                            aiShowTrans[m.id]
+                              ? "border-[#4040f2] text-[#9aa6ff]"
+                              : "border-[#404040] text-[#a6a6a6]"
+                          } cursor-pointer`}
+                        >
+                          Translation {aiShowTrans[m.id] ? "On" : "Off"}
+                        </button>
+                      </>
+                    ) : (
+                      <div className="text-[10px] text-[#808080] px-2 py-1 border border-dashed border-[#404040] rounded">
+                        Processing… pinyin & translation will appear shortly
+                      </div>
+                    )}
                   </div>
                 ) : null}
                 <div

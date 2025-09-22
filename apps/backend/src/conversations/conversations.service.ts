@@ -200,7 +200,7 @@ export class ConversationsService {
               {
                 role: 'system',
                 content:
-                  'You are a native Mandarin tutor. While streaming, output ONLY Chinese characters (no JSON, pinyin, or translation). Keep it concise. After streaming ends, we will run a separate non-stream call to obtain JSON with hanzi, pinyin, and translation for persistence.',
+                  'You are a native Mandarin tutor. While streaming, output ONLY Simplified Chinese characters (no JSON, pinyin, or translation). If the user uses Traditional characters, convert to Simplified in your reply. Keep it concise. After streaming ends, we will run a separate non-stream call to obtain JSON with hanzi, pinyin, and translation for persistence.',
               },
               ...history,
             ],
@@ -238,18 +238,17 @@ export class ConversationsService {
             }),
           );
           // Compute per-character pinyin using segmentation for accurate alignment
-          const pinyinPerChar = await this.computeSentencePinyinPerCharacter(
-            ai.hanzi || fullText,
-          );
+          const finalHanzi = ai.hanzi || fullText;
+          const pinyinPerChar =
+            await this.computeSentencePinyinPerCharacter(finalHanzi);
           // Build per-character array aligned to hanzi for segment pinyin filling
-          const charPinyinArray = await this.computeSentencePinyinArray(
-            ai.hanzi || fullText,
-          );
+          const charPinyinArray =
+            await this.computeSentencePinyinArray(finalHanzi);
           let aiMsg = await this.prisma.message.create({
             data: {
               conversationId,
               role: 'ai',
-              hanzi: ai.hanzi || fullText,
+              hanzi: finalHanzi,
               pinyin: pinyinPerChar || '',
               translation: ai.translation || '',
             },
@@ -270,7 +269,7 @@ export class ConversationsService {
             // ignore annotate error and continue with base segmentation
           }
           const segs = await this.segmentationService.segmentText(
-            ai.hanzi || fullText,
+            finalHanzi,
             vocabExtras,
           );
           const segments = segs.map((s) => {
@@ -301,7 +300,7 @@ export class ConversationsService {
           try {
             const { audioBuffer, fileExtension } = await (
               this.openai as any
-            ).synthesizeSpeech(ai.hanzi || fullText);
+            ).synthesizeSpeech(finalHanzi);
             const fs = await import('fs');
             const path = await import('path');
             const baseDir = path.resolve(process.cwd(), 'uploads', 'audio');
@@ -317,10 +316,13 @@ export class ConversationsService {
           } catch (err) {
             this.logger.warn('TTS synthesis failed (stream final)', err as any);
           }
+          const payloadData = JSON.stringify({ ...aiMsg, segments });
+          // Default event for clients listening onmessage
           subscriber.next({
-            event: 'final',
-            data: JSON.stringify({ ...aiMsg, segments }),
+            data: JSON.stringify({ type: 'final', data: payloadData }),
           });
+          // Named event for clients listening to 'final'
+          subscriber.next({ event: 'final', data: payloadData });
           subscriber.complete();
         } catch (e) {
           this.logger.error(
@@ -330,12 +332,11 @@ export class ConversationsService {
           try {
             // Fallback: attempt non-stream single-shot reply without previous deltas
             const fallback = await (this.openai as any).chatChineseReply(hanzi);
-            const pinyinPerChar = await this.computeSentencePinyinPerCharacter(
-              fallback.hanzi || '',
-            );
-            const charPinyinArray = await this.computeSentencePinyinArray(
-              fallback.hanzi || '',
-            );
+            const finalHanziFallback = fallback.hanzi || '';
+            const pinyinPerChar =
+              await this.computeSentencePinyinPerCharacter(finalHanziFallback);
+            const charPinyinArray =
+              await this.computeSentencePinyinArray(finalHanziFallback);
             // Try to enrich fallback with annotated vocabulary as well
             let vocabExtras2: Array<{
               text: string;
@@ -382,7 +383,7 @@ export class ConversationsService {
               data: {
                 conversationId,
                 role: 'ai',
-                hanzi: fallback.hanzi || '',
+                hanzi: finalHanziFallback,
                 pinyin: pinyinPerChar || '',
                 translation: fallback.translation || '',
               },
@@ -391,7 +392,7 @@ export class ConversationsService {
             try {
               const { audioBuffer, fileExtension } = await (
                 this.openai as any
-              ).synthesizeSpeech(fallback.hanzi || '');
+              ).synthesizeSpeech(finalHanziFallback);
               const fs = await import('fs');
               const path = await import('path');
               const baseDir = path.resolve(process.cwd(), 'uploads', 'audio');
@@ -407,10 +408,14 @@ export class ConversationsService {
             } catch (err) {
               this.logger.warn('TTS synthesis failed (fallback)', err as any);
             }
-            subscriber.next({
-              event: 'final',
-              data: JSON.stringify({ ...aiMsg, segments: segments2 }),
+            const payloadData2 = JSON.stringify({
+              ...aiMsg,
+              segments: segments2,
             });
+            subscriber.next({
+              data: JSON.stringify({ type: 'final', data: payloadData2 }),
+            });
+            subscriber.next({ event: 'final', data: payloadData2 });
             subscriber.complete();
           } catch (inner) {
             this.logger.error(
@@ -429,7 +434,11 @@ export class ConversationsService {
                   'Sorry, I could not generate a reply right now. Please try again later.',
               },
             });
-            subscriber.next({ event: 'final', data: JSON.stringify(aiMsg) });
+            const errPayload = JSON.stringify(aiMsg);
+            subscriber.next({
+              data: JSON.stringify({ type: 'final', data: errPayload }),
+            });
+            subscriber.next({ event: 'final', data: errPayload });
             subscriber.complete();
           }
         }
