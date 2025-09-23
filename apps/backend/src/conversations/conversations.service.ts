@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OpenAIService } from '../openai/openai.service';
 import { Observable } from 'rxjs';
 import { SegmentationService } from '../vocabulary/segmentation.service';
+import { RagService } from '../rag/rag.service';
 
 @Injectable()
 export class ConversationsService {
@@ -11,6 +12,7 @@ export class ConversationsService {
     private readonly prisma: PrismaService,
     private readonly openai: OpenAIService,
     private readonly segmentationService: SegmentationService,
+    private readonly rag: RagService,
   ) {
     void prisma;
     void openai;
@@ -332,6 +334,33 @@ export class ConversationsService {
               translation: ai.translation || '',
             },
           });
+          // Generate grounded grammar notes if enabled
+          try {
+            const ctx = await this.rag.retrieveForConversation(
+              userId,
+              finalHanzi,
+              hanzi,
+            );
+            const profile = await this.rag.getUserProfile(userId);
+            const notes = await (this.openai as any).generateGrammarNotes(
+              finalHanzi,
+              {
+                level: profile.level,
+                strugglingWords: profile.strugglingWords,
+                contextText: ctx?.contextText,
+              },
+            );
+            // Enrich tutor notes with segmentation for clickable pinyin-above-hanzi in UI
+            const enrichedNotes = await this.enrichNotesWithSegments(
+              notes as any,
+            );
+            aiMsg = await this.prisma.message.update({
+              where: { id: aiMsg.id },
+              data: { notes: enrichedNotes as any },
+            });
+          } catch (err) {
+            this.logger.warn('Grammar notes generation skipped', err as any);
+          }
           // Attach segments so the frontend can show popups like in lessons
           // Enrich segmentation with model-annotated vocabulary to capture multi-word phrases
           let vocabExtras: Array<{
@@ -487,6 +516,29 @@ export class ConversationsService {
             } catch (err) {
               this.logger.warn('TTS synthesis failed (fallback)', err as any);
             }
+            // Grounded notes (fallback path)
+            try {
+              const ctx2 = await this.rag.retrieveForConversation(
+                userId,
+                finalHanziFallback,
+                hanzi,
+              );
+              const profile2 = await this.rag.getUserProfile(userId);
+              const notes2 = await (this.openai as any).generateGrammarNotes(
+                finalHanziFallback,
+                {
+                  level: profile2.level,
+                  strugglingWords: profile2.strugglingWords,
+                  contextText: ctx2?.contextText,
+                },
+              );
+              aiMsg = await this.prisma.message.update({
+                where: { id: aiMsg.id },
+                data: { notes: notes2 as any },
+              });
+            } catch (err) {
+              this.logger.warn('Grammar notes generation skipped', err as any);
+            }
             const payloadData2 = JSON.stringify({
               ...aiMsg,
               segments: segments2,
@@ -628,5 +680,65 @@ export class ConversationsService {
   private async computeSentencePinyinArray(text: string): Promise<string[]> {
     const joined = await this.computeSentencePinyinPerCharacter(text);
     return joined.split(/\s+/);
+  }
+
+  private async enrichTextWithSegments(text?: string, pinyin?: string) {
+    if (!text || !Array.from(text).some((c) => this.isChineseChar(c)))
+      return undefined;
+    const segs = await this.segmentationService.segmentText(text);
+    const charPinyinArray = (pinyin || '')
+      .split(/\s+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const segments = segs.map((s) => {
+      let segPinyin = (s.pinyin || '').toLowerCase();
+      if (!segPinyin || segPinyin.trim().length === 0) {
+        const slice = charPinyinArray
+          .slice(s.startIndex, s.endIndex)
+          .filter((_, idx) => this.isChineseChar(text[s.startIndex + idx]))
+          .filter((p) => (p || '').trim().length > 0);
+        if (slice.length > 0) segPinyin = slice.join(' ');
+      }
+      const segPinyinTone = this.toToneMarks(segPinyin);
+      return {
+        text: s.word,
+        startIndex: s.startIndex,
+        endIndex: s.endIndex,
+        isWord: s.isWord,
+        hskLevel: s.hskLevel,
+        pinyin: segPinyinTone,
+        definition: s.definition,
+        definitions: s.definitions,
+      };
+    });
+    return segments;
+  }
+
+  private async enrichNotesWithSegments(notes: any) {
+    if (!notes || typeof notes !== 'object') return notes;
+    if (Array.isArray(notes.grammarNotes)) {
+      for (const n of notes.grammarNotes) {
+        if (typeof n?.point === 'string') {
+          n.pointSegments = await this.enrichTextWithSegments(
+            n.point,
+            n.pointPinyin,
+          );
+        }
+        if (typeof n?.brief === 'string') {
+          n.briefSegments = await this.enrichTextWithSegments(
+            n.brief,
+            n.briefPinyin,
+          );
+        }
+        if (Array.isArray(n?.examples)) {
+          for (const ex of n.examples) {
+            if (typeof ex?.zh === 'string') {
+              ex.segments = await this.enrichTextWithSegments(ex.zh, ex.pinyin);
+            }
+          }
+        }
+      }
+    }
+    return notes;
   }
 }

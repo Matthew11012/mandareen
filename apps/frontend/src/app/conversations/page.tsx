@@ -18,6 +18,31 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+// Local types to avoid `any` usages in notes rendering
+type SegToken = {
+  text: string;
+  isWord?: boolean;
+  pinyin?: string;
+  definition?: string;
+  definitions?: string[];
+};
+type Tip = { zh: string; pinyin?: string; en?: string; segments?: SegToken[] };
+type GrammarNote = {
+  point: string;
+  pointPinyin?: string;
+  pointEn?: string;
+  brief: string;
+  briefPinyin?: string;
+  briefEn?: string;
+  pointSegments?: SegToken[];
+  briefSegments?: SegToken[];
+  examples?: Tip[];
+};
+type MessageNotes = {
+  grammarNotes?: GrammarNote[];
+  tipsRich?: Tip[];
+};
+
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -26,6 +51,14 @@ export default function ConversationsPage() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [aiShowPinyin, setAiShowPinyin] = useState<Record<number, boolean>>({});
   const [aiShowTrans, setAiShowTrans] = useState<Record<number, boolean>>({});
+  const [aiShowNotes, setAiShowNotes] = useState<Record<number, boolean>>({});
+  const [notesModal, setNotesModal] = useState<{
+    open: boolean;
+    message: Message | null;
+  }>({ open: false, message: null });
+  const openNotesModal = (m: Message) =>
+    setNotesModal({ open: true, message: m });
+  const closeNotesModal = () => setNotesModal({ open: false, message: null });
   const [playing, setPlaying] = useState<Record<number, boolean>>({});
   // Per-message toggles are inside AiMessage; no global toggles here
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -41,6 +74,98 @@ export default function ConversationsPage() {
     if (/^https?:\/\//i.test(u)) return u;
     if (u.startsWith("/")) return `${apiBase}${u}`;
     return `${apiBase}/${u}`;
+  };
+
+  // Popup for tutor-notes modal (separate from AiMessage popup)
+  const [notesPopup, setNotesPopup] = useState<{
+    open: boolean;
+    x: number;
+    y: number;
+    word: string;
+    pinyin?: string;
+    definition?: string;
+    definitions?: string[];
+    ctx?: { hanzi?: string; pinyin?: string; translation?: string };
+  }>({ open: false, x: 0, y: 0, word: "" });
+  const notesPopupRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (
+        notesPopupRef.current &&
+        !notesPopupRef.current.contains(e.target as Node)
+      ) {
+        setNotesPopup((p) => ({ ...p, open: false }));
+      }
+    };
+    if (notesPopup.open) document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [notesPopup.open]);
+
+  const renderSegmentsWithPopup = (
+    segments:
+      | Array<{
+          text: string;
+          isWord?: boolean;
+          pinyin?: string;
+          definition?: string;
+          definitions?: string[];
+        }>
+      | undefined,
+    baseHanzi?: string,
+    baseTranslation?: string
+  ) => {
+    if (!Array.isArray(segments) || segments.length === 0) return null;
+    // Build line-level pinyin by concatenating token pinyin for CJK tokens
+    const linePinyin = segments
+      .map((s) => (s.isWord && s.pinyin ? s.pinyin : ""))
+      .filter(Boolean)
+      .join(" ");
+    return (
+      <div className="leading-8 text-white font-inter text-[16px]">
+        {segments.map((seg, idx) => {
+          const isWord = Boolean(seg.isWord);
+          return (
+            <span
+              key={idx}
+              className="inline-flex flex-col items-center align-top mr-[2px]"
+            >
+              {seg.pinyin ? (
+                <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
+                  {seg.pinyin}
+                </span>
+              ) : (
+                <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
+                  •
+                </span>
+              )}
+              <span
+                className={`px-[1px] rounded ${isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
+                title={seg.definition || ""}
+                onClick={(e: React.MouseEvent<HTMLSpanElement>) => {
+                  if (!isWord) return;
+                  setNotesPopup({
+                    open: true,
+                    x: e.clientX,
+                    y: e.clientY,
+                    word: seg.text,
+                    pinyin: seg.pinyin,
+                    definition: seg.definition,
+                    definitions: seg.definitions,
+                    ctx: {
+                      hanzi: baseHanzi,
+                      pinyin: linePinyin,
+                      translation: baseTranslation,
+                    },
+                  });
+                }}
+              >
+                {seg.text}
+              </span>
+            </span>
+          );
+        })}
+      </div>
+    );
   };
 
   // Mobile responsiveness state
@@ -310,6 +435,7 @@ export default function ConversationsPage() {
                     hanzi: data.hanzi || m.hanzi,
                     pinyin: data.pinyin || "",
                     translation: data.translation || "",
+                    notes: data.notes || m.notes,
                     segments: Array.isArray(data.segments)
                       ? data.segments
                       : undefined,
@@ -520,6 +646,7 @@ export default function ConversationsPage() {
                         hanzi: data.hanzi || m.hanzi,
                         pinyin: data.pinyin || "",
                         translation: data.translation || "",
+                        notes: data.notes || m.notes,
                         audioUrl: data.audioUrl || undefined,
                         segments: Array.isArray(data.segments)
                           ? data.segments
@@ -562,10 +689,12 @@ export default function ConversationsPage() {
     m,
     showP,
     showT,
+    showN,
   }: {
     m: Message;
     showP: boolean;
     showT: boolean;
+    showN: boolean;
   }) {
     const [popup, setPopup] = useState<{
       open: boolean;
@@ -665,12 +794,85 @@ export default function ConversationsPage() {
       );
     };
 
+    const NotesBlock = () => {
+      const has =
+        Array.isArray(m.notes?.grammarNotes) &&
+        m.notes!.grammarNotes!.length > 0;
+      if (!has) return null;
+      return (
+        <div className="mt-2 border border-[#3a3f47] rounded-md bg-[#1d2128] p-2">
+          <div className="text-xs font-semibold text-white mb-1">
+            Tutor Notes
+          </div>
+          <div className="space-y-3 max-h-56 overflow-hidden relative">
+            {m.notes!.grammarNotes!.slice(0, 2).map((gn, idx) => (
+              <div key={idx} className="text-xs text-[#c9d1d9]">
+                <div className="font-medium text-white">{gn.point}</div>
+                {gn.pointPinyin ? (
+                  <div className="text-[11px] text-[#9aa6ff]">
+                    {gn.pointPinyin}
+                  </div>
+                ) : null}
+                {gn.pointEn ? (
+                  <div className="text-[11px] text-[#8b949e]">{gn.pointEn}</div>
+                ) : null}
+                <div className="text-[11px] text-[#a6a6a6] mt-1">
+                  {gn.brief}
+                </div>
+                {gn.briefPinyin ? (
+                  <div className="text-[11px] text-[#9aa6ff]">
+                    {gn.briefPinyin}
+                  </div>
+                ) : null}
+                {gn.briefEn ? (
+                  <div className="text-[11px] text-[#8b949e]">{gn.briefEn}</div>
+                ) : null}
+                {Array.isArray(gn.examples) && gn.examples.length > 0 ? (
+                  <div className="mt-1 text-[11px] space-y-1">
+                    {gn.examples.map((ex: Tip, i: number) => (
+                      <div key={i}>
+                        <div className="text-[#c9d1d9]">{ex.zh}</div>
+                        {ex.pinyin ? (
+                          <div className="text-[#9aa6ff]">{ex.pinyin}</div>
+                        ) : null}
+                        {ex.en ? (
+                          <div className="text-[#8b949e]">{ex.en}</div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+            {m.notes!.grammarNotes!.length > 2 ? (
+              <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#1d2128] to-transparent" />
+            ) : null}
+          </div>
+          <div className="mt-2 flex justify-between items-center">
+            <div className="text-[11px] text-[#a6a6a6]">
+              {Array.isArray((m.notes as MessageNotes).tipsRich) &&
+              (m.notes as MessageNotes).tipsRich!.length > 0
+                ? `${(m.notes as MessageNotes).tipsRich!.length} tips available`
+                : null}
+            </div>
+            <button
+              onClick={() => openNotesModal(m)}
+              className="text-[11px] px-2 py-1 rounded border border-[#404040] hover:border-[#4040f2] text-[#c9d1d9] cursor-pointer"
+            >
+              View all notes
+            </button>
+          </div>
+        </div>
+      );
+    };
+
     return (
       <div>
         {renderAligned(m.hanzi, m.pinyin)}
         {showT && m.translation ? (
           <div className="text-[#a6a6a6] text-xs mt-1">{m.translation}</div>
         ) : null}
+        {showN ? <NotesBlock /> : null}
         {popup.open && (
           <div
             ref={popupRef}
@@ -792,6 +994,43 @@ export default function ConversationsPage() {
       </div>
     );
   }
+
+  // Render pinyin above hanzi for notes; skip non-CJK like “OK”/“Alright” tokens.
+  const renderNotesPinyin = (hanzi?: string, pinyin?: string) => {
+    if (!hanzi) return null;
+    const isCJK = (ch: string) => /[\u3400-\u9FFF]/.test(ch);
+    const tokens = (pinyin || "")
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    let pi = 0;
+    const chars = Array.from(hanzi);
+    return (
+      <div className="leading-8 text-white font-inter text-[16px]">
+        {chars.map((ch, idx) => {
+          let top = "";
+          if (isCJK(ch)) top = tokens[pi++] || "";
+          return (
+            <span
+              key={idx}
+              className="inline-flex flex-col items-center align-top mr-[2px]"
+            >
+              {top ? (
+                <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
+                  {top}
+                </span>
+              ) : (
+                <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
+                  •
+                </span>
+              )}
+              <span className="px-[1px] rounded">{ch}</span>
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <DashboardLayout
@@ -978,6 +1217,20 @@ export default function ConversationsPage() {
                       >
                         Translation {aiShowTrans[m.id] ? "On" : "Off"}
                       </button>
+                      {m.role === "ai" && m.notes?.grammarNotes?.length ? (
+                        <button
+                          onClick={() =>
+                            setAiShowNotes((s) => ({ ...s, [m.id]: !s[m.id] }))
+                          }
+                          className={`px-2 py-1 text-xs rounded border ${
+                            aiShowNotes[m.id]
+                              ? "border-[#4040f2] text-[#9aa6ff]"
+                              : "border-[#404040] text-[#a6a6a6]"
+                          } cursor-pointer`}
+                        >
+                          Notes {aiShowNotes[m.id] ? "On" : "Off"}
+                        </button>
+                      ) : null}
                     </>
                   ) : (
                     <div className="flex items-center gap-2 text-[10px] text-[#a6a6a6] px-2 py-1 border border-dashed border-[#404040] rounded">
@@ -1008,6 +1261,7 @@ export default function ConversationsPage() {
                     }}
                     showP={!!aiShowPinyin[m.id]}
                     showT={!!aiShowTrans[m.id]}
+                    showN={!!aiShowNotes[m.id]}
                   />
                   <div className="text-[10px] text-[#808080] mt-1">
                     {new Date(m.createdAt).toLocaleTimeString()}
@@ -1075,6 +1329,204 @@ export default function ConversationsPage() {
           </div>
         </div>
       </div>
+      {notesModal.open && notesModal.message ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={closeNotesModal}
+          />
+          <div className="relative z-50 max-h-[80vh] w-[90vw] max-w-2xl bg-[#1d2128] border border-[#3a3f47] rounded-lg shadow-xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2e36] shrink-0">
+              <div className="text-sm font-semibold text-white">
+                Tutor Notes
+              </div>
+              <button
+                onClick={closeNotesModal}
+                className="text-[#a6a6a6] text-xs hover:text-white cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto space-y-3 flex-1">
+              {Array.isArray(notesModal.message.notes?.grammarNotes) &&
+                notesModal.message.notes!.grammarNotes!.map(
+                  (
+                    gn: GrammarNote & {
+                      pointSegments?: Array<{
+                        text: string;
+                        isWord?: boolean;
+                        pinyin?: string;
+                        definition?: string;
+                        definitions?: string[];
+                      }>;
+                      briefSegments?: Array<{
+                        text: string;
+                        isWord?: boolean;
+                        pinyin?: string;
+                        definition?: string;
+                        definitions?: string[];
+                      }>;
+                      examples?: Array<
+                        Tip & {
+                          segments?: Array<{
+                            text: string;
+                            isWord?: boolean;
+                            pinyin?: string;
+                            definition?: string;
+                            definitions?: string[];
+                          }>;
+                        }
+                      >;
+                    },
+                    idx: number
+                  ) => (
+                    <div key={idx} className="text-sm text-[#c9d1d9]">
+                      <div className="font-medium text-white">{gn.point}</div>
+                      {renderNotesPinyin(gn.point, gn.pointPinyin)}
+                      {gn.pointEn ? (
+                        <div className="text-xs text-[#8b949e]">
+                          {gn.pointEn}
+                        </div>
+                      ) : null}
+                      <div className="mt-1">
+                        {renderNotesPinyin(gn.brief, gn.briefPinyin)}
+                      </div>
+                      {gn.briefEn ? (
+                        <div className="text-xs text-[#8b949e]">
+                          {gn.briefEn}
+                        </div>
+                      ) : null}
+                      {Array.isArray(gn.pointSegments)
+                        ? renderSegmentsWithPopup(
+                            gn.pointSegments,
+                            gn.point,
+                            gn.pointEn
+                          )
+                        : null}
+                      {Array.isArray(gn.briefSegments)
+                        ? renderSegmentsWithPopup(
+                            gn.briefSegments,
+                            gn.brief,
+                            gn.briefEn
+                          )
+                        : null}
+                      {Array.isArray(gn.examples) && gn.examples.length > 0 ? (
+                        <div className="mt-2 space-y-1">
+                          {gn.examples.map((ex: Tip, i: number) => (
+                            <div key={i}>
+                              {Array.isArray(ex.segments) ? (
+                                renderSegmentsWithPopup(
+                                  ex.segments,
+                                  ex.zh,
+                                  ex.en
+                                )
+                              ) : (
+                                <>
+                                  <div className="text-[#c9d1d9]">{ex.zh}</div>
+                                  {ex.pinyin ? (
+                                    <div className="text-[#9aa6ff] text-xs">
+                                      {ex.pinyin}
+                                    </div>
+                                  ) : null}
+                                  {ex.en ? (
+                                    <div className="text-[#8b949e] text-xs">
+                                      {ex.en}
+                                    </div>
+                                  ) : null}
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                )}
+              {Array.isArray(
+                (notesModal.message.notes as MessageNotes)?.tipsRich
+              ) &&
+              (notesModal.message.notes as MessageNotes).tipsRich!.length >
+                0 ? (
+                <div className="pt-2 border-t border-[#2a2e36]">
+                  <div className="text-sm font-semibold text-white mb-2">
+                    Tips
+                  </div>
+                  <div className="space-y-2">
+                    {(notesModal.message.notes as MessageNotes).tipsRich!.map(
+                      (t: Tip, i: number) => (
+                        <div key={i}>
+                          <div className="text-[#c9d1d9]">{t.zh}</div>
+                          {t.pinyin ? (
+                            <div className="text-[#9aa6ff] text-xs">
+                              {t.pinyin}
+                            </div>
+                          ) : null}
+                          {t.en ? (
+                            <div className="text-[#8b949e] text-xs">{t.en}</div>
+                          ) : null}
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            {notesPopup.open && (
+              <div
+                ref={notesPopupRef}
+                style={{
+                  position: "fixed",
+                  left: Math.max(
+                    10,
+                    Math.min(notesPopup.x - 110, window.innerWidth - 260)
+                  ),
+                  top: Math.max(10, notesPopup.y - 150),
+                  zIndex: 1000,
+                }}
+                className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+              >
+                <div className="font-bold text-white text-lg truncate">
+                  {notesPopup.word}
+                </div>
+                {notesPopup.pinyin ? (
+                  <div className="text-[#c6ceff] text-sm font-medium truncate">
+                    {notesPopup.pinyin}
+                  </div>
+                ) : null}
+                {Array.isArray(notesPopup.definitions) &&
+                notesPopup.definitions.length > 0 ? (
+                  <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
+                    {notesPopup.definitions.map((d, i) => (
+                      <div key={i}>• {d}</div>
+                    ))}
+                  </div>
+                ) : notesPopup.definition ? (
+                  <div className="text-xs text-[#a6a6a6] mt-2">
+                    {notesPopup.definition}
+                  </div>
+                ) : null}
+                <div className="mt-3 pt-3 border-t border-[#404040]">
+                  <button
+                    onClick={() => {
+                      void addSingleToFlashcards(
+                        notesPopup.word,
+                        notesPopup.ctx
+                      );
+                      setNotesPopup((p) => ({ ...p, open: false }));
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="text-sm font-inter">
+                      Add to Flashcards
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </DashboardLayout>
   );
 }

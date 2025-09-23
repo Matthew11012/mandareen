@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OpenAIService } from '../openai/openai.service';
 import { SegmentationService } from '../vocabulary/segmentation.service';
+import { RagService } from '../rag/rag.service';
 
 interface GenerateOptions {
   level?: number;
@@ -19,6 +20,7 @@ export class LessonsService {
     private readonly prismaService: PrismaService,
     private readonly openAIService: OpenAIService,
     private readonly segmentationService: SegmentationService,
+    private readonly ragService: RagService,
   ) {}
 
   async generateAndStoreLesson(
@@ -102,6 +104,30 @@ export class LessonsService {
         });
       }
 
+      // Optionally compute grounded grammar notes for the whole dialogue text
+      let grammarNotes: any[] | undefined;
+      try {
+        const fullDialogue = turns.map((t: any) => t.hanzi).join('\n');
+        const ctx = await this.ragService.retrieveForLesson(user.id, {
+          topic: topic || generated.title || undefined,
+          level,
+        });
+        const profile = await this.ragService.getUserProfile(user.id);
+        const notes = await (this.openAIService as any).generateGrammarNotes(
+          fullDialogue,
+          {
+            level: profile.level,
+            strugglingWords: profile.strugglingWords,
+            contextText: ctx?.contextText,
+          },
+        );
+        grammarNotes = Array.isArray((notes as any).grammarNotes)
+          ? (notes as any).grammarNotes
+          : undefined;
+      } catch {
+        // best-effort, ignore
+      }
+
       lesson = await this.prismaService.lesson.create({
         data: {
           level,
@@ -117,6 +143,7 @@ export class LessonsService {
                     this.toToneMarks(generated.titlePinyin || '') || null,
                   titleTranslation: generated.titleTranslation || null,
                   turns: turnsWithSegments,
+                  grammarNotes,
                 },
               },
             ],
@@ -160,6 +187,29 @@ export class LessonsService {
         pinyin: this.toToneMarks(s.pinyin),
       }));
 
+      // Optionally compute grounded grammar notes for the story text
+      let grammarNotes: any[] | undefined;
+      try {
+        const ctx = await this.ragService.retrieveForLesson(user.id, {
+          topic: topic || generated.title || undefined,
+          level,
+        });
+        const profile = await this.ragService.getUserProfile(user.id);
+        const notes = await (this.openAIService as any).generateGrammarNotes(
+          generated.story?.hanzi || '',
+          {
+            level: profile.level,
+            strugglingWords: profile.strugglingWords,
+            contextText: ctx?.contextText,
+          },
+        );
+        grammarNotes = Array.isArray((notes as any).grammarNotes)
+          ? (notes as any).grammarNotes
+          : undefined;
+      } catch (err){
+        this.logger.warn('Error generating grammar notes', err as any);
+      }
+
       lesson = await this.prismaService.lesson.create({
         data: {
           level,
@@ -178,6 +228,7 @@ export class LessonsService {
                   pinyin: this.toToneMarks(generated.story?.pinyin || ''),
                   translation: generated.story?.translation || '',
                   segments: filledSegs,
+                  grammarNotes,
                 },
               },
             ],

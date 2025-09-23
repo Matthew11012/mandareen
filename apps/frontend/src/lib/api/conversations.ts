@@ -20,6 +20,21 @@ export interface Message {
   translation: string;
   createdAt: string;
   audioUrl?: string;
+  notes?: {
+    grammarNotes?: Array<{
+      point: string;
+      brief: string;
+      sources?: Array<{ key?: string; chunkId?: number }>;
+      pointPinyin?: string;
+      pointEn?: string;
+      briefPinyin?: string;
+      briefEn?: string;
+      examples?: Array<{ zh: string; en?: string; pinyin?: string }>;
+    }>;
+    tips?: string[];
+    tipsRich?: Array<{ zh: string; pinyin?: string; en?: string }>;
+    citations?: Array<{ key?: string; chunkId?: number }>;
+  };
   segments?: Array<{
     text: string;
     startIndex: number;
