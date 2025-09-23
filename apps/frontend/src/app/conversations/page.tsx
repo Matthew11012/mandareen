@@ -7,7 +7,15 @@ import {
   type Message,
   type ConversationSummary,
 } from "@/lib/api/conversations";
-import { Mic, Send, Plus, MessageCircle, ChevronLeft } from "lucide-react";
+import {
+  Mic,
+  Send,
+  Plus,
+  MessageCircle,
+  ChevronLeft,
+  Volume2,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export default function ConversationsPage() {
@@ -18,9 +26,22 @@ export default function ConversationsPage() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [aiShowPinyin, setAiShowPinyin] = useState<Record<number, boolean>>({});
   const [aiShowTrans, setAiShowTrans] = useState<Record<number, boolean>>({});
+  const [playing, setPlaying] = useState<Record<number, boolean>>({});
   // Per-message toggles are inside AiMessage; no global toggles here
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [recPrompt, setRecPrompt] = useState<string>("Tap to speak");
+  const [uploadingAudio, setUploadingAudio] = useState<boolean>(false);
+  const apiBase = (
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
+  ).replace(/\/api$/, "");
+  const resolveMediaUrl = (u?: string) => {
+    if (!u) return undefined;
+    if (/^https?:\/\//i.test(u)) return u;
+    if (u.startsWith("/")) return `${apiBase}${u}`;
+    return `${apiBase}/${u}`;
+  };
 
   // Mobile responsiveness state
   const [isMobile, setIsMobile] = useState(false);
@@ -60,6 +81,17 @@ export default function ConversationsPage() {
     };
     init();
   }, []);
+
+  // Auto-scroll to bottom whenever messages update (new message or AI stream)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    try {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    } catch {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages]);
 
   // Mobile detection and sidebar management
   useEffect(() => {
@@ -173,6 +205,8 @@ export default function ConversationsPage() {
           pinyin: "",
           translation: "",
           createdAt,
+          // mark streaming state so toggles can be hidden until final
+          segments: undefined,
         } as Message,
       ]);
       es.onmessage = (e) => {
@@ -186,6 +220,32 @@ export default function ConversationsPage() {
                   : m
               )
             );
+          } else if (payload.type === "user-update" && payload.data) {
+            try {
+              const data = JSON.parse(payload.data);
+              setMessages((prev) => {
+                const next = prev.map((m) =>
+                  m.id === data.id
+                    ? {
+                        ...m,
+                        pinyin:
+                          typeof data.pinyin === "string"
+                            ? data.pinyin
+                            : m.pinyin,
+                        translation:
+                          typeof data.translation === "string"
+                            ? data.translation
+                            : m.translation,
+                        segments: Array.isArray(data.segments)
+                          ? data.segments
+                          : undefined,
+                      }
+                    : m
+                );
+                return next;
+              });
+              // Avoid destructive refetch during SSE; keep AI placeholder intact
+            } catch {}
           } else if (payload.type === "final" && payload.data) {
             const data = JSON.parse(payload.data);
             setMessages((prev) =>
@@ -197,6 +257,7 @@ export default function ConversationsPage() {
                       hanzi: data.hanzi || m.hanzi,
                       pinyin: data.pinyin || "",
                       translation: data.translation || "",
+                      audioUrl: data.audioUrl || undefined,
                       segments: Array.isArray(data.segments)
                         ? data.segments
                         : undefined,
@@ -208,6 +269,33 @@ export default function ConversationsPage() {
           }
         } catch {}
       };
+      es.addEventListener("user-update", (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(
+            (e as unknown as MessageEvent).data as string
+          );
+          setMessages((prev) => {
+            const next = prev.map((m) =>
+              m.id === data.id
+                ? {
+                    ...m,
+                    pinyin:
+                      typeof data.pinyin === "string" ? data.pinyin : m.pinyin,
+                    translation:
+                      typeof data.translation === "string"
+                        ? data.translation
+                        : m.translation,
+                    segments: Array.isArray(data.segments)
+                      ? data.segments
+                      : undefined,
+                  }
+                : m
+            );
+            return next;
+          });
+          // Avoid destructive refetch during SSE; keep AI placeholder intact
+        } catch {}
+      });
       es.addEventListener("final", (e: MessageEvent) => {
         try {
           const data = JSON.parse(
@@ -306,12 +394,156 @@ export default function ConversationsPage() {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       rec.onstop = async () => {
-        // const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        // Placeholder: You can wire this to a speech-to-text API and set the result into input
-        toast("Audio recorded. Transcription not yet implemented.");
+        try {
+          if (!conversationId) return;
+          const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+          setUploadingAudio(true);
+          const { user } = await conversationsApi.sendAudio(
+            conversationId,
+            blob
+          );
+          // Append user message
+          setMessages((prev) => [...prev, user]);
+          // Start SSE stream for AI reply using the transcribed hanzi
+          const url = conversationsApi.streamUrl(
+            conversationId,
+            user.hanzi || ""
+          );
+          const es = new EventSource(url);
+          const aiMsgId = Date.now() + 1;
+          const createdAt = new Date().toISOString();
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: aiMsgId,
+              role: "ai",
+              hanzi: "",
+              pinyin: "",
+              translation: "",
+              createdAt,
+            } as Message,
+          ]);
+          es.onmessage = (e) => {
+            try {
+              const payload = JSON.parse(e.data);
+              if (payload.hanziDelta) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMsgId
+                      ? { ...m, hanzi: (m.hanzi || "") + payload.hanziDelta }
+                      : m
+                  )
+                );
+              } else if (payload.type === "user-update" && payload.data) {
+                const data = JSON.parse(payload.data);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === data.id
+                      ? {
+                          ...m,
+                          pinyin:
+                            typeof data.pinyin === "string"
+                              ? data.pinyin
+                              : m.pinyin,
+                          translation:
+                            typeof data.translation === "string"
+                              ? data.translation
+                              : m.translation,
+                          segments: Array.isArray(data.segments)
+                            ? data.segments
+                            : undefined,
+                        }
+                      : m
+                  )
+                );
+              } else if (payload.type === "final" && payload.data) {
+                const data = JSON.parse(payload.data);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMsgId
+                      ? {
+                          ...m,
+                          id: data.id ?? m.id,
+                          hanzi: data.hanzi || m.hanzi,
+                          pinyin: data.pinyin || "",
+                          translation: data.translation || "",
+                          audioUrl: data.audioUrl || undefined,
+                          segments: Array.isArray(data.segments)
+                            ? data.segments
+                            : undefined,
+                        }
+                      : m
+                  )
+                );
+                es.close();
+              }
+            } catch {}
+          };
+          es.addEventListener("user-update", (e: MessageEvent) => {
+            try {
+              const data = JSON.parse(
+                (e as unknown as MessageEvent).data as string
+              );
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === data.id
+                    ? {
+                        ...m,
+                        pinyin:
+                          typeof data.pinyin === "string"
+                            ? data.pinyin
+                            : m.pinyin,
+                        translation:
+                          typeof data.translation === "string"
+                            ? data.translation
+                            : m.translation,
+                        segments: Array.isArray(data.segments)
+                          ? data.segments
+                          : undefined,
+                      }
+                    : m
+                )
+              );
+            } catch {}
+          });
+          es.addEventListener("final", (e: MessageEvent) => {
+            try {
+              const data = JSON.parse(
+                (e as unknown as MessageEvent).data as string
+              );
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === aiMsgId
+                    ? {
+                        ...m,
+                        id: data.id ?? m.id,
+                        hanzi: data.hanzi || m.hanzi,
+                        pinyin: data.pinyin || "",
+                        translation: data.translation || "",
+                        audioUrl: data.audioUrl || undefined,
+                        segments: Array.isArray(data.segments)
+                          ? data.segments
+                          : undefined,
+                      }
+                    : m
+                )
+              );
+            } catch {}
+            es.close();
+          });
+          es.onerror = () => {
+            es.close();
+          };
+        } catch {
+          toast.error("Failed to send audio");
+        } finally {
+          setUploadingAudio(false);
+          setRecPrompt("Tap to speak");
+        }
       };
       rec.start();
       setRecording(true);
+      setRecPrompt("Listening... Tap when done");
     } catch {
       toast.error("Mic permission denied");
     }
@@ -322,6 +554,7 @@ export default function ConversationsPage() {
     if (rec && rec.state !== "inactive") {
       rec.stop();
       setRecording(false);
+      setRecPrompt("Processing...");
     }
   };
 
@@ -666,40 +899,98 @@ export default function ConversationsPage() {
             isMobile && showConversationsSidebar ? "hidden" : ""
           }`}
         >
-          <div className="flex-1 overflow-y-auto space-y-3 bg-[#20242b] border border-[#2e2f36] rounded-xl p-4">
+          <div
+            ref={scrollRef}
+            className="flex-1 overflow-y-auto space-y-3 bg-[#20242b] border border-[#2e2f36] rounded-xl p-4"
+          >
             {messages.map((m) => (
               <div
-                key={m.id}
+                key={`${m.id}-${m.createdAt}`}
                 className={m.role === "user" ? "ml-auto" : "mr-auto"}
               >
-                {m.role === "ai" ? (
-                  <div className="mb-1 flex gap-2">
-                    <button
-                      onClick={() =>
-                        setAiShowPinyin((s) => ({ ...s, [m.id]: !s[m.id] }))
-                      }
-                      className={`px-2 py-1 text-xs rounded border ${
-                        aiShowPinyin[m.id]
-                          ? "border-[#4040f2] text-[#9aa6ff]"
-                          : "border-[#404040] text-[#a6a6a6]"
-                      } cursor-pointer`}
-                    >
-                      Pinyin {aiShowPinyin[m.id] ? "On" : "Off"}
-                    </button>
-                    <button
-                      onClick={() =>
-                        setAiShowTrans((s) => ({ ...s, [m.id]: !s[m.id] }))
-                      }
-                      className={`px-2 py-1 text-xs rounded border ${
-                        aiShowTrans[m.id]
-                          ? "border-[#4040f2] text-[#9aa6ff]"
-                          : "border-[#404040] text-[#a6a6a6]"
-                      } cursor-pointer`}
-                    >
-                      Translation {aiShowTrans[m.id] ? "On" : "Off"}
-                    </button>
-                  </div>
-                ) : null}
+                <div
+                  className={`mb-1 flex gap-2 w-fit ${
+                    m.role === "user" ? "ml-auto" : ""
+                  }`}
+                >
+                  {m.role === "ai" && m.audioUrl ? (
+                    <>
+                      <audio
+                        id={`audio-${m.id}`}
+                        src={resolveMediaUrl(m.audioUrl)}
+                        preload="none"
+                      />
+                      <button
+                        onClick={() => {
+                          const el = document.getElementById(
+                            `audio-${m.id}`
+                          ) as HTMLAudioElement | null;
+                          if (!el) return;
+                          if (el.paused) {
+                            void el.play();
+                            setPlaying((s) => ({ ...s, [m.id]: true }));
+                            el.onended = () =>
+                              setPlaying((s) => ({ ...s, [m.id]: false }));
+                          } else {
+                            el.pause();
+                            setPlaying((s) => ({ ...s, [m.id]: false }));
+                          }
+                        }}
+                        className={`px-2 py-1 text-xs rounded border cursor-pointer ${
+                          playing[m.id]
+                            ? "border-[#4040f2] text-[#9aa6ff]"
+                            : "border-[#404040] text-[#a6a6a6]"
+                        }`}
+                        title={playing[m.id] ? "Pause audio" : "Play audio"}
+                      >
+                        <div className="flex items-center gap-1">
+                          <Volume2 className="w-4 h-4" />
+                          <span>{playing[m.id] ? "Pause" : "Play"}</span>
+                        </div>
+                      </button>
+                    </>
+                  ) : null}
+                  {(Array.isArray(m.segments) && m.segments.length > 0) ||
+                  (m.pinyin && m.pinyin.trim().length > 0) ||
+                  (m.translation && m.translation.trim().length > 0) ? (
+                    <>
+                      <button
+                        onClick={() =>
+                          setAiShowPinyin((s) => ({ ...s, [m.id]: !s[m.id] }))
+                        }
+                        className={`px-2 py-1 text-xs rounded border ${
+                          aiShowPinyin[m.id]
+                            ? "border-[#4040f2] text-[#9aa6ff]"
+                            : "border-[#404040] text-[#a6a6a6]"
+                        } cursor-pointer`}
+                      >
+                        Pinyin {aiShowPinyin[m.id] ? "On" : "Off"}
+                      </button>
+                      <button
+                        onClick={() =>
+                          setAiShowTrans((s) => ({ ...s, [m.id]: !s[m.id] }))
+                        }
+                        className={`px-2 py-1 text-xs rounded border ${
+                          aiShowTrans[m.id]
+                            ? "border-[#4040f2] text-[#9aa6ff]"
+                            : "border-[#404040] text-[#a6a6a6]"
+                        } cursor-pointer`}
+                      >
+                        Translation {aiShowTrans[m.id] ? "On" : "Off"}
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2 text-[10px] text-[#a6a6a6] px-2 py-1 border border-dashed border-[#404040] rounded">
+                      <span className="relative inline-flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4040f2] opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-[#4040f2]"></span>
+                      </span>
+                      <span>
+                        Processing… pinyin & translation will appear shortly
+                      </span>
+                    </div>
+                  )}
+                </div>
                 <div
                   className={`max-w-[85%] w-fit rounded-lg px-3 py-2 border ${
                     m.role === "user"
@@ -707,23 +998,17 @@ export default function ConversationsPage() {
                       : "mr-auto bg-[#26322b] border-[#35503c]"
                   }`}
                 >
-                  {m.role === "ai" ? (
-                    <AiMessage
-                      m={{
-                        ...m,
-                        segments:
-                          Array.isArray(m.segments) && m.segments.length > 0
-                            ? m.segments
-                            : buildFallbackSegments(m.hanzi, m.pinyin),
-                      }}
-                      showP={!!aiShowPinyin[m.id]}
-                      showT={!!aiShowTrans[m.id]}
-                    />
-                  ) : (
-                    <div className="text-white font-inter text-[15px]">
-                      {m.hanzi}
-                    </div>
-                  )}
+                  <AiMessage
+                    m={{
+                      ...m,
+                      segments:
+                        Array.isArray(m.segments) && m.segments.length > 0
+                          ? m.segments
+                          : buildFallbackSegments(m.hanzi, m.pinyin),
+                    }}
+                    showP={!!aiShowPinyin[m.id]}
+                    showT={!!aiShowTrans[m.id]}
+                  />
                   <div className="text-[10px] text-[#808080] mt-1">
                     {new Date(m.createdAt).toLocaleTimeString()}
                   </div>
@@ -732,20 +1017,44 @@ export default function ConversationsPage() {
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full flex-wrap">
             <button
-              onMouseDown={startRecording}
-              onMouseUp={stopRecording}
-              onTouchStart={startRecording}
-              onTouchEnd={stopRecording}
-              className={`p-2 rounded-lg border transition-colors duration-200 cursor-pointer ${
+              onClick={() => {
+                if (!recording) startRecording();
+                else stopRecording();
+              }}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors duration-200 cursor-pointer max-w-full ${
                 recording
-                  ? "bg-red-600/20 border-red-600/40 text-red-300"
-                  : "bg-green-600/20 border-green-600/40 text-green-300 hover:border-green-600"
+                  ? "bg-red-600/10 border-red-600/40 text-red-200"
+                  : "bg-[#1b1f26] border-[#2e323a] text-[#a6a6a6] hover:border-[#4040f2]"
               }`}
-              title={recording ? "Release to stop" : "Hold to speak"}
+              title={recording ? "Tap when done" : "Tap to speak"}
             >
-              <Mic className="w-4 h-4" />
+              <div className="relative shrink-0">
+                <div
+                  className={`rounded-full p-2 ${
+                    recording ? "bg-red-600/20" : "bg-green-600/20"
+                  }`}
+                >
+                  <Mic className="w-4 h-4" />
+                </div>
+                {recording ? (
+                  <span className="absolute inset-0 rounded-full ring-2 ring-red-500 animate-ping" />
+                ) : null}
+              </div>
+              <div className="flex flex-col items-start min-w-0 overflow-hidden hidden sm:block">
+                <span className="text-xs font-medium text-white truncate max-w-[55vw] sm:max-w-none">
+                  {recPrompt}
+                </span>
+                <span className="text-[10px] text-[#808080] hidden sm:block">
+                  {recording
+                    ? "Start speaking • Tap when done"
+                    : "Mic uses your browser audio"}
+                </span>
+              </div>
+              {uploadingAudio ? (
+                <Loader2 className="w-4 h-4 animate-spin ml-2 shrink-0" />
+              ) : null}
             </button>
 
             <input
@@ -754,12 +1063,12 @@ export default function ConversationsPage() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") sendText();
               }}
-              placeholder="Type your message in Chinese..."
-              className="flex-1 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-white outline-none"
+              placeholder="Type your message ..."
+              className="flex-1 min-w-0 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-white outline-none"
             />
             <button
               onClick={sendText}
-              className="px-4 py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+              className="px-4 py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer shrink-0"
             >
               <Send className="w-4 h-4" />
             </button>

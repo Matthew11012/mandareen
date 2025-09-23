@@ -12,9 +12,9 @@ export class ConversationsService {
     private readonly openai: OpenAIService,
     private readonly segmentationService: SegmentationService,
   ) {
-    void this.prisma;
-    void this.openai;
-    void this.segmentationService;
+    void prisma;
+    void openai;
+    void segmentationService;
   }
 
   async startConversation(userId: number) {
@@ -34,11 +34,13 @@ export class ConversationsService {
     // Attach segmentation for AI messages so frontend can render multi-word clickable tokens
     const enriched = await Promise.all(
       msgs.map(async (m) => {
-        if (m.role !== 'ai') return m as any;
         try {
-          const segs = await this.segmentationService.segmentText(
-            m.hanzi || '',
+          const text = m.hanzi || '';
+          const hasChinese = Array.from(text).some((ch) =>
+            this.isChineseChar(ch),
           );
+          if (!hasChinese) return m as any;
+          const segs = await this.segmentationService.segmentText(text);
           const charPinyinArray = (m.pinyin || '')
             .split(/\s+/)
             .map((s) => s.trim())
@@ -46,7 +48,7 @@ export class ConversationsService {
           const segments = segs.map((s) => {
             let segPinyin = (s.pinyin || '').toLowerCase();
             if (!segPinyin || segPinyin.trim().length === 0) {
-              const hann = (m.hanzi || '') as string;
+              const hann = text as string;
               const slice = charPinyinArray
                 .slice(s.startIndex, s.endIndex)
                 .filter((_, idx) =>
@@ -107,7 +109,6 @@ export class ConversationsService {
       // Fallback: create if not found
       convo = await this.prisma.conversation.create({ data: { userId } });
     }
-
     const userMsg = await this.prisma.message.create({
       data: {
         conversationId,
@@ -117,8 +118,41 @@ export class ConversationsService {
         translation: '',
       },
     });
+    // Return quickly; AI reply will be produced via SSE stream, and user enrichment will be sent via SSE as well
+    return { user: userMsg } as any;
+  }
 
-    // Return quickly; AI reply will be produced via SSE stream
+  async sendUserAudioMessage({
+    conversationId,
+    userId,
+    audioBuffer,
+    mimeType,
+  }: {
+    conversationId: number;
+    userId: number;
+    audioBuffer: Buffer;
+    mimeType: string;
+  }) {
+    let convo = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, userId },
+    });
+    if (!convo) {
+      convo = await this.prisma.conversation.create({ data: { userId } });
+    }
+    // Transcribe audio to text (Mandarin)
+    const hanzi = await (this.openai as any).transcribeAudio(
+      audioBuffer,
+      mimeType,
+    );
+    const userMsg = await this.prisma.message.create({
+      data: {
+        conversationId,
+        role: 'user',
+        hanzi,
+        pinyin: '',
+        translation: '',
+      },
+    });
     return { user: userMsg } as any;
   }
 
@@ -166,7 +200,7 @@ export class ConversationsService {
               {
                 role: 'system',
                 content:
-                  'You are a native Mandarin tutor. While streaming, output ONLY Chinese characters (no JSON, pinyin, or translation). Keep it concise. After streaming ends, we will run a separate non-stream call to obtain JSON with hanzi, pinyin, and translation for persistence.',
+                  'You are a native Mandarin tutor. While streaming, output ONLY Simplified Chinese characters (no JSON, pinyin, or translation). If the user uses Traditional characters, convert to Simplified in your reply. Keep it concise. After streaming ends, we will run a separate non-stream call to obtain JSON with hanzi, pinyin, and translation for persistence.',
               },
               ...history,
             ],
@@ -195,6 +229,85 @@ export class ConversationsService {
             subscriber.next({ data: JSON.stringify({ hanziDelta: delta }) });
           }
 
+          // User message enrichment (pinyin/translation + segments)
+          // Ensure this emits before we send 'final' so the client doesn't miss it
+          try {
+            const text = hanzi;
+            const hasChinese = Array.from(text).some((ch) =>
+              this.isChineseChar(ch as any),
+            );
+            if (hasChinese) {
+              const analyzed = await (
+                this.openai as any
+              ).analyzeChineseSentence(text);
+              const segs = await this.segmentationService.segmentText(text);
+              // Build char-level pinyin array from analyzed pinyin for fallback filling
+              const charPinyinArray = (analyzed.pinyin || '')
+                .split(/\s+/)
+                .map((s: string) => s.trim())
+                .filter((s: string) => s.length > 0);
+              const segments = segs.map((s) => {
+                let segPinyin = (s.pinyin || '').toLowerCase();
+                if (!segPinyin || segPinyin.trim().length === 0) {
+                  const hann = text as string;
+                  const slice = charPinyinArray
+                    .slice(s.startIndex, s.endIndex)
+                    .filter((_, idx) =>
+                      this.isChineseChar(hann[s.startIndex + idx]),
+                    )
+                    .filter((p) => (p || '').trim().length > 0);
+                  if (slice.length > 0) segPinyin = slice.join(' ');
+                }
+                const segPinyinTone = this.toToneMarks(segPinyin);
+                return {
+                  text: s.word,
+                  startIndex: s.startIndex,
+                  endIndex: s.endIndex,
+                  isWord: s.isWord,
+                  hskLevel: s.hskLevel,
+                  pinyin: segPinyinTone,
+                  definition: s.definition,
+                  definitions: s.definitions,
+                };
+              });
+              // Update latest user message with tone-mark pinyin
+              const latestUser = await this.prisma.message.findFirst({
+                where: { conversationId, role: 'user' },
+                orderBy: { createdAt: 'desc' },
+              });
+              if (latestUser) {
+                await this.prisma.message.update({
+                  where: { id: latestUser.id },
+                  data: {
+                    pinyin: this.toToneMarks(analyzed.pinyin) || '',
+                    translation: analyzed.translation || '',
+                  },
+                });
+                // Emit a user-update event so frontend can show toggles immediately
+                const userUpdatePayload = JSON.stringify({
+                  id: latestUser.id,
+                  segments,
+                  pinyin: this.toToneMarks(analyzed.pinyin) || '',
+                  translation: analyzed.translation || '',
+                });
+                // Default event for onmessage handlers
+                subscriber.next({
+                  data: JSON.stringify({
+                    type: 'user-update',
+                    data: userUpdatePayload,
+                  }),
+                });
+                // Named event for addEventListener('user-update') handlers
+                subscriber.next({
+                  event: 'user-update',
+                  data: userUpdatePayload,
+                });
+              }
+            }
+          } catch (err) {
+            this.logger.warn('User enrichment failed', err as any);
+          }
+
           // After stream ends, get final structured fields using our non-stream api with context
           const ai = await (this.openai as any).chatChineseReplyWithContext(
             history.concat({ role: 'assistant', content: fullText }).concat({
@@ -204,18 +317,17 @@ export class ConversationsService {
             }),
           );
           // Compute per-character pinyin using segmentation for accurate alignment
-          const pinyinPerChar = await this.computeSentencePinyinPerCharacter(
-            ai.hanzi || fullText,
-          );
+          const finalHanzi = ai.hanzi || fullText;
+          const pinyinPerChar =
+            await this.computeSentencePinyinPerCharacter(finalHanzi);
           // Build per-character array aligned to hanzi for segment pinyin filling
-          const charPinyinArray = await this.computeSentencePinyinArray(
-            ai.hanzi || fullText,
-          );
-          const aiMsg = await this.prisma.message.create({
+          const charPinyinArray =
+            await this.computeSentencePinyinArray(finalHanzi);
+          let aiMsg = await this.prisma.message.create({
             data: {
               conversationId,
               role: 'ai',
-              hanzi: ai.hanzi || fullText,
+              hanzi: finalHanzi,
               pinyin: pinyinPerChar || '',
               translation: ai.translation || '',
             },
@@ -236,7 +348,7 @@ export class ConversationsService {
             // ignore annotate error and continue with base segmentation
           }
           const segs = await this.segmentationService.segmentText(
-            ai.hanzi || fullText,
+            finalHanzi,
             vocabExtras,
           );
           const segments = segs.map((s) => {
@@ -263,10 +375,33 @@ export class ConversationsService {
               definitions: s.definitions,
             };
           });
+          // Generate TTS audio and persist file, then update message.audioUrl
+          try {
+            const { audioBuffer, fileExtension } = await (
+              this.openai as any
+            ).synthesizeSpeech(finalHanzi);
+            const fs = await import('fs');
+            const path = await import('path');
+            const baseDir = path.resolve(process.cwd(), 'uploads', 'audio');
+            await fs.promises.mkdir(baseDir, { recursive: true });
+            const fileName = `conv-${conversationId}-msg-${aiMsg.id}-${Date.now()}.${fileExtension}`;
+            const filePath = path.join(baseDir, fileName);
+            await fs.promises.writeFile(filePath, audioBuffer);
+            const publicUrl = `/media/audio/${fileName}`;
+            aiMsg = await this.prisma.message.update({
+              where: { id: aiMsg.id },
+              data: { audioUrl: publicUrl },
+            });
+          } catch (err) {
+            this.logger.warn('TTS synthesis failed (stream final)', err as any);
+          }
+          const payloadData = JSON.stringify({ ...aiMsg, segments });
+          // Default event for clients listening onmessage
           subscriber.next({
-            event: 'final',
-            data: JSON.stringify({ ...aiMsg, segments }),
+            data: JSON.stringify({ type: 'final', data: payloadData }),
           });
+          // Named event for clients listening to 'final'
+          subscriber.next({ event: 'final', data: payloadData });
           subscriber.complete();
         } catch (e) {
           this.logger.error(
@@ -276,12 +411,11 @@ export class ConversationsService {
           try {
             // Fallback: attempt non-stream single-shot reply without previous deltas
             const fallback = await (this.openai as any).chatChineseReply(hanzi);
-            const pinyinPerChar = await this.computeSentencePinyinPerCharacter(
-              fallback.hanzi || '',
-            );
-            const charPinyinArray = await this.computeSentencePinyinArray(
-              fallback.hanzi || '',
-            );
+            const finalHanziFallback = fallback.hanzi || '';
+            const pinyinPerChar =
+              await this.computeSentencePinyinPerCharacter(finalHanziFallback);
+            const charPinyinArray =
+              await this.computeSentencePinyinArray(finalHanziFallback);
             // Try to enrich fallback with annotated vocabulary as well
             let vocabExtras2: Array<{
               text: string;
@@ -324,19 +458,43 @@ export class ConversationsService {
                 definitions: s.definitions,
               };
             });
-            const aiMsg = await this.prisma.message.create({
+            let aiMsg = await this.prisma.message.create({
               data: {
                 conversationId,
                 role: 'ai',
-                hanzi: fallback.hanzi || '',
+                hanzi: finalHanziFallback,
                 pinyin: pinyinPerChar || '',
                 translation: fallback.translation || '',
               },
             });
-            subscriber.next({
-              event: 'final',
-              data: JSON.stringify({ ...aiMsg, segments: segments2 }),
+            // Attempt TTS so audioUrl is included in final payload as well
+            try {
+              const { audioBuffer, fileExtension } = await (
+                this.openai as any
+              ).synthesizeSpeech(finalHanziFallback);
+              const fs = await import('fs');
+              const path = await import('path');
+              const baseDir = path.resolve(process.cwd(), 'uploads', 'audio');
+              await fs.promises.mkdir(baseDir, { recursive: true });
+              const fileName = `conv-${conversationId}-msg-${aiMsg.id}-${Date.now()}.${fileExtension}`;
+              const filePath = path.join(baseDir, fileName);
+              await fs.promises.writeFile(filePath, audioBuffer);
+              const publicUrl = `/media/audio/${fileName}`;
+              aiMsg = await this.prisma.message.update({
+                where: { id: aiMsg.id },
+                data: { audioUrl: publicUrl },
+              });
+            } catch (err) {
+              this.logger.warn('TTS synthesis failed (fallback)', err as any);
+            }
+            const payloadData2 = JSON.stringify({
+              ...aiMsg,
+              segments: segments2,
             });
+            subscriber.next({
+              data: JSON.stringify({ type: 'final', data: payloadData2 }),
+            });
+            subscriber.next({ event: 'final', data: payloadData2 });
             subscriber.complete();
           } catch (inner) {
             this.logger.error(
@@ -355,7 +513,11 @@ export class ConversationsService {
                   'Sorry, I could not generate a reply right now. Please try again later.',
               },
             });
-            subscriber.next({ event: 'final', data: JSON.stringify(aiMsg) });
+            const errPayload = JSON.stringify(aiMsg);
+            subscriber.next({
+              data: JSON.stringify({ type: 'final', data: errPayload }),
+            });
+            subscriber.next({ event: 'final', data: errPayload });
             subscriber.complete();
           }
         }

@@ -10,7 +10,9 @@ import * as zlib from 'zlib';
 export class DictionaryImportService {
   private readonly logger = new Logger(DictionaryImportService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) {
+    void this.prisma;
+  }
 
   async fullDictionaryImport(): Promise<{ message: string; stats: any }> {
     try {
@@ -167,7 +169,10 @@ export class DictionaryImportService {
 
     if (!match) return null;
 
-    const [, , simplified, pinyin, definitions] = match;
+    const traditional = match[1];
+    const simplified = match[2];
+    const pinyin = match[3];
+    const definitions = match[4];
     const definitionList = definitions
       .split('/')
       .map((d) => d.trim())
@@ -180,6 +185,7 @@ export class DictionaryImportService {
 
     return {
       hanzi: simplified,
+      traditional,
       pinyin: pinyin.toLowerCase(),
       definition: definitionList.join('; '),
       isCustom: false,
@@ -194,10 +200,11 @@ export class DictionaryImportService {
         const base = await this.prisma.vocabularyItem.upsert({
           where: { hanzi: e.hanzi },
           update: {
-            // keep earliest pinyin/definition if already present
+            traditional: e.traditional,
           },
           create: {
             hanzi: e.hanzi,
+            traditional: e.traditional,
             pinyin: e.pinyin,
             definition: e.definition,
             source: 'CEDICT',
