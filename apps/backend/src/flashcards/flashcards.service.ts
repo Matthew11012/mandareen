@@ -44,10 +44,12 @@ export class FlashcardsService {
   }
 
   private toToneMarkSyllable(syl: string): string {
-    const m = syl.match(
+    // Normalize alternate representations of ü before parsing tones
+    const normalized = (syl || '').replace(/u:/gi, 'ü').replace(/v/gi, 'ü');
+    const m = normalized.match(
       /^(zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw]?)([aeiouüv]+[a-z]*)([1-5])?$/i,
     );
-    if (!m) return syl.toLowerCase();
+    if (!m) return normalized.toLowerCase();
     const head = (m[1] || '').toLowerCase();
     let body = (m[2] || '').toLowerCase();
     const tone = parseInt(m[3] || '0', 10);

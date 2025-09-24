@@ -206,7 +206,7 @@ export class LessonsService {
         grammarNotes = Array.isArray((notes as any).grammarNotes)
           ? (notes as any).grammarNotes
           : undefined;
-      } catch (err){
+      } catch (err) {
         this.logger.warn('Error generating grammar notes', err as any);
       }
 
@@ -502,10 +502,12 @@ Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
 
   // Convert numeric tones to tone marks (e.g., ni3hao3 -> nǐ hǎo)
   private toToneMarkSyllable(syl: string): string {
-    const m = syl.match(
+    // Normalize alternate representations of ü before parsing tones
+    const normalized = (syl || '').replace(/u:/gi, 'ü').replace(/v/gi, 'ü');
+    const m = normalized.match(
       /^(zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw]?)([aeiouüv]+[a-z]*)([1-5])?$/i,
     );
-    if (!m) return (syl || '').toLowerCase();
+    if (!m) return normalized.toLowerCase();
     const head = (m[1] || '').toLowerCase();
     let body = (m[2] || '').toLowerCase();
     const tone = parseInt(m[3] || '0', 10);
