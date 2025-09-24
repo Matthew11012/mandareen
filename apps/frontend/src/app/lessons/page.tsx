@@ -148,7 +148,7 @@ export default function LessonsPage() {
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#222831] flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
+        <div className="h-8 w-8 motion-safe:animate-spin rounded-full border-2 border-white border-t-transparent" />
       </div>
     );
   }
@@ -169,7 +169,10 @@ export default function LessonsPage() {
               <button
                 key={s}
                 onClick={() => setTopic(s)}
-                className={`px-3 py-1 rounded-full text-xs font-inter border ${topic === s ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer `}
+                className={`px-3 py-1 rounded-full text-xs font-inter border ${topic === s ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#2e323a]`}
+                type="button"
+                aria-pressed={topic === s}
+                aria-label={`Use topic ${s}`}
               >
                 {s}
               </button>
@@ -181,6 +184,8 @@ export default function LessonsPage() {
               placeholder="Or type your own detailed topic or prompt..."
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
+              name="lesson-topic"
+              autoComplete="off"
             />
           </div>
           <div className="pt-1">
@@ -199,7 +204,10 @@ export default function LessonsPage() {
                       active
                         ? "border-[#4040f2] text-[#9aa6ff]"
                         : "border-[#404040] text-[#a6a6a6]"
-                    } cursor-pointer `}
+                    } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#2e323a]`}
+                    type="button"
+                    aria-pressed={active}
+                    aria-label={`Set HSK level ${lvl}`}
                   >
                     HSK {lvl}
                   </button>
@@ -207,7 +215,9 @@ export default function LessonsPage() {
               })}
               <button
                 onClick={() => setGenLevel(null)}
-                className="px-2 py-1 sm:px-3 rounded-full text-xs sm:text-xs font-inter border border-[#404040] text-[#a6a6a6] cursor-pointer "
+                className="px-2 py-1 sm:px-3 rounded-full text-xs sm:text-xs font-inter border border-[#404040] text-[#a6a6a6] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#2e323a]"
+                type="button"
+                aria-label="Use auto level (my level)"
               >
                 Auto (my level)
               </button>
@@ -220,10 +230,12 @@ export default function LessonsPage() {
             <button
               onClick={handleGenerate}
               disabled={generating}
-              className="px-3 py-2 sm:px-4 bg-orange-500/70 text-white rounded-lg hover:bg-orange-600/70 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+              className="px-3 py-2 sm:px-4 bg-orange-500/70 text-white rounded-lg hover:bg-orange-600/70 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#222831]"
+              type="button"
+              aria-label="Generate story lesson"
             >
               <div className="flex items-center gap-2 justify-center sm:justify-start">
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4" aria-hidden="true" />
                 <span className="font-inter text-sm sm:text-base">
                   Generate Story
                 </span>
@@ -232,10 +244,12 @@ export default function LessonsPage() {
             <button
               onClick={handleGenerateDialogue}
               disabled={generating}
-              className="px-3 py-2 sm:px-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+              className="px-3 py-2 sm:px-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-purple-400 focus-visible:ring-offset-[#222831]"
+              type="button"
+              aria-label="Generate dialogue lesson"
             >
               <div className="flex items-center gap-2 justify-center sm:justify-start">
-                <MessageSquare className="w-4 h-4" />
+                <MessageSquare className="w-4 h-4" aria-hidden="true" />
                 <span className="font-inter text-sm sm:text-base">
                   Generate Dialogue
                 </span>
@@ -244,7 +258,9 @@ export default function LessonsPage() {
             <button
               onClick={() => setTopic("")}
               disabled={generating}
-              className="px-3 py-2 sm:px-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+              className="px-3 py-2 sm:px-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-teal-400 focus-visible:ring-offset-[#222831]"
+              type="button"
+              aria-label="Clear topic"
             >
               <span className="font-inter text-sm sm:text-base">Clear</span>
             </button>
@@ -252,11 +268,14 @@ export default function LessonsPage() {
           <button
             onClick={load}
             disabled={loading}
-            className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed sm:ml-4"
+            className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed sm:ml-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#222831]"
             title="Refresh"
+            type="button"
+            aria-label="Refresh lessons"
           >
             <RefreshCw
-              className={`w-4 h-4 text-[#a6a6a6] ${loading ? "animate-spin" : ""}`}
+              className={`w-4 h-4 text-[#a6a6a6] ${loading ? "motion-safe:animate-spin" : ""}`}
+              aria-hidden="true"
             />
           </button>
         </div>
@@ -264,8 +283,11 @@ export default function LessonsPage() {
         {error && <p className="text-red-400 font-inter text-sm">{error}</p>}
 
         {loading ? (
-          <div className="flex items-center gap-2 text-[#a6a6a6]">
-            <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          <div
+            className="flex items-center gap-2 text-[#a6a6a6]"
+            aria-live="polite"
+          >
+            <div className="w-4 h-4 motion-safe:animate-spin rounded-full border-2 border-white border-t-transparent" />
             <span className="font-inter text-sm">Loading...</span>
           </div>
         ) : allStories.length === 0 &&
@@ -491,6 +513,7 @@ export default function LessonsPage() {
                                   : "bg-[#404040]"
                               }`}
                               aria-label={`Go to page ${i + 1}`}
+                              type="button"
                             />
                           ))}
                         </div>
@@ -671,6 +694,7 @@ export default function LessonsPage() {
                                   : "bg-[#404040]"
                               }`}
                               aria-label={`Go to page ${i + 1}`}
+                              type="button"
                             />
                           ))}
                         </div>
@@ -878,6 +902,7 @@ export default function LessonsPage() {
                           storiesPage === i ? "bg-[#9aa6ff]" : "bg-[#404040]"
                         }`}
                         aria-label={`Go to page ${i + 1}`}
+                        type="button"
                       />
                     ))}
                   </div>
@@ -1095,6 +1120,7 @@ export default function LessonsPage() {
                           dialoguesPage === i ? "bg-[#9aa6ff]" : "bg-[#404040]"
                         }`}
                         aria-label={`Go to page ${i + 1}`}
+                        type="button"
                       />
                     ))}
                   </div>

@@ -1179,12 +1179,25 @@ export default function ConversationsPage() {
                 ? "Hide conversations"
                 : "Show conversations"
             }
+            type="button"
+            aria-pressed={showConversationsSidebar}
+            aria-label={
+              showConversationsSidebar
+                ? "Hide conversations"
+                : "Show conversations"
+            }
           >
             <div className="flex items-center gap-2">
               {showConversationsSidebar ? (
-                <ChevronLeft className="w-4 h-4 text-white" />
+                <ChevronLeft
+                  className="w-4 h-4 text-white"
+                  aria-hidden="true"
+                />
               ) : (
-                <MessageCircle className="w-4 h-4 text-[#a6a6a6]" />
+                <MessageCircle
+                  className="w-4 h-4 text-[#a6a6a6]"
+                  aria-hidden="true"
+                />
               )}
               <span
                 className={`text-xs font-inter ${
@@ -1206,6 +1219,9 @@ export default function ConversationsPage() {
           <div
             ref={scrollRef}
             className="flex-1 overflow-y-auto space-y-3 bg-[#20242b] border border-[#2e2f36] rounded-xl p-4"
+            aria-live="polite"
+            aria-relevant="additions text"
+            role="log"
           >
             {messages.map((m) => (
               <div
@@ -1249,7 +1265,6 @@ export default function ConversationsPage() {
                       >
                         <div className="flex items-center gap-1">
                           <Volume2 className="w-4 h-4" />
-                          <span>{playing[m.id] ? "Pause" : "Play"}</span>
                         </div>
                       </button>
                     </>
@@ -1259,6 +1274,7 @@ export default function ConversationsPage() {
                   (m.translation && m.translation.trim().length > 0) ? (
                     <>
                       <button
+                        type="button"
                         onClick={() =>
                           setAiShowPinyin((s) => ({ ...s, [m.id]: !s[m.id] }))
                         }
@@ -1266,11 +1282,16 @@ export default function ConversationsPage() {
                           aiShowPinyin[m.id]
                             ? "border-[#4040f2] text-[#9aa6ff]"
                             : "border-[#404040] text-[#a6a6a6]"
-                        } cursor-pointer`}
+                        } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
+                        aria-pressed={!!aiShowPinyin[m.id]}
+                        aria-label={
+                          aiShowPinyin[m.id] ? "Hide pinyin" : "Show pinyin"
+                        }
                       >
                         Pinyin {aiShowPinyin[m.id] ? "On" : "Off"}
                       </button>
                       <button
+                        type="button"
                         onClick={() =>
                           setAiShowTrans((s) => ({ ...s, [m.id]: !s[m.id] }))
                         }
@@ -1278,12 +1299,41 @@ export default function ConversationsPage() {
                           aiShowTrans[m.id]
                             ? "border-[#4040f2] text-[#9aa6ff]"
                             : "border-[#404040] text-[#a6a6a6]"
-                        } cursor-pointer`}
+                        } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
+                        aria-pressed={!!aiShowTrans[m.id]}
+                        aria-label={
+                          aiShowTrans[m.id]
+                            ? "Hide translation"
+                            : "Show translation"
+                        }
                       >
-                        Translation {aiShowTrans[m.id] ? "On" : "Off"}
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 26 25"
+                          fill="none"
+                          aria-hidden="true"
+                        >
+                          <path
+                            d="M1 3.46154H9.61539M9.61539 3.46154H15.1539M9.61539 3.46154V1M18.2308 3.46154H15.1539M15.1539 3.46154C14.144 6.82785 12.0292 10.01 9.61539 12.8066M9.61539 12.8066C7.61662 15.1223 5.41282 17.1737 3.46154 18.8462M9.61539 12.8066C8.38462 11.4615 6.41539 8.75385 5.92308 7.76923M9.61539 12.8066L13.3077 16.3846"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M15.1538 23.1538L16.5605 19.4615M16.5605 19.4615L20.0769 10.2307L23.5933 19.4615M16.5605 19.4615H23.5933M25 23.1538L23.5933 19.4615"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
                       </button>
                       {m.role === "ai" && m.notes?.grammarNotes?.length ? (
                         <button
+                          type="button"
                           onClick={() =>
                             setAiShowNotes((s) => ({ ...s, [m.id]: !s[m.id] }))
                           }
@@ -1291,7 +1341,11 @@ export default function ConversationsPage() {
                             aiShowNotes[m.id]
                               ? "border-[#4040f2] text-[#9aa6ff]"
                               : "border-[#404040] text-[#a6a6a6]"
-                          } cursor-pointer`}
+                          } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
+                          aria-pressed={!!aiShowNotes[m.id]}
+                          aria-label={
+                            aiShowNotes[m.id] ? "Hide notes" : "Show notes"
+                          }
                         >
                           Notes {aiShowNotes[m.id] ? "On" : "Off"}
                         </button>
@@ -1346,8 +1400,11 @@ export default function ConversationsPage() {
                 recording
                   ? "bg-red-600/10 border-red-600/40 text-red-200"
                   : "bg-[#1b1f26] border-[#2e323a] text-[#a6a6a6] hover:border-[#4040f2]"
-              }`}
+              } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#1b1f26]`}
               title={recording ? "Tap when done" : "Tap to speak"}
+              type="button"
+              aria-pressed={recording}
+              aria-label={recording ? "Stop recording" : "Start recording"}
             >
               <div className="relative shrink-0">
                 <div
@@ -1358,7 +1415,7 @@ export default function ConversationsPage() {
                   <Mic className="w-4 h-4" />
                 </div>
                 {recording ? (
-                  <span className="absolute inset-0 rounded-full ring-2 ring-red-500 animate-ping" />
+                  <span className="absolute inset-0 rounded-full ring-2 ring-red-500 motion-safe:animate-ping" />
                 ) : null}
               </div>
               <div className="flex flex-col items-start min-w-0 overflow-hidden hidden sm:block">
@@ -1388,6 +1445,8 @@ export default function ConversationsPage() {
             <button
               onClick={sendText}
               className="px-4 py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer shrink-0"
+              type="button"
+              aria-label="Send message"
             >
               <Send className="w-4 h-4" />
             </button>
