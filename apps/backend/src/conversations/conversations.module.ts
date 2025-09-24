@@ -5,6 +5,7 @@ import { ConversationsService } from './conversations.service';
 import { ConversationsController } from './conversations.controller';
 import { OpenAIModule } from '../openai/openai.module';
 import { VocabularyModule } from '../vocabulary/vocabulary.module';
+import { RagModule } from '../rag/rag.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { VocabularyModule } from '../vocabulary/vocabulary.module';
     }),
     OpenAIModule,
     VocabularyModule,
+    RagModule,
   ],
   controllers: [ConversationsController],
   providers: [ConversationsService],

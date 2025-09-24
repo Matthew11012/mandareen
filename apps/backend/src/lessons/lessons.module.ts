@@ -5,12 +5,14 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { OpenAIModule } from '../openai/openai.module';
 import { VocabularyModule } from '../vocabulary/vocabulary.module';
 import { JwtModule } from '@nestjs/jwt';
+import { RagModule } from '../rag/rag.module';
 
 @Module({
   imports: [
     PrismaModule,
     OpenAIModule,
     VocabularyModule,
+    RagModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: { expiresIn: '1d' },

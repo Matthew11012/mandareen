@@ -20,6 +20,23 @@ export class OpenAIService {
     });
   }
 
+  /**
+   * Create embeddings for texts (used by RAG ingestion or retrieval)
+   */
+  async embedTexts(texts: string[], model?: string): Promise<number[][]> {
+    const embedModel =
+      model || process.env.OPENAI_EMBED_MODEL || 'text-embedding-3-small';
+    if (!Array.isArray(texts) || texts.length === 0) return [];
+    const res = await (this.openai as any).embeddings.create({
+      model: embedModel,
+      input: texts.slice(0, 100),
+    });
+    const vectors: number[][] = (res?.data || []).map(
+      (d: any) => d.embedding || [],
+    );
+    return vectors;
+  }
+
   async analyzeChineseSentence(
     text: string,
   ): Promise<{ pinyin: string; translation: string }> {
@@ -342,5 +359,94 @@ export class OpenAIService {
     For levels 1-3, include some words from the next HSK level to challenge students.
     For levels 4+, include a few advanced words that might be unfamiliar.
     `;
+  }
+
+  /**
+   * Generate concise grammar notes grounded by provided context.
+   * Returns JSON with grammarNotes[], tips[], citations[].
+   * Note: We instruct the model to include pinyin/English directly to avoid extra API calls.
+   */
+  async generateGrammarNotes(
+    hanzi: string,
+    opts: {
+      level?: number;
+      strugglingWords?: string[];
+      contextText?: string; // enumerated [#S1] ... blocks
+    } = {},
+  ): Promise<{
+    grammarNotes?: Array<{
+      point: string;
+      brief: string;
+      examples?: Array<{ zh: string; en?: string }>;
+      sources?: Array<{ key?: string; chunkId?: number }>;
+      // Optional enriched fields directly from the model
+      pointPinyin?: string;
+      pointEn?: string;
+      briefPinyin?: string;
+      briefEn?: string;
+      examplesPinyin?: Array<{ zh: string; pinyin?: string; en?: string }>;
+    }>;
+    tips?: string[];
+    citations?: Array<{ key?: string; chunkId?: number }>;
+  }> {
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const sys = `You are a precise Mandarin tutor. Using ONLY the provided context snippets when present, explain grammar used in the student's/assistant's Chinese text.
+Focus on 2-3 concise GRAMMAR points only. Avoid long lists. Prefer patterns/particles/word order.
+For any Chinese you output, also include its pinyin and a short English gloss so the client doesn't have to make extra API calls.
+Return STRICT JSON with keys grammarNotes (array), tips (array), citations (array). Avoid speculation.`;
+    const userParts = [
+      opts?.contextText
+        ? `Grounding context with numbered sources:\n${opts.contextText}`
+        : undefined,
+      `User text (Chinese):\n${hanzi}`,
+      `Level: HSK-${opts.level ?? ''}`,
+      opts?.strugglingWords?.length
+        ? `User struggles: ${opts.strugglingWords.slice(0, 10).join(', ')}`
+        : undefined,
+      `Return JSON EXACTLY like (limit grammarNotes to at most 3):\n{
+  "grammarNotes": [
+    {
+      "point": "把字句",
+      "pointPinyin": "bǎ zì jù",
+      "pointEn": "the 'ba' construction",
+      "brief": "用于强调处置宾语；结构：主语 + 把 + 宾语 + 谓语",
+      "briefPinyin": "yòng yú qiángdiào chǔzhì bīnyǔ; jiégòu: zhǔyǔ + bǎ + bīnyǔ + wèiyǔ",
+      "briefEn": "Used to emphasize disposing of the object; structure: S + ba + O + V",
+      "examples": [
+        { "zh": "他把书放在桌子上。", "en": "He put the book on the table.", "pinyin": "tā bǎ shū fàng zài zhuōzi shàng" }
+      ],
+      "sources": [{"key":"S1"}]
+    }
+  ],
+  "tips": ["注意受事宾语通常已知。"],
+  "citations": [{"key":"S1"}]
+}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    const completion = await this.openai.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: userParts },
+      ],
+      response_format: { type: 'json_object' },
+    } as any);
+    const content = completion.choices?.[0]?.message?.content;
+    if (!content) return {};
+    try {
+      const data = JSON.parse(content);
+      if (data && typeof data === 'object') {
+        // Enforce max 3 grammar notes as a safety
+        if (Array.isArray(data.grammarNotes)) {
+          data.grammarNotes = data.grammarNotes.slice(0, 3);
+        }
+        return data as any;
+      }
+    } catch (err) {
+      this.logger.warn('Error parsing grammar notes', err as any);
+    }
+    return {};
   }
 }

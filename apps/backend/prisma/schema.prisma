@@ -135,8 +135,57 @@ model Message {
   pinyin          String
   translation     String
   audioUrl        String?
+  notes           Json?
   createdAt       DateTime      @default(now())
   wordInstances   WordInstance[]
+}
+
+/// RAG: Knowledge sources and chunks for grounded generation
+model RagSource {
+  id          Int       @id @default(autoincrement())
+  title       String
+  sourceType  String    // pdf | md | txt | url
+  language    String?   // zh | en | bilingual
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  sections    RagSection[]
+  chunks      RagChunk[]
+}
+
+model RagSection {
+  id         Int       @id @default(autoincrement())
+  source     RagSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceId   Int
+  heading    String?
+  slug       String?
+  tags       String[]
+  hskMin     Int?
+  hskMax     Int?
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+  chunks     RagChunk[]
+}
+
+model RagChunk {
+  id         Int        @id @default(autoincrement())
+  source     RagSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceId   Int
+  section    RagSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  sectionId  Int
+  hanzi      String?
+  english    String?
+  tokens     Int?
+  tags       String[]
+  hskMin     Int?
+  hskMax     Int?
+  createdAt  DateTime   @default(now())
+  // Optional cached embeddings (JSON array for portability; switch to pgvector later)
+  embeddingZh Json?
+  embeddingEn Json?
+
+  @@index([sourceId])
+  @@index([sectionId])
+  @@index([hskMin, hskMax])
 }
 
 model VocabularySense {

@@ -148,7 +148,7 @@ export default function LessonsPage() {
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#222831] flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
+        <div className="h-8 w-8 motion-safe:animate-spin rounded-full border-2 border-white border-t-transparent" />
       </div>
     );
   }
@@ -169,7 +169,10 @@ export default function LessonsPage() {
               <button
                 key={s}
                 onClick={() => setTopic(s)}
-                className={`px-3 py-1 rounded-full text-xs font-inter border ${topic === s ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer `}
+                className={`px-3 py-1 rounded-full text-xs font-inter border ${topic === s ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#2e323a]`}
+                type="button"
+                aria-pressed={topic === s}
+                aria-label={`Use topic ${s}`}
               >
                 {s}
               </button>
@@ -181,6 +184,8 @@ export default function LessonsPage() {
               placeholder="Or type your own detailed topic or prompt..."
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
+              name="lesson-topic"
+              autoComplete="off"
             />
           </div>
           <div className="pt-1">
@@ -199,7 +204,10 @@ export default function LessonsPage() {
                       active
                         ? "border-[#4040f2] text-[#9aa6ff]"
                         : "border-[#404040] text-[#a6a6a6]"
-                    } cursor-pointer `}
+                    } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#2e323a]`}
+                    type="button"
+                    aria-pressed={active}
+                    aria-label={`Set HSK level ${lvl}`}
                   >
                     HSK {lvl}
                   </button>
@@ -207,7 +215,9 @@ export default function LessonsPage() {
               })}
               <button
                 onClick={() => setGenLevel(null)}
-                className="px-2 py-1 sm:px-3 rounded-full text-xs sm:text-xs font-inter border border-[#404040] text-[#a6a6a6] cursor-pointer "
+                className="px-2 py-1 sm:px-3 rounded-full text-xs sm:text-xs font-inter border border-[#404040] text-[#a6a6a6] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#2e323a]"
+                type="button"
+                aria-label="Use auto level (my level)"
               >
                 Auto (my level)
               </button>
@@ -215,15 +225,17 @@ export default function LessonsPage() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:justify-between">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+        <div className="flex flex-row items-start sm:items-center gap-3 justify-between">
+          <div className="flex flex-row items-start sm:items-center gap-2 sm:gap-3">
             <button
               onClick={handleGenerate}
               disabled={generating}
-              className="px-3 py-2 sm:px-4 bg-orange-500/70 text-white rounded-lg hover:bg-orange-600/70 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+              className="px-3 py-2 sm:px-4 bg-orange-500/70 text-white rounded-lg hover:bg-orange-600/70 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#222831]"
+              type="button"
+              aria-label="Generate story lesson"
             >
               <div className="flex items-center gap-2 justify-center sm:justify-start">
-                <Plus className="w-4 h-4" />
+                <Plus className="hidden sm:block w-4 h-4" aria-hidden="true" />
                 <span className="font-inter text-sm sm:text-base">
                   Generate Story
                 </span>
@@ -232,10 +244,12 @@ export default function LessonsPage() {
             <button
               onClick={handleGenerateDialogue}
               disabled={generating}
-              className="px-3 py-2 sm:px-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+              className="px-3 py-2 sm:px-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-purple-400 focus-visible:ring-offset-[#222831]"
+              type="button"
+              aria-label="Generate dialogue lesson"
             >
               <div className="flex items-center gap-2 justify-center sm:justify-start">
-                <MessageSquare className="w-4 h-4" />
+                <MessageSquare className="hidden sm:block w-4 h-4" aria-hidden="true" />
                 <span className="font-inter text-sm sm:text-base">
                   Generate Dialogue
                 </span>
@@ -244,7 +258,9 @@ export default function LessonsPage() {
             <button
               onClick={() => setTopic("")}
               disabled={generating}
-              className="px-3 py-2 sm:px-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+              className="px-3 py-2 sm:px-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-teal-400 focus-visible:ring-offset-[#222831]"
+              type="button"
+              aria-label="Clear topic"
             >
               <span className="font-inter text-sm sm:text-base">Clear</span>
             </button>
@@ -252,11 +268,14 @@ export default function LessonsPage() {
           <button
             onClick={load}
             disabled={loading}
-            className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed sm:ml-4"
+            className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed sm:ml-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#222831]"
             title="Refresh"
+            type="button"
+            aria-label="Refresh lessons"
           >
             <RefreshCw
-              className={`w-4 h-4 text-[#a6a6a6] ${loading ? "animate-spin" : ""}`}
+              className={`w-4 h-4 text-[#a6a6a6] ${loading ? "motion-safe:animate-spin" : ""}`}
+              aria-hidden="true"
             />
           </button>
         </div>
@@ -264,8 +283,11 @@ export default function LessonsPage() {
         {error && <p className="text-red-400 font-inter text-sm">{error}</p>}
 
         {loading ? (
-          <div className="flex items-center gap-2 text-[#a6a6a6]">
-            <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          <div
+            className="flex items-center gap-2 text-[#a6a6a6]"
+            aria-live="polite"
+          >
+            <div className="w-4 h-4 motion-safe:animate-spin rounded-full border-2 border-white border-t-transparent" />
             <span className="font-inter text-sm">Loading...</span>
           </div>
         ) : allStories.length === 0 &&
@@ -375,90 +397,96 @@ export default function LessonsPage() {
                                     <motion.div
                                       key={i}
                                       layout
-                                      className="min-w-full snap-start grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2"
+                                      className="min-w-full snap-start flex items-stretch"
                                     >
-                                      <AnimatePresence mode="popLayout">
-                                        {padded.map(
-                                          (l: LessonListItem | null, idx2) =>
-                                            l ? (
-                                              <motion.div
-                                                key={l.id}
-                                                layout
-                                                initial={{
-                                                  opacity: 0,
-                                                  scale: 0.8,
-                                                  y: 20,
-                                                }}
-                                                animate={{
-                                                  opacity: 1,
-                                                  scale: 1,
-                                                  y: 0,
-                                                  borderColor: "#404040",
-                                                }}
-                                                exit={{
-                                                  opacity: 0,
-                                                  scale: 0.8,
-                                                  y: -20,
-                                                }}
-                                                transition={{
-                                                  duration: 0.3,
-                                                  delay: idx2 * 0.05,
-                                                  layout: { duration: 0.4 },
-                                                }}
-                                                className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
-                                                onClick={() =>
-                                                  router.push(
-                                                    `/lessons/${l.id}`
-                                                  )
-                                                }
-                                                whileHover={{
-                                                  scale: 1.02,
-                                                  borderColor: "#4040f2",
-                                                }}
-                                                whileTap={{ scale: 0.98 }}
-                                              >
-                                                <div className="flex items-start gap-3">
-                                                  <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
-                                                    <BookOpen className="w-5 h-5 text-orange-400" />
-                                                  </div>
-                                                  <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                      <p className="text-white font-inter font-semibold truncate">
-                                                        {l.title ||
-                                                          `Lesson #${l.id}`}
-                                                      </p>
-                                                      <span
-                                                        className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                      >
-                                                        HSK {l.level}
-                                                      </span>
+                                      <div
+                                        className={`${page.length >= (isMobile ? 4 : 9) ? "flex-none w-3 sm:w-4 md:w-5" : "flex-none w-0"}`}
+                                        aria-hidden="true"
+                                      />
+                                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
+                                        <AnimatePresence mode="popLayout">
+                                          {padded.map(
+                                            (l: LessonListItem | null, idx2) =>
+                                              l ? (
+                                                <motion.div
+                                                  key={l.id}
+                                                  layout
+                                                  initial={{
+                                                    opacity: 0,
+                                                    scale: 0.8,
+                                                    y: 20,
+                                                  }}
+                                                  animate={{
+                                                    opacity: 1,
+                                                    scale: 1,
+                                                    y: 0,
+                                                    borderColor: "#404040",
+                                                  }}
+                                                  exit={{
+                                                    opacity: 0,
+                                                    scale: 0.8,
+                                                    y: -20,
+                                                  }}
+                                                  transition={{
+                                                    duration: 0.3,
+                                                    delay: idx2 * 0.05,
+                                                    layout: { duration: 0.4 },
+                                                  }}
+                                                  className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
+                                                  onClick={() =>
+                                                    router.push(
+                                                      `/lessons/${l.id}`
+                                                    )
+                                                  }
+                                                  whileHover={{
+                                                    scale: 1.02,
+                                                    borderColor: "#4040f2",
+                                                  }}
+                                                  whileTap={{ scale: 0.98 }}
+                                                >
+                                                  <div className="flex items-start gap-3">
+                                                    <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
+                                                      <BookOpen className="w-5 h-5 text-orange-400" />
                                                     </div>
-                                                    {l.titlePinyin && (
-                                                      <p className="text-[#9aa6ff] font-inter text-xs truncate">
-                                                        {l.titlePinyin}
+                                                    <div className="flex-1 min-w-0">
+                                                      <div className="flex items-center justify-between gap-2">
+                                                        <p className="text-white font-inter font-semibold truncate">
+                                                          {l.title ||
+                                                            `Lesson #${l.id}`}
+                                                        </p>
+                                                        <span
+                                                          className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                                        >
+                                                          HSK {l.level}
+                                                        </span>
+                                                      </div>
+                                                      {l.titlePinyin && (
+                                                        <p className="text-[#9aa6ff] font-inter text-xs truncate">
+                                                          {l.titlePinyin}
+                                                        </p>
+                                                      )}
+                                                      {l.titleTranslation && (
+                                                        <p className="text-[#a6a6a6] font-inter text-xs truncate">
+                                                          {l.titleTranslation}
+                                                        </p>
+                                                      )}
+                                                      <p className="text-[#a6a6a6] font-inter text-xs mt-1">
+                                                        {new Date(
+                                                          l.createdAt
+                                                        ).toLocaleString()}
                                                       </p>
-                                                    )}
-                                                    {l.titleTranslation && (
-                                                      <p className="text-[#a6a6a6] font-inter text-xs truncate">
-                                                        {l.titleTranslation}
-                                                      </p>
-                                                    )}
-                                                    <p className="text-[#a6a6a6] font-inter text-xs mt-1">
-                                                      {new Date(
-                                                        l.createdAt
-                                                      ).toLocaleString()}
-                                                    </p>
+                                                    </div>
                                                   </div>
-                                                </div>
-                                              </motion.div>
-                                            ) : (
-                                              <div
-                                                key={`pad-ms-${idx2}`}
-                                                className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
-                                              />
-                                            )
-                                        )}
-                                      </AnimatePresence>
+                                                </motion.div>
+                                              ) : (
+                                                <div
+                                                  key={`pad-ms-${idx2}`}
+                                                  className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
+                                                />
+                                              )
+                                          )}
+                                        </AnimatePresence>
+                                      </div>
                                     </motion.div>
                                   );
                                 })}
@@ -466,33 +494,70 @@ export default function LessonsPage() {
                           </div>
                         </LayoutGroup>
                         <div className="mt-2 flex items-center justify-center gap-2">
-                          {Array.from({
-                            length: Math.max(
+                          {(() => {
+                            const total = Math.max(
                               1,
                               Math.ceil(
                                 myStoriesFiltered.length / (isMobile ? 4 : 9)
                               )
-                            ),
-                          }).map((_, i) => (
-                            <button
-                              key={i}
-                              onClick={() => {
-                                const el = myStoriesRef.current;
-                                if (!el) return;
-                                el.scrollTo({
-                                  left: i * el.clientWidth,
-                                  behavior: "smooth",
-                                });
-                                setMyStoriesPage(i);
-                              }}
-                              className={`w-2 h-2 rounded-full ${
-                                myStoriesPage === i
-                                  ? "bg-[#9aa6ff]"
-                                  : "bg-[#404040]"
-                              }`}
-                              aria-label={`Go to page ${i + 1}`}
-                            />
-                          ))}
+                            );
+                            const goTo = (i: number) => {
+                              const el = myStoriesRef.current;
+                              if (!el) return;
+                              el.scrollTo({
+                                left: i * el.clientWidth,
+                                behavior: "smooth",
+                              });
+                              setMyStoriesPage(i);
+                            };
+                            return (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    goTo(Math.max(0, myStoriesPage - 1))
+                                  }
+                                  disabled={myStoriesPage <= 0}
+                                  aria-label="Previous page"
+                                  className={`px-2 py-1 text-xs rounded border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-transparent ${
+                                    myStoriesPage <= 0
+                                      ? "border-[#303030] text-[#555] cursor-not-allowed"
+                                      : "border-[#404040] text-[#a6a6a6] hover:bg-[#4040f2]/10 cursor-pointer"
+                                  }`}
+                                >
+                                  ‹
+                                </button>
+                                {Array.from({ length: total }).map((_, i) => (
+                                  <button
+                                    key={i}
+                                    type="button"
+                                    onClick={() => goTo(i)}
+                                    className={`w-2 h-2 rounded-full ${
+                                      myStoriesPage === i
+                                        ? "bg-[#9aa6ff]"
+                                        : "bg-[#404040]"
+                                    }`}
+                                    aria-label={`Go to page ${i + 1}`}
+                                  />
+                                ))}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    goTo(Math.min(total - 1, myStoriesPage + 1))
+                                  }
+                                  disabled={myStoriesPage >= total - 1}
+                                  aria-label="Next page"
+                                  className={`px-2 py-1 text-xs rounded border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-transparent ${
+                                    myStoriesPage >= total - 1
+                                      ? "border-[#303030] text-[#555] cursor-not-allowed"
+                                      : "border-[#404040] text-[#a6a6a6] hover:bg-[#4040f2]/10 cursor-pointer"
+                                  }`}
+                                >
+                                  ›
+                                </button>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     )}
@@ -553,90 +618,96 @@ export default function LessonsPage() {
                                     <motion.div
                                       key={i}
                                       layout
-                                      className="min-w-full snap-start grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2"
+                                      className="min-w-full snap-start flex items-stretch"
                                     >
-                                      <AnimatePresence mode="popLayout">
-                                        {padded.map(
-                                          (l: LessonListItem | null, idx2) =>
-                                            l ? (
-                                              <motion.div
-                                                key={l.id}
-                                                layout
-                                                initial={{
-                                                  opacity: 0,
-                                                  scale: 0.8,
-                                                  y: 20,
-                                                }}
-                                                animate={{
-                                                  opacity: 1,
-                                                  scale: 1,
-                                                  y: 0,
-                                                  borderColor: "#404040",
-                                                }}
-                                                exit={{
-                                                  opacity: 0,
-                                                  scale: 0.8,
-                                                  y: -20,
-                                                }}
-                                                transition={{
-                                                  duration: 0.3,
-                                                  delay: idx2 * 0.05,
-                                                  layout: { duration: 0.4 },
-                                                }}
-                                                className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
-                                                onClick={() =>
-                                                  router.push(
-                                                    `/lessons/${l.id}`
-                                                  )
-                                                }
-                                                whileHover={{
-                                                  scale: 1.02,
-                                                  borderColor: "#4040f2",
-                                                }}
-                                                whileTap={{ scale: 0.98 }}
-                                              >
-                                                <div className="flex items-start gap-3">
-                                                  <div className="w-10 h-10 bg-purple-600/20 rounded-lg flex items-center justify-center">
-                                                    <MessageSquare className="w-5 h-5 text-purple-500" />
-                                                  </div>
-                                                  <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                      <p className="text-white font-inter font-semibold truncate">
-                                                        {l.title ||
-                                                          `Dialogue #${l.id}`}
-                                                      </p>
-                                                      <span
-                                                        className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                      >
-                                                        HSK {l.level}
-                                                      </span>
+                                      <div
+                                        className={`${page.length >= (isMobile ? 4 : 9) ? "flex-none w-3 sm:w-4 md:w-5" : "flex-none w-0"}`}
+                                        aria-hidden="true"
+                                      />
+                                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
+                                        <AnimatePresence mode="popLayout">
+                                          {padded.map(
+                                            (l: LessonListItem | null, idx2) =>
+                                              l ? (
+                                                <motion.div
+                                                  key={l.id}
+                                                  layout
+                                                  initial={{
+                                                    opacity: 0,
+                                                    scale: 0.8,
+                                                    y: 20,
+                                                  }}
+                                                  animate={{
+                                                    opacity: 1,
+                                                    scale: 1,
+                                                    y: 0,
+                                                    borderColor: "#404040",
+                                                  }}
+                                                  exit={{
+                                                    opacity: 0,
+                                                    scale: 0.8,
+                                                    y: -20,
+                                                  }}
+                                                  transition={{
+                                                    duration: 0.3,
+                                                    delay: idx2 * 0.05,
+                                                    layout: { duration: 0.4 },
+                                                  }}
+                                                  className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
+                                                  onClick={() =>
+                                                    router.push(
+                                                      `/lessons/${l.id}`
+                                                    )
+                                                  }
+                                                  whileHover={{
+                                                    scale: 1.02,
+                                                    borderColor: "#4040f2",
+                                                  }}
+                                                  whileTap={{ scale: 0.98 }}
+                                                >
+                                                  <div className="flex items-start gap-3">
+                                                    <div className="w-10 h-10 bg-purple-600/20 rounded-lg flex items-center justify-center">
+                                                      <MessageSquare className="w-5 h-5 text-purple-500" />
                                                     </div>
-                                                    {l.titlePinyin && (
-                                                      <p className="text-[#9aa6ff] font-inter text-xs truncate">
-                                                        {l.titlePinyin}
+                                                    <div className="flex-1 min-w-0">
+                                                      <div className="flex items-center justify-between gap-2">
+                                                        <p className="text-white font-inter font-semibold truncate">
+                                                          {l.title ||
+                                                            `Dialogue #${l.id}`}
+                                                        </p>
+                                                        <span
+                                                          className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                                        >
+                                                          HSK {l.level}
+                                                        </span>
+                                                      </div>
+                                                      {l.titlePinyin && (
+                                                        <p className="text-[#9aa6ff] font-inter text-xs truncate">
+                                                          {l.titlePinyin}
+                                                        </p>
+                                                      )}
+                                                      {l.titleTranslation && (
+                                                        <p className="text-[#a6a6a6] font-inter text-xs truncate">
+                                                          {l.titleTranslation}
+                                                        </p>
+                                                      )}
+                                                      <p className="text-[#a6a6a6] font-inter text-xs mt-1">
+                                                        {new Date(
+                                                          l.createdAt
+                                                        ).toLocaleString()}
                                                       </p>
-                                                    )}
-                                                    {l.titleTranslation && (
-                                                      <p className="text-[#a6a6a6] font-inter text-xs truncate">
-                                                        {l.titleTranslation}
-                                                      </p>
-                                                    )}
-                                                    <p className="text-[#a6a6a6] font-inter text-xs mt-1">
-                                                      {new Date(
-                                                        l.createdAt
-                                                      ).toLocaleString()}
-                                                    </p>
+                                                    </div>
                                                   </div>
-                                                </div>
-                                              </motion.div>
-                                            ) : (
-                                              <div
-                                                key={`pad-md-${idx2}`}
-                                                className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
-                                              />
-                                            )
-                                        )}
-                                      </AnimatePresence>
+                                                </motion.div>
+                                              ) : (
+                                                <div
+                                                  key={`pad-md-${idx2}`}
+                                                  className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
+                                                />
+                                              )
+                                          )}
+                                        </AnimatePresence>
+                                      </div>
                                     </motion.div>
                                   );
                                 })}
@@ -644,35 +715,74 @@ export default function LessonsPage() {
                           </div>
                         </LayoutGroup>
                         <div className="mt-2 flex items-center justify-center gap-2">
-                          {Array.from({
-                            length: Math.max(
+                          {(() => {
+                            const total = Math.max(
                               1,
                               Math.ceil(
                                 myItems.filter(
                                   (i) => i.lessonType === "dialogue"
                                 ).length / (isMobile ? 4 : 9)
                               )
-                            ),
-                          }).map((_, i) => (
-                            <button
-                              key={i}
-                              onClick={() => {
-                                const el = myDialoguesRef.current;
-                                if (!el) return;
-                                el.scrollTo({
-                                  left: i * el.clientWidth,
-                                  behavior: "smooth",
-                                });
-                                setMyDialoguesPage(i);
-                              }}
-                              className={`w-2 h-2 rounded-full ${
-                                myDialoguesPage === i
-                                  ? "bg-[#9aa6ff]"
-                                  : "bg-[#404040]"
-                              }`}
-                              aria-label={`Go to page ${i + 1}`}
-                            />
-                          ))}
+                            );
+                            const goTo = (i: number) => {
+                              const el = myDialoguesRef.current;
+                              if (!el) return;
+                              el.scrollTo({
+                                left: i * el.clientWidth,
+                                behavior: "smooth",
+                              });
+                              setMyDialoguesPage(i);
+                            };
+                            return (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    goTo(Math.max(0, myDialoguesPage - 1))
+                                  }
+                                  disabled={myDialoguesPage <= 0}
+                                  aria-label="Previous page"
+                                  className={`px-2 py-1 text-xs rounded border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-transparent ${
+                                    myDialoguesPage <= 0
+                                      ? "border-[#303030] text-[#555] cursor-not-allowed"
+                                      : "border-[#404040] text-[#a6a6a6] hover:bg-[#4040f2]/10 cursor-pointer"
+                                  }`}
+                                >
+                                  ‹
+                                </button>
+                                {Array.from({ length: total }).map((_, i) => (
+                                  <button
+                                    key={i}
+                                    type="button"
+                                    onClick={() => goTo(i)}
+                                    className={`w-2 h-2 rounded-full ${
+                                      myDialoguesPage === i
+                                        ? "bg-[#9aa6ff]"
+                                        : "bg-[#404040]"
+                                    }`}
+                                    aria-label={`Go to page ${i + 1}`}
+                                  />
+                                ))}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    goTo(
+                                      Math.min(total - 1, myDialoguesPage + 1)
+                                    )
+                                  }
+                                  disabled={myDialoguesPage >= total - 1}
+                                  aria-label="Next page"
+                                  className={`px-2 py-1 text-xs rounded border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-transparent ${
+                                    myDialoguesPage >= total - 1
+                                      ? "border-[#303030] text-[#555] cursor-not-allowed"
+                                      : "border-[#404040] text-[#a6a6a6] hover:bg-[#4040f2]/10 cursor-pointer"
+                                  }`}
+                                >
+                                  ›
+                                </button>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     )}
@@ -767,87 +877,94 @@ export default function LessonsPage() {
                               <motion.div
                                 key={i}
                                 layout
-                                className="min-w-full snap-start grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2"
+                                className="min-w-full snap-start flex items-stretch"
                               >
-                                <AnimatePresence mode="popLayout">
-                                  {padded.map(
-                                    (l: LessonListItem | null, idx2) =>
-                                      l ? (
-                                        <motion.div
-                                          key={l.id}
-                                          layout
-                                          initial={{
-                                            opacity: 0,
-                                            scale: 0.8,
-                                            y: 20,
-                                          }}
-                                          animate={{
-                                            opacity: 1,
-                                            scale: 1,
-                                            y: 0,
-                                            borderColor: "#404040",
-                                          }}
-                                          exit={{
-                                            opacity: 0,
-                                            scale: 0.8,
-                                            y: -20,
-                                          }}
-                                          transition={{
-                                            duration: 0.3,
-                                            delay: idx2 * 0.05,
-                                            layout: { duration: 0.4 },
-                                          }}
-                                          className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
-                                          onClick={() =>
-                                            router.push(`/lessons/${l.id}`)
-                                          }
-                                          whileHover={{
-                                            scale: 1.02,
-                                            borderColor: "#4040f2",
-                                          }}
-                                          whileTap={{ scale: 0.98 }}
-                                        >
-                                          <div className="flex items-start gap-3">
-                                            <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
-                                              <BookOpen className="w-5 h-5 text-orange-400" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                              <div className="flex items-center justify-between gap-2">
-                                                <p className="text-white font-inter font-semibold truncate">
-                                                  {l.title || `Lesson #${l.id}`}
-                                                </p>
-                                                <span
-                                                  className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                >
-                                                  HSK {l.level}
-                                                </span>
+                                <div
+                                  className={`${page.length >= 9 ? "flex-none w-3 sm:w-4 md:w-5" : "flex-none w-0"}`}
+                                  aria-hidden="true"
+                                />
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
+                                  <AnimatePresence mode="popLayout">
+                                    {padded.map(
+                                      (l: LessonListItem | null, idx2) =>
+                                        l ? (
+                                          <motion.div
+                                            key={l.id}
+                                            layout
+                                            initial={{
+                                              opacity: 0,
+                                              scale: 0.8,
+                                              y: 20,
+                                            }}
+                                            animate={{
+                                              opacity: 1,
+                                              scale: 1,
+                                              y: 0,
+                                              borderColor: "#404040",
+                                            }}
+                                            exit={{
+                                              opacity: 0,
+                                              scale: 0.8,
+                                              y: -20,
+                                            }}
+                                            transition={{
+                                              duration: 0.3,
+                                              delay: idx2 * 0.05,
+                                              layout: { duration: 0.4 },
+                                            }}
+                                            className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
+                                            onClick={() =>
+                                              router.push(`/lessons/${l.id}`)
+                                            }
+                                            whileHover={{
+                                              scale: 1.02,
+                                              borderColor: "#4040f2",
+                                            }}
+                                            whileTap={{ scale: 0.98 }}
+                                          >
+                                            <div className="flex items-start gap-3">
+                                              <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
+                                                <BookOpen className="w-5 h-5 text-orange-400" />
                                               </div>
-                                              {l.titlePinyin && (
-                                                <p className="text-[#9aa6ff] font-inter text-xs truncate">
-                                                  {l.titlePinyin}
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between gap-2">
+                                                  <p className="text-white font-inter font-semibold truncate">
+                                                    {l.title ||
+                                                      `Lesson #${l.id}`}
+                                                  </p>
+                                                  <span
+                                                    className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                                  >
+                                                    HSK {l.level}
+                                                  </span>
+                                                </div>
+                                                {l.titlePinyin && (
+                                                  <p className="text-[#9aa6ff] font-inter text-xs truncate">
+                                                    {l.titlePinyin}
+                                                  </p>
+                                                )}
+                                                {l.titleTranslation && (
+                                                  <p className="text-[#a6a6a6] font-inter text-xs truncate">
+                                                    {l.titleTranslation}
+                                                  </p>
+                                                )}
+                                                <p className="text-[#a6a6a6] font-inter text-xs mt-1">
+                                                  {new Date(
+                                                    l.createdAt
+                                                  ).toLocaleString()}
                                                 </p>
-                                              )}
-                                              {l.titleTranslation && (
-                                                <p className="text-[#a6a6a6] font-inter text-xs truncate">
-                                                  {l.titleTranslation}
-                                                </p>
-                                              )}
-                                              <p className="text-[#a6a6a6] font-inter text-xs mt-1">
-                                                {new Date(
-                                                  l.createdAt
-                                                ).toLocaleString()}
-                                              </p>
+                                              </div>
                                             </div>
-                                          </div>
-                                        </motion.div>
-                                      ) : (
-                                        <div
-                                          key={`pad-s-${idx2}`}
-                                          className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
-                                        />
-                                      )
-                                  )}
-                                </AnimatePresence>
+                                          </motion.div>
+                                        ) : (
+                                          <div
+                                            key={`pad-s-${idx2}`}
+                                            className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
+                                          />
+                                        )
+                                    )}
+                                  </AnimatePresence>
+                                </div>
                               </motion.div>
                             );
                           })}
@@ -857,29 +974,66 @@ export default function LessonsPage() {
                 )}
                 {storiesFiltered.length > 0 && (
                   <div className="mt-2 flex items-center justify-center gap-2">
-                    {Array.from({
-                      length: Math.max(
+                    {(() => {
+                      const total = Math.max(
                         1,
                         Math.ceil(storiesFiltered.length / (isMobile ? 4 : 9))
-                      ),
-                    }).map((_, i) => (
-                      <button
-                        key={i}
-                        onClick={() => {
-                          const el = storiesRef.current;
-                          if (!el) return;
-                          el.scrollTo({
-                            left: i * el.clientWidth,
-                            behavior: "smooth",
-                          });
-                          setStoriesPage(i);
-                        }}
-                        className={`w-2 h-2 rounded-full ${
-                          storiesPage === i ? "bg-[#9aa6ff]" : "bg-[#404040]"
-                        }`}
-                        aria-label={`Go to page ${i + 1}`}
-                      />
-                    ))}
+                      );
+                      const goTo = (i: number) => {
+                        const el = storiesRef.current;
+                        if (!el) return;
+                        el.scrollTo({
+                          left: i * el.clientWidth,
+                          behavior: "smooth",
+                        });
+                        setStoriesPage(i);
+                      };
+                      return (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => goTo(Math.max(0, storiesPage - 1))}
+                            disabled={storiesPage <= 0}
+                            aria-label="Previous page"
+                            className={`px-2 py-1 text-xs rounded border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-transparent ${
+                              storiesPage <= 0
+                                ? "border-[#303030] text-[#555] cursor-not-allowed"
+                                : "border-[#404040] text-[#a6a6a6] hover:bg-[#4040f2]/10 cursor-pointer"
+                            }`}
+                          >
+                            ‹
+                          </button>
+                          {Array.from({ length: total }).map((_, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => goTo(i)}
+                              className={`w-2 h-2 rounded-full ${
+                                storiesPage === i
+                                  ? "bg-[#9aa6ff]"
+                                  : "bg-[#404040]"
+                              }`}
+                              aria-label={`Go to page ${i + 1}`}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              goTo(Math.min(total - 1, storiesPage + 1))
+                            }
+                            disabled={storiesPage >= total - 1}
+                            aria-label="Next page"
+                            className={`px-2 py-1 text-xs rounded border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-transparent ${
+                              storiesPage >= total - 1
+                                ? "border-[#303030] text-[#555] cursor-not-allowed"
+                                : "border-[#404040] text-[#a6a6a6] hover:bg-[#4040f2]/10 cursor-pointer"
+                            }`}
+                          >
+                            ›
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -973,82 +1127,94 @@ export default function LessonsPage() {
                             <motion.div
                               key={i}
                               layout
-                              className="min-w-full snap-start grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2"
+                              className="min-w-full snap-start flex items-stretch"
                             >
-                              <AnimatePresence mode="popLayout">
-                                {padded.map((l: LessonListItem | null, idx2) =>
-                                  l ? (
-                                    <motion.div
-                                      key={l.id}
-                                      layout
-                                      initial={{
-                                        opacity: 0,
-                                        scale: 0.8,
-                                        y: 20,
-                                      }}
-                                      animate={{
-                                        opacity: 1,
-                                        scale: 1,
-                                        y: 0,
-                                        borderColor: "#404040",
-                                      }}
-                                      exit={{ opacity: 0, scale: 0.8, y: -20 }}
-                                      transition={{
-                                        duration: 0.3,
-                                        delay: idx2 * 0.05,
-                                        layout: { duration: 0.4 },
-                                      }}
-                                      className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
-                                      onClick={() =>
-                                        router.push(`/lessons/${l.id}`)
-                                      }
-                                      whileHover={{
-                                        scale: 1.02,
-                                        borderColor: "#4040f2",
-                                      }}
-                                      whileTap={{ scale: 0.98 }}
-                                    >
-                                      <div className="flex items-start gap-3">
-                                        <div className="w-10 h-10 bg-purple-600/20 rounded-lg flex items-center justify-center">
-                                          <MessageSquare className="w-5 h-5 text-purple-500" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center justify-between gap-2">
-                                            <p className="text-white font-inter font-semibold truncate">
-                                              {l.title || `Dialogue #${l.id}`}
-                                            </p>
-                                            <span
-                                              className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                            >
-                                              HSK {l.level}
-                                            </span>
+                              <div
+                                className={`${page.length >= (isMobile ? 4 : 9) ? "flex-none w-3 sm:w-4 md:w-5" : "flex-none w-0"}`}
+                                aria-hidden="true"
+                              />
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
+                                <AnimatePresence mode="popLayout">
+                                  {padded.map(
+                                    (l: LessonListItem | null, idx2) =>
+                                      l ? (
+                                        <motion.div
+                                          key={l.id}
+                                          layout
+                                          initial={{
+                                            opacity: 0,
+                                            scale: 0.8,
+                                            y: 20,
+                                          }}
+                                          animate={{
+                                            opacity: 1,
+                                            scale: 1,
+                                            y: 0,
+                                            borderColor: "#404040",
+                                          }}
+                                          exit={{
+                                            opacity: 0,
+                                            scale: 0.8,
+                                            y: -20,
+                                          }}
+                                          transition={{
+                                            duration: 0.3,
+                                            delay: idx2 * 0.05,
+                                            layout: { duration: 0.4 },
+                                          }}
+                                          className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
+                                          onClick={() =>
+                                            router.push(`/lessons/${l.id}`)
+                                          }
+                                          whileHover={{
+                                            scale: 1.02,
+                                            borderColor: "#4040f2",
+                                          }}
+                                          whileTap={{ scale: 0.98 }}
+                                        >
+                                          <div className="flex items-start gap-3">
+                                            <div className="w-10 h-10 bg-purple-600/20 rounded-lg flex items-center justify-center">
+                                              <MessageSquare className="w-5 h-5 text-purple-500" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center justify-between gap-2">
+                                                <p className="text-white font-inter font-semibold truncate">
+                                                  {l.title ||
+                                                    `Dialogue #${l.id}`}
+                                                </p>
+                                                <span
+                                                  className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                                >
+                                                  HSK {l.level}
+                                                </span>
+                                              </div>
+                                              {l.titlePinyin && (
+                                                <p className="text-[#9aa6ff] font-inter text-xs truncate">
+                                                  {l.titlePinyin}
+                                                </p>
+                                              )}
+                                              {l.titleTranslation && (
+                                                <p className="text-[#a6a6a6] font-inter text-xs truncate">
+                                                  {l.titleTranslation}
+                                                </p>
+                                              )}
+                                              <p className="text-[#a6a6a6] font-inter text-xs mt-1">
+                                                {new Date(
+                                                  l.createdAt
+                                                ).toLocaleString()}
+                                              </p>
+                                            </div>
                                           </div>
-                                          {l.titlePinyin && (
-                                            <p className="text-[#9aa6ff] font-inter text-xs truncate">
-                                              {l.titlePinyin}
-                                            </p>
-                                          )}
-                                          {l.titleTranslation && (
-                                            <p className="text-[#a6a6a6] font-inter text-xs truncate">
-                                              {l.titleTranslation}
-                                            </p>
-                                          )}
-                                          <p className="text-[#a6a6a6] font-inter text-xs mt-1">
-                                            {new Date(
-                                              l.createdAt
-                                            ).toLocaleString()}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </motion.div>
-                                  ) : (
-                                    <div
-                                      key={`pad-d-${idx2}`}
-                                      className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
-                                    />
-                                  )
-                                )}
-                              </AnimatePresence>
+                                        </motion.div>
+                                      ) : (
+                                        <div
+                                          key={`pad-d-${idx2}`}
+                                          className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
+                                        />
+                                      )
+                                  )}
+                                </AnimatePresence>
+                              </div>
                             </motion.div>
                           );
                         })}
@@ -1063,40 +1229,75 @@ export default function LessonsPage() {
                       : true
                   ).length > 0 && (
                   <div className="mt-2 flex items-center justify-center gap-2">
-                    {Array.from({
-                      length: Math.max(
-                        1,
-                        Math.ceil(
-                          allDialogues
-                            .filter(
-                              (i) =>
-                                !new Set(myItems.map((m) => m.id)).has(i.id)
-                            )
-                            .filter((i) =>
-                              dialogueLevels.length > 0
-                                ? dialogueLevels.includes(i.level)
-                                : true
-                            ).length / (isMobile ? 4 : 9)
+                    {(() => {
+                      const totalLen = allDialogues
+                        .filter(
+                          (i) => !new Set(myItems.map((m) => m.id)).has(i.id)
                         )
-                      ),
-                    }).map((_, i) => (
-                      <button
-                        key={i}
-                        onClick={() => {
-                          const el = dialoguesRef.current;
-                          if (!el) return;
-                          el.scrollTo({
-                            left: i * el.clientWidth,
-                            behavior: "smooth",
-                          });
-                          setDialoguesPage(i);
-                        }}
-                        className={`w-2 h-2 rounded-full ${
-                          dialoguesPage === i ? "bg-[#9aa6ff]" : "bg-[#404040]"
-                        }`}
-                        aria-label={`Go to page ${i + 1}`}
-                      />
-                    ))}
+                        .filter((i) =>
+                          dialogueLevels.length > 0
+                            ? dialogueLevels.includes(i.level)
+                            : true
+                        ).length;
+                      const total = Math.max(
+                        1,
+                        Math.ceil(totalLen / (isMobile ? 4 : 9))
+                      );
+                      const goTo = (i: number) => {
+                        const el = dialoguesRef.current;
+                        if (!el) return;
+                        el.scrollTo({
+                          left: i * el.clientWidth,
+                          behavior: "smooth",
+                        });
+                        setDialoguesPage(i);
+                      };
+                      return (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => goTo(Math.max(0, dialoguesPage - 1))}
+                            disabled={dialoguesPage <= 0}
+                            aria-label="Previous page"
+                            className={`px-2 py-1 text-xs rounded border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-transparent ${
+                              dialoguesPage <= 0
+                                ? "border-[#303030] text-[#555] cursor-not-allowed"
+                                : "border-[#404040] text-[#a6a6a6] hover:bg-[#4040f2]/10 cursor-pointer"
+                            }`}
+                          >
+                            ‹
+                          </button>
+                          {Array.from({ length: total }).map((_, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => goTo(i)}
+                              className={`w-2 h-2 rounded-full ${
+                                dialoguesPage === i
+                                  ? "bg-[#9aa6ff]"
+                                  : "bg-[#404040]"
+                              }`}
+                              aria-label={`Go to page ${i + 1}`}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              goTo(Math.min(total - 1, dialoguesPage + 1))
+                            }
+                            disabled={dialoguesPage >= total - 1}
+                            aria-label="Next page"
+                            className={`px-2 py-1 text-xs rounded border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-transparent ${
+                              dialoguesPage >= total - 1
+                                ? "border-[#303030] text-[#555] cursor-not-allowed"
+                                : "border-[#404040] text-[#a6a6a6] hover:bg-[#4040f2]/10 cursor-pointer"
+                            }`}
+                          >
+                            ›
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

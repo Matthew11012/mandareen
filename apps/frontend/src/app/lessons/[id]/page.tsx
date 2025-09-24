@@ -118,8 +118,9 @@ export default function LessonViewerPage() {
   // Popup for token details
   const [popup, setPopup] = useState<{
     open: boolean;
-    x: number;
-    y: number;
+    x: number; // relative to content container
+    y: number; // relative to content container (anchor at token top)
+    anchorH?: number; // height of the clicked token for below placement
     word: string;
     pinyin?: string;
     definition?: string;
@@ -128,6 +129,11 @@ export default function LessonViewerPage() {
     tokenIndex?: number;
   }>({ open: false, x: 0, y: 0, word: "" });
   const popupRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [popupPos, setPopupPos] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -138,6 +144,37 @@ export default function LessonViewerPage() {
     if (popup.open) document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [popup.open]);
+
+  // Compute popup position after it renders to avoid cutoff; clamp within container
+  useEffect(() => {
+    if (!popup.open) {
+      setPopupPos(null);
+      return;
+    }
+    const modal = popupRef.current;
+    const container = contentRef.current;
+    if (!modal || !container) return;
+    const modalRect = modal.getBoundingClientRect();
+    const contRect = container.getBoundingClientRect();
+    const margin = 8;
+    const contW = contRect.width;
+    const contH = contRect.height;
+    let left = popup.x - modalRect.width / 2;
+    left = Math.max(margin, Math.min(left, contW - modalRect.width - margin));
+    // Prefer above; if not enough space, place below the token
+    let top = popup.y - modalRect.height - margin;
+    if (top < margin) {
+      const anchorH = popup.anchorH || 0;
+      top = popup.y + anchorH + margin;
+      if (top + modalRect.height > contH - margin) {
+        top = Math.max(
+          margin,
+          Math.min(top, contH - modalRect.height - margin)
+        );
+      }
+    }
+    setPopupPos({ left, top });
+  }, [popup.open, popup.x, popup.y, popup.anchorH]);
 
   const isChunkPinyinOn = (idx: number) => {
     const v = chunkPinyinOn[idx];
@@ -420,14 +457,20 @@ export default function LessonViewerPage() {
       subtitle={`HSK ${data?.level ?? ""}`}
     >
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between sticky top-0 z-20 -mx-6 px-6 py-2 bg-[#222831]/80 backdrop-blur border-b border-[#30333a]">
-          <div className="flex items-center gap-2">
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 sticky top-0 z-20 -mx-6 px-6 py-2 bg-[#222831]/80 backdrop-blur border-b border-[#30333a]"
+          role="toolbar"
+          aria-label="Lesson controls"
+        >
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               onClick={() => router.push("/lessons")}
-              className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer"
+              className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831]"
+              type="button"
+              aria-label="Back to lessons"
             >
               <div className="flex items-center gap-2 text-[#a6a6a6]">
-                <ArrowLeft className="w-4 h-4" />
+                <ArrowLeft className="w-4 h-4" aria-hidden="true" />
                 <span className="font-inter text-sm">Exit</span>
               </div>
             </button>
@@ -451,13 +494,16 @@ export default function LessonViewerPage() {
                   return next;
                 })
               }
-              className="px-3 py-2 bg-orange-500/20 border border-orange-500/40 rounded-lg hover:border-orange-500 text-orange-300 transition-colors duration-200 cursor-pointer"
+              className="px-3 py-2 bg-orange-500/20 border border-orange-500/40 rounded-lg hover:border-orange-500 text-orange-300 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#222831]"
+              type="button"
+              aria-pressed={showPinyin}
+              aria-label={showPinyin ? "Hide all pinyin" : "Show all pinyin"}
             >
               <div className="flex items-center gap-2 text-[#a6a6a6]">
                 {showPinyin ? (
-                  <EyeOff className="w-4 h-4" />
+                  <EyeOff className="w-4 h-4" aria-hidden="true" />
                 ) : (
-                  <Eye className="w-4 h-4" />
+                  <Eye className="w-4 h-4" aria-hidden="true" />
                 )}
                 <span className="font-inter text-sm">Pinyin (All)</span>
               </div>
@@ -482,19 +528,48 @@ export default function LessonViewerPage() {
                   return next;
                 })
               }
-              className="px-3 py-2 bg-purple-600/20 border border-purple-600/40 rounded-lg hover:border-purple-600 text-purple-300 transition-colors duration-200 cursor-pointer"
+              className="px-3 py-2 bg-purple-600/20 border border-purple-600/40 rounded-lg hover:border-purple-600 text-purple-300 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-purple-400 focus-visible:ring-offset-[#222831]"
+              type="button"
+              aria-pressed={showTranslation}
+              aria-label={
+                showTranslation
+                  ? "Hide all translations"
+                  : "Show all translations"
+              }
             >
               <div className="flex items-center gap-2 text-[#a6a6a6]">
                 {showTranslation ? (
-                  <EyeOff className="w-4 h-4" />
+                  <EyeOff className="w-4 h-4" aria-hidden="true" />
                 ) : (
-                  <Eye className="w-4 h-4" />
+                  <Eye className="w-4 h-4" aria-hidden="true" />
                 )}
-                <span className="font-inter text-sm">Translation (All)</span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 26 25"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M1 3.46154H9.61539M9.61539 3.46154H15.1539M9.61539 3.46154V1M18.2308 3.46154H15.1539M15.1539 3.46154C14.144 6.82785 12.0292 10.01 9.61539 12.8066M9.61539 12.8066C7.61662 15.1223 5.41282 17.1737 3.46154 18.8462M9.61539 12.8066C8.38462 11.4615 6.41539 8.75385 5.92308 7.76923M9.61539 12.8066L13.3077 16.3846"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M15.1538 23.1538L16.5605 19.4615M16.5605 19.4615L20.0769 10.2307L23.5933 19.4615M16.5605 19.4615H23.5933M25 23.1538L23.5933 19.4615"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </div>
             </button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               onClick={() => {
                 if (multiSelect) {
@@ -505,13 +580,20 @@ export default function LessonViewerPage() {
                   setMultiSelect(true);
                 }
               }}
-              className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer"
+              className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831]"
+              type="button"
+              aria-pressed={multiSelect}
+              aria-label={
+                multiSelect
+                  ? "Cancel word selection"
+                  : "Select words to add to flashcards"
+              }
             >
               <div className="flex items-center gap-2 text-[#a6a6a6]">
                 {multiSelect ? (
-                  <CheckSquare className="w-4 h-4" />
+                  <CheckSquare className="w-4 h-4" aria-hidden="true" />
                 ) : (
-                  <Square className="w-4 h-4" />
+                  <Square className="w-4 h-4" aria-hidden="true" />
                 )}
                 <span className="font-inter text-sm">
                   {multiSelect
@@ -524,7 +606,9 @@ export default function LessonViewerPage() {
               <button
                 onClick={() => void addSelectedToFlashcards()}
                 disabled={Object.keys(selectedWords).length === 0}
-                className="px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831]"
+                type="button"
+                aria-label="Add selected words to flashcards"
               >
                 Add Selected ({Object.keys(selectedWords).length})
               </button>
@@ -532,11 +616,14 @@ export default function LessonViewerPage() {
             <button
               onClick={load}
               disabled={loading}
-              className="p-2 hover:bg-[#404040] rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 hover:bg-[#404040] rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831]"
               title="Refresh"
+              type="button"
+              aria-label="Refresh lesson"
             >
               <RefreshCw
-                className={`w-4 h-4 text-[#a6a6a6] ${loading ? "animate-spin" : ""}`}
+                className={`w-4 h-4 text-[#a6a6a6] ${loading ? "motion-safe:animate-spin" : ""}`}
+                aria-hidden="true"
               />
             </button>
           </div>
@@ -576,7 +663,10 @@ export default function LessonViewerPage() {
         ) : !data ? (
           <p className="text-[#a6a6a6] font-inter text-sm">No content</p>
         ) : (
-          <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040]">
+          <div
+            ref={contentRef}
+            className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] relative"
+          >
             {story && (
               <div className="space-y-6">
                 {segmentedParagraphs.map((segChunk, ci) => (
@@ -586,7 +676,14 @@ export default function LessonViewerPage() {
                         onClick={() =>
                           setChunkPinyinOn((s) => ({ ...s, [ci]: !s[ci] }))
                         }
-                        className={`px-2 py-1 text-xs rounded border ${isChunkPinyinOn(ci) ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer`}
+                        className={`px-2 py-1 text-xs rounded border ${isChunkPinyinOn(ci) ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#2e323a]`}
+                        type="button"
+                        aria-pressed={isChunkPinyinOn(ci)}
+                        aria-label={
+                          isChunkPinyinOn(ci)
+                            ? "Hide pinyin for paragraph"
+                            : "Show pinyin for paragraph"
+                        }
                       >
                         Pinyin {isChunkPinyinOn(ci) ? "On" : "Off"}
                       </button>
@@ -594,9 +691,38 @@ export default function LessonViewerPage() {
                         onClick={() =>
                           setChunkTransOn((s) => ({ ...s, [ci]: !s[ci] }))
                         }
-                        className={`px-2 py-1 text-xs rounded border ${isChunkTransOn(ci) ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer`}
+                        className={`px-2 py-1 text-xs rounded border ${isChunkTransOn(ci) ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#2e323a]`}
+                        type="button"
+                        aria-pressed={isChunkTransOn(ci)}
+                        aria-label={
+                          isChunkTransOn(ci)
+                            ? "Hide translation for paragraph"
+                            : "Show translation for paragraph"
+                        }
                       >
-                        Translation {isChunkTransOn(ci) ? "On" : "Off"}
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 26 25"
+                          fill="none"
+                          aria-hidden="true"
+                        >
+                          <path
+                            d="M1 3.46154H9.61539M9.61539 3.46154H15.1539M9.61539 3.46154V1M18.2308 3.46154H15.1539M15.1539 3.46154C14.144 6.82785 12.0292 10.01 9.61539 12.8066M9.61539 12.8066C7.61662 15.1223 5.41282 17.1737 3.46154 18.8462M9.61539 12.8066C8.38462 11.4615 6.41539 8.75385 5.92308 7.76923M9.61539 12.8066L13.3077 16.3846"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M15.1538 23.1538L16.5605 19.4615M16.5605 19.4615L20.0769 10.2307L23.5933 19.4615M16.5605 19.4615H23.5933M25 23.1538L23.5933 19.4615"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
                       </button>
                     </div>
                     <div className="leading-8 text-white font-inter text-[18px]">
@@ -635,10 +761,24 @@ export default function LessonViewerPage() {
                                   );
                                   return;
                                 }
+                                const anchor = (
+                                  e.currentTarget as HTMLSpanElement
+                                ).getBoundingClientRect();
+                                const container =
+                                  contentRef.current?.getBoundingClientRect();
+                                const px = container
+                                  ? anchor.left -
+                                    container.left +
+                                    anchor.width / 2
+                                  : e.clientX;
+                                const py = container
+                                  ? anchor.top - container.top
+                                  : e.clientY;
                                 setPopup({
                                   open: true,
-                                  x: e.clientX,
-                                  y: e.clientY,
+                                  x: px,
+                                  y: py,
+                                  anchorH: anchor.height,
                                   word: seg.text,
                                   pinyin: seg.pinyin,
                                   definition: seg.definition,
@@ -689,7 +829,14 @@ export default function LessonViewerPage() {
                           onClick={() =>
                             setTurnPinyinOn((s) => ({ ...s, [ti]: !s[ti] }))
                           }
-                          className={`px-2 py-1 text-xs rounded border ${isTurnPinyinOn(ti) ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer`}
+                          className={`px-2 py-1 text-xs rounded border ${isTurnPinyinOn(ti) ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#262a31]`}
+                          type="button"
+                          aria-pressed={isTurnPinyinOn(ti)}
+                          aria-label={
+                            isTurnPinyinOn(ti)
+                              ? "Hide pinyin for this turn"
+                              : "Show pinyin for this turn"
+                          }
                         >
                           Pinyin {isTurnPinyinOn(ti) ? "On" : "Off"}
                         </button>
@@ -697,9 +844,38 @@ export default function LessonViewerPage() {
                           onClick={() =>
                             setTurnTransOn((s) => ({ ...s, [ti]: !s[ti] }))
                           }
-                          className={`px-2 py-1 text-xs rounded border ${isTurnTransOn(ti) ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer`}
+                          className={`px-2 py-1 text-xs rounded border ${isTurnTransOn(ti) ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#262a31]`}
+                          type="button"
+                          aria-pressed={isTurnTransOn(ti)}
+                          aria-label={
+                            isTurnTransOn(ti)
+                              ? "Hide translation for this turn"
+                              : "Show translation for this turn"
+                          }
                         >
-                          Translation {isTurnTransOn(ti) ? "On" : "Off"}
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
+                            height="16"
+                            viewBox="0 0 26 25"
+                            fill="none"
+                            aria-hidden="true"
+                          >
+                            <path
+                              d="M1 3.46154H9.61539M9.61539 3.46154H15.1539M9.61539 3.46154V1M18.2308 3.46154H15.1539M15.1539 3.46154C14.144 6.82785 12.0292 10.01 9.61539 12.8066M9.61539 12.8066C7.61662 15.1223 5.41282 17.1737 3.46154 18.8462M9.61539 12.8066C8.38462 11.4615 6.41539 8.75385 5.92308 7.76923M9.61539 12.8066L13.3077 16.3846"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            <path
+                              d="M15.1538 23.1538L16.5605 19.4615M16.5605 19.4615L20.0769 10.2307L23.5933 19.4615M16.5605 19.4615H23.5933M25 23.1538L23.5933 19.4615"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
                         </button>
                       </div>
                     </div>
@@ -739,10 +915,24 @@ export default function LessonViewerPage() {
                                   );
                                   return;
                                 }
+                                const anchor = (
+                                  e.currentTarget as HTMLSpanElement
+                                ).getBoundingClientRect();
+                                const container =
+                                  contentRef.current?.getBoundingClientRect();
+                                const px = container
+                                  ? anchor.left -
+                                    container.left +
+                                    anchor.width / 2
+                                  : e.clientX;
+                                const py = container
+                                  ? anchor.top - container.top
+                                  : e.clientY;
                                 setPopup({
                                   open: true,
-                                  x: e.clientX,
-                                  y: e.clientY,
+                                  x: px,
+                                  y: py,
+                                  anchorH: anchor.height,
                                   word: seg.text,
                                   pinyin: seg.pinyin,
                                   definition: seg.definition,
@@ -779,13 +969,14 @@ export default function LessonViewerPage() {
               <div
                 ref={popupRef}
                 style={{
-                  position: "fixed",
-                  left: Math.max(
-                    10,
-                    Math.min(popup.x - 110, window.innerWidth - 260)
-                  ),
-                  top: Math.max(10, popup.y - 150),
-                  zIndex: 1000,
+                  position: "absolute",
+                  left: popupPos ? popupPos.left : popup.x,
+                  top: popupPos ? popupPos.top : popup.y,
+                  zIndex: 10,
+                  visibility: popupPos ? "visible" : "hidden",
+                  transform: popupPos
+                    ? "none"
+                    : "translate(-50%, calc(-100% - 8px))",
                 }}
                 className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
               >
