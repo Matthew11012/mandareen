@@ -56,6 +56,8 @@ export default function ConversationsPage() {
     open: boolean;
     message: Message | null;
   }>({ open: false, message: null });
+  // Pinyin toggle scoped to the Tutor Notes modal only
+  const [notesPinyinOn, setNotesPinyinOn] = useState<boolean>(true);
   const openNotesModal = (m: Message) =>
     setNotesModal({ open: true, message: m });
   const closeNotesModal = () => setNotesModal({ open: false, message: null });
@@ -112,7 +114,8 @@ export default function ConversationsPage() {
         }>
       | undefined,
     baseHanzi?: string,
-    baseTranslation?: string
+    baseTranslation?: string,
+    showPinyin: boolean = true
   ) => {
     if (!Array.isArray(segments) || segments.length === 0) return null;
     // Build line-level pinyin by concatenating token pinyin for CJK tokens
@@ -129,15 +132,15 @@ export default function ConversationsPage() {
               key={idx}
               className="inline-flex flex-col items-center align-top mr-[2px]"
             >
-              {seg.pinyin ? (
+              {showPinyin && seg.pinyin ? (
                 <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
                   {seg.pinyin}
                 </span>
-              ) : (
+              ) : showPinyin ? (
                 <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
                   •
                 </span>
-              )}
+              ) : null}
               <span
                 className={`px-[1px] rounded ${isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
                 title={seg.definition || ""}
@@ -805,45 +808,103 @@ export default function ConversationsPage() {
             Tutor Notes
           </div>
           <div className="space-y-3 max-h-56 overflow-hidden relative">
-            {m.notes!.grammarNotes!.slice(0, 2).map((gn, idx) => (
-              <div key={idx} className="text-xs text-[#c9d1d9]">
-                <div className="font-medium text-white">{gn.point}</div>
-                {gn.pointPinyin ? (
-                  <div className="text-[11px] text-[#9aa6ff]">
-                    {gn.pointPinyin}
-                  </div>
-                ) : null}
-                {gn.pointEn ? (
-                  <div className="text-[11px] text-[#8b949e]">{gn.pointEn}</div>
-                ) : null}
-                <div className="text-[11px] text-[#a6a6a6] mt-1">
-                  {gn.brief}
-                </div>
-                {gn.briefPinyin ? (
-                  <div className="text-[11px] text-[#9aa6ff]">
-                    {gn.briefPinyin}
-                  </div>
-                ) : null}
-                {gn.briefEn ? (
-                  <div className="text-[11px] text-[#8b949e]">{gn.briefEn}</div>
-                ) : null}
-                {Array.isArray(gn.examples) && gn.examples.length > 0 ? (
-                  <div className="mt-1 text-[11px] space-y-1">
-                    {gn.examples.map((ex: Tip, i: number) => (
-                      <div key={i}>
-                        <div className="text-[#c9d1d9]">{ex.zh}</div>
-                        {ex.pinyin ? (
-                          <div className="text-[#9aa6ff]">{ex.pinyin}</div>
-                        ) : null}
-                        {ex.en ? (
-                          <div className="text-[#8b949e]">{ex.en}</div>
-                        ) : null}
+            {m
+              .notes!.grammarNotes!.slice(0, 2)
+              .map((gn: GrammarNote, idx: number) => (
+                <div
+                  key={idx}
+                  className="text-[12px] text-[#c9d1d9] border border-[#2a2e36] bg-[#1a1f27] rounded-lg p-2 space-y-2"
+                >
+                  {/* Point */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
+                        Point
+                      </span>
+                    </div>
+                    <div>
+                      {Array.isArray(gn.pointSegments) &&
+                      gn.pointSegments.length > 0
+                        ? renderSegmentsWithPopup(
+                            gn.pointSegments,
+                            gn.point,
+                            gn.pointEn,
+                            showP
+                          )
+                        : renderNotesPinyin(gn.point, gn.pointPinyin, showP)}
+                    </div>
+                    {gn.pointEn ? (
+                      <div className="text-[11px] text-[#8b949e]">
+                        {gn.pointEn}
                       </div>
-                    ))}
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-            ))}
+
+                  {/* Brief */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
+                        Brief
+                      </span>
+                    </div>
+                    <div>
+                      {Array.isArray(gn.briefSegments) &&
+                      gn.briefSegments.length > 0
+                        ? renderSegmentsWithPopup(
+                            gn.briefSegments,
+                            gn.brief,
+                            gn.briefEn,
+                            showP
+                          )
+                        : renderNotesPinyin(gn.brief, gn.briefPinyin, showP)}
+                    </div>
+                    {gn.briefEn ? (
+                      <div className="text-[11px] text-[#8b949e]">
+                        {gn.briefEn}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* Examples */}
+                  {Array.isArray(gn.examples) && gn.examples.length > 0 ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
+                          Examples
+                        </span>
+                      </div>
+                      <ul className="space-y-1 list-disc list-outside pl-4 marker:text-[#596080]">
+                        {gn.examples.map((ex: Tip, i: number) => (
+                          <li key={i}>
+                            {Array.isArray(ex.segments) ? (
+                              renderSegmentsWithPopup(
+                                ex.segments,
+                                ex.zh,
+                                ex.en,
+                                showP
+                              )
+                            ) : (
+                              <>
+                                <div className="text-[#c9d1d9]">{ex.zh}</div>
+                                {showP && ex.pinyin ? (
+                                  <div className="text-[#9aa6ff] text-xs">
+                                    {ex.pinyin}
+                                  </div>
+                                ) : null}
+                                {ex.en ? (
+                                  <div className="text-[#8b949e] text-xs">
+                                    {ex.en}
+                                  </div>
+                                ) : null}
+                              </>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
             {m.notes!.grammarNotes!.length > 2 ? (
               <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#1d2128] to-transparent" />
             ) : null}
@@ -996,7 +1057,11 @@ export default function ConversationsPage() {
   }
 
   // Render pinyin above hanzi for notes; skip non-CJK like “OK”/“Alright” tokens.
-  const renderNotesPinyin = (hanzi?: string, pinyin?: string) => {
+  const renderNotesPinyin = (
+    hanzi?: string,
+    pinyin?: string,
+    showPinyin: boolean = true
+  ) => {
     if (!hanzi) return null;
     const isCJK = (ch: string) => /[\u3400-\u9FFF]/.test(ch);
     const tokens = (pinyin || "")
@@ -1015,7 +1080,7 @@ export default function ConversationsPage() {
               key={idx}
               className="inline-flex flex-col items-center align-top mr-[2px]"
             >
-              {top ? (
+              {showPinyin && top ? (
                 <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
                   {top}
                 </span>
@@ -1340,12 +1405,24 @@ export default function ConversationsPage() {
               <div className="text-sm font-semibold text-white">
                 Tutor Notes
               </div>
-              <button
-                onClick={closeNotesModal}
-                className="text-[#a6a6a6] text-xs hover:text-white cursor-pointer"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setNotesPinyinOn((v) => !v)}
+                  className={`px-2 py-1 text-xs rounded border ${
+                    notesPinyinOn
+                      ? "border-[#4040f2] text-[#9aa6ff]"
+                      : "border-[#404040] text-[#a6a6a6]"
+                  } cursor-pointer`}
+                >
+                  Pinyin {notesPinyinOn ? "On" : "Off"}
+                </button>
+                <button
+                  onClick={closeNotesModal}
+                  className="text-[#a6a6a6] text-xs hover:text-white cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
             <div className="p-4 overflow-y-auto space-y-3 flex-1">
               {Array.isArray(notesModal.message.notes?.grammarNotes) &&
@@ -1380,63 +1457,106 @@ export default function ConversationsPage() {
                     },
                     idx: number
                   ) => (
-                    <div key={idx} className="text-sm text-[#c9d1d9]">
-                      <div className="font-medium text-white">{gn.point}</div>
-                      {renderNotesPinyin(gn.point, gn.pointPinyin)}
-                      {gn.pointEn ? (
-                        <div className="text-xs text-[#8b949e]">
-                          {gn.pointEn}
+                    <div
+                      key={idx}
+                      className="text-sm text-[#c9d1d9] border border-[#2a2e36] bg-[#1a1f27] rounded-lg p-3 space-y-3"
+                    >
+                      {/* Point */}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[2px] rounded">
+                            Point
+                          </span>
                         </div>
-                      ) : null}
-                      <div className="mt-1">
-                        {renderNotesPinyin(gn.brief, gn.briefPinyin)}
-                      </div>
-                      {gn.briefEn ? (
-                        <div className="text-xs text-[#8b949e]">
-                          {gn.briefEn}
-                        </div>
-                      ) : null}
-                      {Array.isArray(gn.pointSegments)
-                        ? renderSegmentsWithPopup(
-                            gn.pointSegments,
-                            gn.point,
-                            gn.pointEn
-                          )
-                        : null}
-                      {Array.isArray(gn.briefSegments)
-                        ? renderSegmentsWithPopup(
-                            gn.briefSegments,
-                            gn.brief,
-                            gn.briefEn
-                          )
-                        : null}
-                      {Array.isArray(gn.examples) && gn.examples.length > 0 ? (
-                        <div className="mt-2 space-y-1">
-                          {gn.examples.map((ex: Tip, i: number) => (
-                            <div key={i}>
-                              {Array.isArray(ex.segments) ? (
-                                renderSegmentsWithPopup(
-                                  ex.segments,
-                                  ex.zh,
-                                  ex.en
-                                )
-                              ) : (
-                                <>
-                                  <div className="text-[#c9d1d9]">{ex.zh}</div>
-                                  {ex.pinyin ? (
-                                    <div className="text-[#9aa6ff] text-xs">
-                                      {ex.pinyin}
-                                    </div>
-                                  ) : null}
-                                  {ex.en ? (
-                                    <div className="text-[#8b949e] text-xs">
-                                      {ex.en}
-                                    </div>
-                                  ) : null}
-                                </>
+                        <div>
+                          {Array.isArray(gn.pointSegments) &&
+                          gn.pointSegments.length > 0
+                            ? renderSegmentsWithPopup(
+                                gn.pointSegments,
+                                gn.point,
+                                gn.pointEn,
+                                notesPinyinOn
+                              )
+                            : renderNotesPinyin(
+                                gn.point,
+                                gn.pointPinyin,
+                                notesPinyinOn
                               )}
-                            </div>
-                          ))}
+                        </div>
+                        {gn.pointEn ? (
+                          <div className="text-xs text-[#8b949e]">
+                            {gn.pointEn}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {/* Brief */}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[2px] rounded">
+                            Brief
+                          </span>
+                        </div>
+                        <div>
+                          {Array.isArray(gn.briefSegments) &&
+                          gn.briefSegments.length > 0
+                            ? renderSegmentsWithPopup(
+                                gn.briefSegments,
+                                gn.brief,
+                                gn.briefEn,
+                                notesPinyinOn
+                              )
+                            : renderNotesPinyin(
+                                gn.brief,
+                                gn.briefPinyin,
+                                notesPinyinOn
+                              )}
+                        </div>
+                        {gn.briefEn ? (
+                          <div className="text-xs text-[#8b949e]">
+                            {gn.briefEn}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {/* Examples */}
+                      {Array.isArray(gn.examples) && gn.examples.length > 0 ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[2px] rounded">
+                              Examples
+                            </span>
+                          </div>
+                          <ul className="space-y-2 list-disc list-outside pl-5 marker:text-[#596080]">
+                            {gn.examples.map((ex: Tip, i: number) => (
+                              <li key={i}>
+                                {Array.isArray(ex.segments) ? (
+                                  renderSegmentsWithPopup(
+                                    ex.segments,
+                                    ex.zh,
+                                    ex.en,
+                                    notesPinyinOn
+                                  )
+                                ) : (
+                                  <>
+                                    <div className="text-[#c9d1d9]">
+                                      {ex.zh}
+                                    </div>
+                                    {notesPinyinOn && ex.pinyin ? (
+                                      <div className="text-[#9aa6ff] text-xs">
+                                        {ex.pinyin}
+                                      </div>
+                                    ) : null}
+                                    {ex.en ? (
+                                      <div className="text-[#8b949e] text-xs">
+                                        {ex.en}
+                                      </div>
+                                    ) : null}
+                                  </>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
                         </div>
                       ) : null}
                     </div>
