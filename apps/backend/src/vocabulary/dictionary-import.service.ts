@@ -10,9 +10,7 @@ import * as zlib from 'zlib';
 export class DictionaryImportService {
   private readonly logger = new Logger(DictionaryImportService.name);
 
-  constructor(private prisma: PrismaService) {
-    void this.prisma;
-  }
+  constructor(private prisma: PrismaService) {}
 
   async fullDictionaryImport(): Promise<{ message: string; stats: any }> {
     try {
@@ -126,7 +124,7 @@ export class DictionaryImportService {
       crlfDelay: Infinity,
     });
 
-    const batchSize = 1000;
+    const batchSize = 5000; // Increased batch size for better performance
     let batch: any[] = [];
     let totalProcessed = 0;
     let skippedLines = 0;
@@ -195,40 +193,63 @@ export class DictionaryImportService {
 
   private async insertBatch(entries: any[]): Promise<void> {
     try {
-      // Upsert base items, then attach senses
-      for (const e of entries) {
-        const base = await this.prisma.vocabularyItem.upsert({
-          where: { hanzi: e.hanzi },
-          update: {
-            traditional: e.traditional,
-          },
-          create: {
-            hanzi: e.hanzi,
-            traditional: e.traditional,
-            pinyin: e.pinyin,
-            definition: e.definition,
-            source: 'CEDICT',
-            isCustom: false,
-          },
+      // Use transaction for better performance and consistency
+      await this.prisma.$transaction(async (tx) => {
+        // Step 1: Bulk upsert vocabulary items
+        const vocabularyData = entries.map((e) => ({
+          hanzi: e.hanzi,
+          traditional: e.traditional,
+          pinyin: e.pinyin,
+          definition: e.definition,
+          source: 'CEDICT',
+          isCustom: false,
+        }));
+
+        // Use createMany with skipDuplicates for better performance
+        await tx.vocabularyItem.createMany({
+          data: vocabularyData,
+          skipDuplicates: true,
         });
-        const defs: string[] = Array.isArray(e._definitions)
-          ? e._definitions
-          : [e.definition];
-        // store each definition as a sense (unique guarded by schema)
-        for (const def of defs) {
-          try {
-            await (this.prisma as any).vocabularySense?.create({
-              data: {
-                vocabularyItemId: base.id,
-                pinyin: e.pinyin,
-                definition: def,
-              },
+
+        // Step 2: Get IDs for created items and bulk insert senses
+        const createdItems = await tx.vocabularyItem.findMany({
+          where: {
+            hanzi: { in: entries.map((e) => e.hanzi) },
+          },
+          select: { id: true, hanzi: true },
+        });
+
+        const itemMap = new Map(
+          createdItems.map((item) => [item.hanzi, item.id]),
+        );
+
+        // Prepare senses data
+        const sensesData: any[] = [];
+        for (const e of entries) {
+          const itemId = itemMap.get(e.hanzi);
+          if (!itemId) continue;
+
+          const defs: string[] = Array.isArray(e._definitions)
+            ? e._definitions
+            : [e.definition];
+
+          for (const def of defs) {
+            sensesData.push({
+              vocabularyItemId: itemId,
+              pinyin: e.pinyin,
+              definition: def,
             });
-          } catch {
-            // ignore duplicates
           }
         }
-      }
+
+        // Bulk insert senses with skipDuplicates
+        if (sensesData.length > 0) {
+          await (tx as any).vocabularySense.createMany({
+            data: sensesData,
+            skipDuplicates: true,
+          });
+        }
+      });
     } catch (error) {
       this.logger.error('Error inserting batch:', error);
       throw error;
@@ -238,19 +259,26 @@ export class DictionaryImportService {
   async importHSKLevels(
     hskData: Array<{ hanzi: string; level: number }>,
   ): Promise<void> {
-    const batchSize = 100;
+    const batchSize = 1000; // Increased batch size
     let updated = 0;
+
+    this.logger.log(
+      `Starting HSK level updates for ${hskData.length} words...`,
+    );
 
     for (let i = 0; i < hskData.length; i += batchSize) {
       const batch = hskData.slice(i, i + batchSize);
 
-      for (const item of batch) {
-        const result = await this.prisma.vocabularyItem.updateMany({
-          where: { hanzi: item.hanzi },
-          data: { hskLevel: item.level },
-        });
-        updated += result.count;
-      }
+      // Use transaction for better performance
+      await this.prisma.$transaction(async (tx) => {
+        for (const item of batch) {
+          const result = await tx.vocabularyItem.updateMany({
+            where: { hanzi: item.hanzi },
+            data: { hskLevel: item.level },
+          });
+          updated += result.count;
+        }
+      });
 
       this.logger.log(`Updated HSK levels for ${updated} words so far...`);
     }

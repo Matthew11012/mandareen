@@ -36,7 +36,7 @@ export class RagService {
     try {
       // Enable pgvector and ensure table exists. This is safe to run repeatedly.
       await (this.prisma as any).$executeRawUnsafe(
-        'CREATE EXTENSION IF NOT EXISTS vector;'
+        'CREATE EXTENSION IF NOT EXISTS vector;',
       );
       await (this.prisma as any).$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS "RagEmbedding" (
@@ -49,11 +49,14 @@ export class RagService {
         );
       `);
       await (this.prisma as any).$executeRawUnsafe(
-        'CREATE INDEX IF NOT EXISTS ragembedding_vector_hnsw ON "RagEmbedding" USING hnsw (vector);'
+        'CREATE INDEX IF NOT EXISTS ragembedding_vector_hnsw ON "RagEmbedding" USING hnsw (vector);',
       );
       this.vectorUsable = true;
     } catch (e) {
-      this.logger.warn('pgvector not available; falling back to LIKE search', e as any);
+      this.logger.warn(
+        'pgvector not available; falling back to LIKE search',
+        e as any,
+      );
       this.vectorUsable = false;
     }
     return this.vectorUsable;
@@ -89,11 +92,13 @@ export class RagService {
   ): string[] {
     const q = (query || '').slice(0, 400);
     const kws = Array.from(
-      new Set(q
-        .replace(/[\p{P}\p{S}]/gu, ' ')
-        .split(/\s+/)
-        .filter((s) => s.length > 1)
-        .slice(0, 8)),
+      new Set(
+        q
+          .replace(/[\p{P}\p{S}]/gu, ' ')
+          .split(/\s+/)
+          .filter((s) => s.length > 1)
+          .slice(0, 8),
+      ),
     );
     const patterns = [
       '把',
@@ -139,7 +144,10 @@ export class RagService {
   ): Promise<RagContext | null> {
     if (!this.isEnabled()) return null;
     const user = await this.getUserProfile(userId);
-    const queries = this.buildQueryVariants(opts.topic || `HSK-${opts.level}`, user);
+    const queries = this.buildQueryVariants(
+      opts.topic || `HSK-${opts.level}`,
+      user,
+    );
     const chunks = await this.searchChunks(queries, opts.level, 12);
     return this.composeContext(chunks);
   }
@@ -163,7 +171,7 @@ export class RagService {
         const ann = await this.searchChunksANN(queries, level, take);
         if (ann.length > 0) return ann;
       }
-    } catch (err){
+    } catch (err) {
       this.logger.warn('Error searching chunks ANN', err as any);
     }
     // Fallback: Simple LIKE-based retrieval
@@ -219,10 +227,18 @@ export class RagService {
     const qtexts = queries.filter(Boolean).slice(0, 3);
     if (qtexts.length === 0) return [];
     // Embed queries (both en + zh vectors)
-    const [enVec] = await this.openai.embedTexts([qtexts.join(' ')], process.env.OPENAI_EMBED_MODEL);
-    const [zhVec] = await this.openai.embedTexts([qtexts.join(' ')], process.env.OPENAI_EMBED_MODEL);
-    const enLit = '[' + (enVec || []).map((x) => (x ?? 0).toFixed(6)).join(',') + ']';
-    const zhLit = '[' + (zhVec || []).map((x) => (x ?? 0).toFixed(6)).join(',') + ']';
+    const [enVec] = await this.openai.embedTexts(
+      [qtexts.join(' ')],
+      process.env.OPENAI_EMBED_MODEL,
+    );
+    const [zhVec] = await this.openai.embedTexts(
+      [qtexts.join(' ')],
+      process.env.OPENAI_EMBED_MODEL,
+    );
+    const enLit =
+      '[' + (enVec || []).map((x) => (x ?? 0).toFixed(6)).join(',') + ']';
+    const zhLit =
+      '[' + (zhVec || []).map((x) => (x ?? 0).toFixed(6)).join(',') + ']';
     const k = Math.max(4, Math.min(take * 2, 50));
     // Raw SQL ANN with simple union and score
     const rows: any[] = await (this.prisma as any).$queryRawUnsafe(
@@ -299,13 +315,25 @@ export class RagService {
         enTexts.push(en.length > 0 ? en : zh);
         zhTexts.push(zh.length > 0 ? zh : en);
       }
-      const enVecs = await this.openai.embedTexts(enTexts, process.env.OPENAI_EMBED_MODEL);
-      const zhVecs = await this.openai.embedTexts(zhTexts, process.env.OPENAI_EMBED_MODEL);
+      const enVecs = await this.openai.embedTexts(
+        enTexts,
+        process.env.OPENAI_EMBED_MODEL,
+      );
+      const zhVecs = await this.openai.embedTexts(
+        zhTexts,
+        process.env.OPENAI_EMBED_MODEL,
+      );
       const dim = (enVecs?.[0]?.length || zhVecs?.[0]?.length) ?? 1536;
       for (let i = 0; i < ids.length; i++) {
         const id = ids[i];
-        const enLit = '[' + (enVecs[i] || []).map((x) => (x ?? 0).toFixed(6)).join(',') + ']';
-        const zhLit = '[' + (zhVecs[i] || []).map((x) => (x ?? 0).toFixed(6)).join(',') + ']';
+        const enLit =
+          '[' +
+          (enVecs[i] || []).map((x) => (x ?? 0).toFixed(6)).join(',') +
+          ']';
+        const zhLit =
+          '[' +
+          (zhVecs[i] || []).map((x) => (x ?? 0).toFixed(6)).join(',') +
+          ']';
         await (this.prisma as any).$executeRawUnsafe(
           'INSERT INTO "RagEmbedding" ("chunkId", kind, dimension, vector) VALUES ($1, $2, $3, CAST($4 AS vector)) ON CONFLICT ("chunkId", kind) DO NOTHING;',
           id,
@@ -341,13 +369,18 @@ export class RagService {
     const sources: RagSourceRef[] = [];
     chunks.forEach((c, idx) => {
       const key = `S${idx + 1}`;
-      const title = [c.sourceTitle, c.sectionHeading].filter(Boolean).join(' — ');
+      const title = [c.sourceTitle, c.sectionHeading]
+        .filter(Boolean)
+        .join(' — ');
       const zh = (c.hanzi || '').trim();
       const en = (c.english || '').trim();
-      lines.push(
-        `[#${key}] ${title}\nZH: ${zh}\nEN: ${en}`.trim(),
-      );
-      sources.push({ key, sourceTitle: c.sourceTitle, sectionHeading: c.sectionHeading, chunkId: c.id });
+      lines.push(`[#${key}] ${title}\nZH: ${zh}\nEN: ${en}`.trim());
+      sources.push({
+        key,
+        sourceTitle: c.sourceTitle,
+        sectionHeading: c.sectionHeading,
+        chunkId: c.id,
+      });
     });
     return { contextText: lines.join('\n\n'), sources };
   }
