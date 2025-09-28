@@ -11,6 +11,7 @@ import { UsersModule } from './users/users.module';
 import { LessonsModule } from './lessons/lessons.module';
 import { FlashcardsModule } from './flashcards/flashcards.module';
 import { ConversationsModule } from './conversations/conversations.module';
+import { RagModule } from './rag/rag.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ConversationsModule } from './conversations/conversations.module';
     LessonsModule,
     FlashcardsModule,
     ConversationsModule,
+    RagModule,
   ],
   controllers: [AppController],
   providers: [AppService],
