@@ -354,6 +354,21 @@ export class ConversationsService {
             const enrichedNotes = await this.enrichNotesWithSegments(
               notes as any,
             );
+            // Also enrich tips into tipsRich with segments
+            if (Array.isArray((enrichedNotes as any).tips)) {
+              const tipsRich = [] as Array<{
+                zh: string;
+                en?: string;
+                segments?: any[];
+              }>;
+              for (const t of (enrichedNotes as any).tips) {
+                if (t && typeof t.zh === 'string') {
+                  const segs = await this.enrichTextWithSegments(t.zh);
+                  tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
+                }
+              }
+              (enrichedNotes as any).tipsRich = tipsRich;
+            }
             aiMsg = await this.prisma.message.update({
               where: { id: aiMsg.id },
               data: { notes: enrichedNotes as any },

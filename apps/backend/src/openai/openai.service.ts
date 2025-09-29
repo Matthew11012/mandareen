@@ -386,7 +386,7 @@ export class OpenAIService {
       briefEn?: string;
       examplesPinyin?: Array<{ zh: string; pinyin?: string; en?: string }>;
     }>;
-    tips?: string[];
+    tips?: Array<{ zh: string; en?: string }>;
     citations?: Array<{ key?: string; chunkId?: number }>;
   }> {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
@@ -418,7 +418,7 @@ export class OpenAIService {
       "sources": [{"key":"S1"}]
     }
   ],
-  "tips": ["注意受事宾语通常已知。"],
+  "tips": [{"zh":"注意受事宾语通常已知。","en":"Note that the object is usually known to both parties."}],
   "citations": [{"key":"S1"}]
 }`,
     ]

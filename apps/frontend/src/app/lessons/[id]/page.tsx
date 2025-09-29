@@ -139,6 +139,17 @@ export default function LessonViewerPage() {
             }>;
           }>;
         }>;
+        tipsRich?: Array<{
+          zh: string;
+          en?: string;
+          segments?: Array<{
+            text: string;
+            isWord?: boolean;
+            pinyin?: string;
+            definition?: string;
+            definitions?: string[];
+          }>;
+        }>;
         turns?: Array<{
           speaker: string;
           hanzi: string;
@@ -1131,7 +1142,7 @@ export default function LessonViewerPage() {
                         {dialogue.grammarNotes.slice(0, 3).map((gn, gi) => (
                           <div
                             key={gi}
-                            className="text-[12px] text-[#c9d1d9] border border-[#2a2e36] bg-[#1a1f27] rounded-lg p-2 space-y-2"
+                            className="text-[16px] text-[#c9d1d9] border border-[#2a2e36] bg-[#1a1f27] rounded-lg p-2 space-y-2"
                           >
                             <div className="space-y-1">
                               <div className="flex items-center gap-2">
@@ -1160,7 +1171,7 @@ export default function LessonViewerPage() {
                                 )}
                               </div>
                               {gn.pointEn ? (
-                                <div className="text-[11px] text-[#8b949e]">
+                                <div className="text-[14px] text-[#8b949e]">
                                   {gn.pointEn}
                                 </div>
                               ) : null}
@@ -1189,14 +1200,14 @@ export default function LessonViewerPage() {
                                         {gn.briefPinyin}
                                       </div>
                                     ) : null}
-                                    {gn.briefEn ? (
-                                      <div className="text-[11px] text-[#8b949e]">
-                                        {gn.briefEn}
-                                      </div>
-                                    ) : null}
                                   </>
                                 )}
                               </div>
+                              {gn.briefEn ? (
+                                <div className="text-[14px] text-[#8b949e]">
+                                  {gn.briefEn}
+                                </div>
+                              ) : null}
                             </div>
 
                             {Array.isArray(gn.examples) &&
@@ -1215,24 +1226,31 @@ export default function LessonViewerPage() {
                                       >
                                         {Array.isArray(ex.segments) &&
                                         ex.segments.length > 0 ? (
-                                          renderNotesSegmentsWithPopup(
-                                            ex.segments,
-                                            ex.zh,
-                                            ex.en,
-                                            notesPinyinOn
-                                          )
+                                          <>
+                                            {renderNotesSegmentsWithPopup(
+                                              ex.segments,
+                                              ex.zh,
+                                              ex.en,
+                                              notesPinyinOn
+                                            )}
+                                            {ex.en ? (
+                                              <div className="text-[14px] text-[#8b949e]">
+                                                {ex.en}
+                                              </div>
+                                            ) : null}
+                                          </>
                                         ) : (
                                           <>
                                             <div className="text-white">
                                               {ex.zh}
                                             </div>
                                             {notesPinyinOn && ex.pinyin ? (
-                                              <div className="text-[#9aa6ff] text-[11px]">
+                                              <div className="text-[#9aa6ff] text-[14px]">
                                                 {ex.pinyin}
                                               </div>
                                             ) : null}
                                             {ex.en ? (
-                                              <div className="text-[11px] text-[#8b949e]">
+                                              <div className="text-[14px] text-[#8b949e]">
                                                 {ex.en}
                                               </div>
                                             ) : null}
@@ -1250,6 +1268,47 @@ export default function LessonViewerPage() {
                   )}
               </div>
             )}
+
+            {Array.isArray(dialogue?.tipsRich) &&
+              dialogue!.tipsRich!.length > 0 && (
+                <div className="mt-4 border border-[#3a3a3a] rounded-lg p-3 bg-[#1e2229]">
+                  <div className="text-xs font-semibold text-white mb-2">
+                    Tips
+                  </div>
+                  <ul className="space-y-2 list-disc list-outside pl-4 marker:text-[#596080]">
+                    {dialogue!.tipsRich!.slice(0, 4).map((tip, i) => (
+                      <li key={i}>
+                        {Array.isArray(tip.segments) &&
+                        tip.segments.length > 0 ? (
+                          <>
+                            {renderNotesSegmentsWithPopup(
+                              tip.segments,
+                              tip.zh,
+                              tip.en,
+                              notesPinyinOn
+                            )}
+                            {tip.en ? (
+                              <div className="text-[#8b949e] text-xs">
+                                {tip.en}
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-[#c9d1d9]">{tip.zh}</div>
+                            {notesPinyinOn ? null : null}
+                            {tip.en ? (
+                              <div className="text-[#8b949e] text-xs">
+                                {tip.en}
+                              </div>
+                            ) : null}
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
             {popup.open && (
               <div

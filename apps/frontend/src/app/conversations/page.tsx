@@ -909,6 +909,45 @@ export default function ConversationsPage() {
               <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#1d2128] to-transparent" />
             ) : null}
           </div>
+          {Array.isArray((m.notes as MessageNotes).tipsRich) &&
+          (m.notes as MessageNotes).tipsRich!.length > 0 ? (
+            <div className="mt-2 pt-2 border-t border-[#2a2e36]">
+              <div className="text-[10px] uppercase tracking-wide text-[#8a8f99] mb-1">
+                Tips
+              </div>
+              <ul className="space-y-1 list-disc list-outside pl-4 marker:text-[#596080]">
+                {(m.notes as MessageNotes).tipsRich!.slice(0, 2).map((t, i) => (
+                  <li key={i}>
+                    {Array.isArray(t.segments) && t.segments.length > 0 ? (
+                      <>
+                        {renderSegmentsWithPopup(
+                          t.segments,
+                          t.zh,
+                          t.en,
+                          notesPinyinOn
+                        )}
+                        {t.en ? (
+                          <div className="text-[#8b949e] text-xs">{t.en}</div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-[#c9d1d9]">{t.zh}</div>
+                        {notesPinyinOn && t.pinyin ? (
+                          <div className="text-[#9aa6ff] text-xs">
+                            {t.pinyin}
+                          </div>
+                        ) : null}
+                        {t.en ? (
+                          <div className="text-[#8b949e] text-xs">{t.en}</div>
+                        ) : null}
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div className="mt-2 flex justify-between items-center">
             <div className="text-[11px] text-[#a6a6a6]">
               {Array.isArray((m.notes as MessageNotes).tipsRich) &&
@@ -1590,12 +1629,19 @@ export default function ConversationsPage() {
                             {gn.examples.map((ex: Tip, i: number) => (
                               <li key={i}>
                                 {Array.isArray(ex.segments) ? (
-                                  renderSegmentsWithPopup(
-                                    ex.segments,
-                                    ex.zh,
-                                    ex.en,
-                                    notesPinyinOn
-                                  )
+                                  <>
+                                    {renderSegmentsWithPopup(
+                                      ex.segments,
+                                      ex.zh,
+                                      ex.en,
+                                      notesPinyinOn
+                                    )}
+                                    {ex.en ? (
+                                      <div className="text-[#8b949e] text-xs">
+                                        {ex.en}
+                                      </div>
+                                    ) : null}
+                                  </>
                                 ) : (
                                   <>
                                     <div className="text-[#c9d1d9]">
@@ -1630,23 +1676,44 @@ export default function ConversationsPage() {
                   <div className="text-sm font-semibold text-white mb-2">
                     Tips
                   </div>
-                  <div className="space-y-2">
+                  <ul className="space-y-2 list-disc list-outside pl-5 marker:text-[#596080]">
                     {(notesModal.message.notes as MessageNotes).tipsRich!.map(
                       (t: Tip, i: number) => (
-                        <div key={i}>
-                          <div className="text-[#c9d1d9]">{t.zh}</div>
-                          {t.pinyin ? (
-                            <div className="text-[#9aa6ff] text-xs">
-                              {t.pinyin}
-                            </div>
-                          ) : null}
-                          {t.en ? (
-                            <div className="text-[#8b949e] text-xs">{t.en}</div>
-                          ) : null}
-                        </div>
+                        <li key={i}>
+                          {Array.isArray(t.segments) &&
+                          t.segments.length > 0 ? (
+                            <>
+                              {renderSegmentsWithPopup(
+                                t.segments,
+                                t.zh,
+                                t.en,
+                                notesPinyinOn
+                              )}
+                              {t.en ? (
+                                <div className="text-[#8b949e] text-xs">
+                                  {t.en}
+                                </div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-[#c9d1d9]">{t.zh}</div>
+                              {t.pinyin ? (
+                                <div className="text-[#9aa6ff] text-xs">
+                                  {t.pinyin}
+                                </div>
+                              ) : null}
+                              {t.en ? (
+                                <div className="text-[#8b949e] text-xs">
+                                  {t.en}
+                                </div>
+                              ) : null}
+                            </>
+                          )}
+                        </li>
                       )
                     )}
-                  </div>
+                  </ul>
                 </div>
               ) : null}
             </div>

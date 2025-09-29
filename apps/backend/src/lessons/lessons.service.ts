@@ -106,6 +106,9 @@ export class LessonsService {
 
       // Optionally compute grounded grammar notes for the whole dialogue text
       let grammarNotes: any[] | undefined;
+      let tipsRichOut:
+        | Array<{ zh: string; en?: string; segments?: any[] }>
+        | undefined;
       try {
         const fullDialogue = turns.map((t: any) => t.hanzi).join('\n');
         const ctx = await this.ragService.retrieveForLesson(user.id, {
@@ -123,8 +126,27 @@ export class LessonsService {
         );
         // Enrich notes with segments for clickable tokens
         notes = await this.enrichNotesWithSegments(notes as any);
+        // Also enrich tips into tipsRich with segments
+        if (Array.isArray((notes as any).tips)) {
+          const tipsRich = [] as Array<{
+            zh: string;
+            en?: string;
+            segments?: any[];
+          }>;
+          for (const t of (notes as any).tips) {
+            if (t && typeof t.zh === 'string') {
+              const segs = await this.enrichTextWithSegments(t.zh);
+              tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
+            }
+          }
+          (notes as any).tipsRich = tipsRich;
+        }
         grammarNotes = Array.isArray((notes as any).grammarNotes)
           ? (notes as any).grammarNotes
+          : undefined;
+        // attach tipsRich to be stored with section content
+        tipsRichOut = Array.isArray((notes as any).tipsRich)
+          ? (notes as any).tipsRich
           : undefined;
       } catch {
         // best-effort, ignore
@@ -146,6 +168,9 @@ export class LessonsService {
                   titleTranslation: generated.titleTranslation || null,
                   turns: turnsWithSegments,
                   grammarNotes,
+                  tipsRich: (typeof tipsRichOut !== 'undefined'
+                    ? tipsRichOut
+                    : undefined) as any,
                 },
               },
             ],
@@ -191,6 +216,9 @@ export class LessonsService {
 
       // Optionally compute grounded grammar notes for the story text
       let grammarNotes: any[] | undefined;
+      let tipsRichOut2:
+        | Array<{ zh: string; en?: string; segments?: any[] }>
+        | undefined;
       try {
         const ctx = await this.ragService.retrieveForLesson(user.id, {
           topic: topic || generated.title || undefined,
@@ -207,8 +235,26 @@ export class LessonsService {
         );
         // Enrich notes with segments for clickable tokens
         notes = await this.enrichNotesWithSegments(notes as any);
+        // Also enrich tips into tipsRich with segments
+        if (Array.isArray((notes as any).tips)) {
+          const tipsRich = [] as Array<{
+            zh: string;
+            en?: string;
+            segments?: any[];
+          }>;
+          for (const t of (notes as any).tips) {
+            if (t && typeof t.zh === 'string') {
+              const segs = await this.enrichTextWithSegments(t.zh);
+              tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
+            }
+          }
+          (notes as any).tipsRich = tipsRich;
+        }
         grammarNotes = Array.isArray((notes as any).grammarNotes)
           ? (notes as any).grammarNotes
+          : undefined;
+        tipsRichOut2 = Array.isArray((notes as any).tipsRich)
+          ? (notes as any).tipsRich
           : undefined;
       } catch (err) {
         this.logger.warn('Error generating grammar notes', err as any);
@@ -233,6 +279,9 @@ export class LessonsService {
                   translation: generated.story?.translation || '',
                   segments: filledSegs,
                   grammarNotes,
+                  tipsRich: (typeof tipsRichOut2 !== 'undefined'
+                    ? tipsRichOut2
+                    : undefined) as any,
                 },
               },
             ],
@@ -430,7 +479,7 @@ Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
   "level": ${level},
   "dialogue": {
     "turns": [ // 18-22 turns of practical daily conversation suitable for HSK-${level}
-      { "speaker": ""<Character name 1>|<Character name 2>|<Narrator or Third person (such as waiter(in restaurant setting), etc.)>"", "hanzi": "string", "pinyin": "string", "translation": "string" }
+      { "speaker": ""<Character name 1>|<Character name 2>|<Narrator or Third person (such as waiter(in restaurant setting), etc.)>"", "hanzi": "string", "pinyin": "string <USING tone marks NOT numeric tones>", "translation": "string" }
     ]
   },
   "vocabulary": [
