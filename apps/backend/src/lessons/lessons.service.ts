@@ -113,7 +113,7 @@ export class LessonsService {
           level,
         });
         const profile = await this.ragService.getUserProfile(user.id);
-        const notes = await (this.openAIService as any).generateGrammarNotes(
+        let notes = await (this.openAIService as any).generateGrammarNotes(
           fullDialogue,
           {
             level: profile.level,
@@ -121,6 +121,8 @@ export class LessonsService {
             contextText: ctx?.contextText,
           },
         );
+        // Enrich notes with segments for clickable tokens
+        notes = await this.enrichNotesWithSegments(notes as any);
         grammarNotes = Array.isArray((notes as any).grammarNotes)
           ? (notes as any).grammarNotes
           : undefined;
@@ -195,7 +197,7 @@ export class LessonsService {
           level,
         });
         const profile = await this.ragService.getUserProfile(user.id);
-        const notes = await (this.openAIService as any).generateGrammarNotes(
+        let notes = await (this.openAIService as any).generateGrammarNotes(
           generated.story?.hanzi || '',
           {
             level: profile.level,
@@ -203,6 +205,8 @@ export class LessonsService {
             contextText: ctx?.contextText,
           },
         );
+        // Enrich notes with segments for clickable tokens
+        notes = await this.enrichNotesWithSegments(notes as any);
         grammarNotes = Array.isArray((notes as any).grammarNotes)
           ? (notes as any).grammarNotes
           : undefined;
@@ -548,5 +552,65 @@ Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
       .filter(Boolean)
       .map((s) => this.toToneMarkSyllable(s))
       .join(' ');
+  }
+
+  private async enrichTextWithSegments(text?: string, pinyin?: string) {
+    if (!text || !Array.from(text).some((c) => this.isChineseChar(c)))
+      return undefined as any[] | undefined;
+    const segs = await this.segmentationService.segmentText(text);
+    const charPinyinArray = (pinyin || '')
+      .split(/\s+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const segments = segs.map((s) => {
+      let segPinyin = (s.pinyin || '').toLowerCase();
+      if (!segPinyin || segPinyin.trim().length === 0) {
+        const slice = charPinyinArray
+          .slice(s.startIndex, s.endIndex)
+          .filter((_, idx) => this.isChineseChar(text[s.startIndex + idx]))
+          .filter((p) => (p || '').trim().length > 0);
+        if (slice.length > 0) segPinyin = slice.join(' ');
+      }
+      const segPinyinTone = this.toToneMarks(segPinyin);
+      return {
+        text: s.word,
+        startIndex: s.startIndex,
+        endIndex: s.endIndex,
+        isWord: s.isWord,
+        hskLevel: s.hskLevel,
+        pinyin: segPinyinTone,
+        definition: s.definition,
+        definitions: s.definitions,
+      };
+    });
+    return segments;
+  }
+
+  private async enrichNotesWithSegments(notes: any) {
+    if (!notes || typeof notes !== 'object') return notes;
+    if (Array.isArray(notes.grammarNotes)) {
+      for (const n of notes.grammarNotes) {
+        if (typeof n?.point === 'string') {
+          n.pointSegments = await this.enrichTextWithSegments(
+            n.point,
+            n.pointPinyin,
+          );
+        }
+        if (typeof n?.brief === 'string') {
+          n.briefSegments = await this.enrichTextWithSegments(
+            n.brief,
+            n.briefPinyin,
+          );
+        }
+        if (Array.isArray(n?.examples)) {
+          for (const ex of n.examples) {
+            if (typeof ex?.zh === 'string') {
+              ex.segments = await this.enrichTextWithSegments(ex.zh, ex.pinyin);
+            }
+          }
+        }
+      }
+    }
+    return notes;
   }
 }
