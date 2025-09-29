@@ -391,17 +391,17 @@ export class OpenAIService {
   }> {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const sys = `You are a precise Mandarin tutor. Using ONLY the provided context snippets when present, explain grammar used in the student's/assistant's Chinese text.
-Focus on 2-3 concise GRAMMAR points only. Avoid long lists. Prefer patterns/particles/word order.
-For any Chinese you output, also include its pinyin and a short English gloss so the client doesn't have to make extra API calls.
-Return STRICT JSON with keys grammarNotes (array), tips (array), citations (array). Avoid speculation.`;
+    Focus on 3 concise GRAMMAR points only. Avoid long lists. Prefer patterns/particles/word order.
+    For any Chinese you output, also include its pinyin and a short English gloss so the client doesn't have to make extra API calls.
+    Return STRICT JSON with keys grammarNotes (array), tips (array), citations (array). Avoid speculation.`;
     const userParts = [
       opts?.contextText
-        ? `Grounding context with numbered sources:\n${opts.contextText}`
+        ? `Grounding context with numbered sources:\n${opts.contextText}\n`
         : undefined,
-      `User text (Chinese):\n${hanzi}`,
-      `Level: HSK-${opts.level ?? ''}`,
+      `User text (Chinese):\n${hanzi}\n`,
+      `Level: HSK-${opts.level ?? ''}\n`,
       opts?.strugglingWords?.length
-        ? `User struggles: ${opts.strugglingWords.slice(0, 10).join(', ')}`
+        ? `User struggles: ${opts.strugglingWords.slice(0, 10).join(', ')}\n`
         : undefined,
       `Return JSON EXACTLY like (limit grammarNotes to at most 3):\n{
   "grammarNotes": [
