@@ -34,10 +34,12 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Start assessment on component mount
+  // Start assessment on component mount (guarded to avoid duplicate calls under React Strict Mode)
   useEffect(() => {
-    startAssessment();
-  }, [startAssessment]);
+    if (!session && !isLoading) {
+      startAssessment();
+    }
+  }, [startAssessment, session, isLoading]);
 
   // Check completion status whenever session changes
   useEffect(() => {
