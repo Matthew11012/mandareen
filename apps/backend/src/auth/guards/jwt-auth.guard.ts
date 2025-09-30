@@ -17,13 +17,18 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const authHeader = request.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing or invalid authorization token');
+    const authHeader = request.headers.authorization as string | undefined;
+    let token: string | undefined;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    } else {
+      // Allow token via query param for SSE/EventSource where headers aren't supported
+      token = (request.query?.token as string | undefined) || undefined;
     }
 
-    const token = authHeader.split(' ')[1];
+    if (!token) {
+      throw new UnauthorizedException('Missing or invalid authorization token');
+    }
 
     try {
       const payload = this.jwtService.verify(token) as JWTPayload;

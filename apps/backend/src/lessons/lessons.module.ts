@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { LessonsController } from './lessons.controller';
+import { LessonsStreamController } from './lessons.stream.controller';
 import { LessonsService } from './lessons.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { OpenAIModule } from '../openai/openai.module';
@@ -18,7 +19,7 @@ import { RagModule } from '../rag/rag.module';
       signOptions: { expiresIn: '1d' },
     }),
   ],
-  controllers: [LessonsController],
+  controllers: [LessonsController, LessonsStreamController],
   providers: [LessonsService],
 })
 export class LessonsModule {}

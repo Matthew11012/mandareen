@@ -7,6 +7,10 @@ import { lessonsApi, type LessonListItem } from "@/lib/api/lessons";
 import { Plus, RefreshCw, BookOpen, MessageSquare } from "lucide-react";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { useRouter } from "next/navigation";
+import {
+  useLessonsGenerationStore,
+  type ProgressKey,
+} from "@/lib/stores/lessons-generation-store";
 import { useCurrentLevel } from "@/lib/hooks/use-current-level";
 import { AnimatePresence, motion, LayoutGroup } from "framer-motion";
 
@@ -110,38 +114,380 @@ export default function LessonsPage() {
     );
 
   const handleGenerate = async () => {
+    setError(null);
     setGenerating(true);
+    setProgressOpen(true);
+    genStore.start({
+      level: genLevel ?? null,
+      topic: topic.trim() || undefined,
+      readTimeMinutes: 10,
+    });
     try {
-      const { id } = await lessonsApi.generate({
+      const base = (
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
+      ).replace(/\/$/, "");
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("auth-token")
+          : null;
+      if (!token) throw new Error("No auth token");
+      const params = new URLSearchParams({
+        token,
         type: "story",
-        readTimeMinutes: 10,
-        level: genLevel ?? undefined,
-        topic: topic.trim() || undefined,
+        readTimeMinutes: String(10),
       });
-      await load();
-      router.push(`/lessons/${id}`);
+      if (genLevel) params.set("level", String(genLevel));
+      if (topic.trim()) params.set("topic", topic.trim());
+      const url = `${base}/lessons/generate/stream?${params.toString()}`;
+
+      const es = new EventSource(url);
+      let streamFinished = false;
+      const markComplete = (key: string) => genStore.markCompleted(key);
+
+      const storyStepsOrder = [
+        "openai_generate_story",
+        "segment_story",
+        "openai_generate_grammar_notes",
+        "segment_grammar_notes_and_tips",
+        "persist_lesson",
+      ];
+
+      const handleStepPayload = (raw: unknown) => {
+        let payload: unknown = null;
+        try {
+          payload = typeof raw === "string" ? JSON.parse(raw) : raw;
+        } catch {}
+        const key =
+          ((payload as { key?: string } | null)?.key as string | undefined) ||
+          ((payload as { data?: { key?: string } } | null)?.data?.key as
+            | string
+            | undefined);
+        if (!key) return;
+        genStore.setStep(key as ProgressKey);
+        const idx = storyStepsOrder.indexOf(key);
+        if (idx > 0) {
+          for (let i = 0; i < idx; i++) markComplete(storyStepsOrder[i]);
+        }
+      };
+
+      es.onmessage = async (e) => {
+        const raw = (e as MessageEvent).data as unknown;
+        handleStepPayload(raw);
+        try {
+          let id: number | undefined = undefined;
+          if (typeof raw === "string" && raw.trim().length > 0) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed.id === "number") id = parsed.id;
+          } else if (
+            raw &&
+            typeof raw === "object" &&
+            typeof (raw as { id?: unknown }).id === "number"
+          ) {
+            id = (raw as { id?: unknown }).id as number;
+          }
+          if (typeof id === "number" && !streamFinished) {
+            storyStepsOrder.forEach((k) => markComplete(k));
+            genStore.setStep("complete");
+            streamFinished = true;
+            es.close();
+            await load();
+            setProgressOpen(false);
+            router.push(`/lessons/${id}`);
+          }
+        } catch {}
+      };
+      es.addEventListener("queued", () => genStore.setStep("queued"));
+      es.addEventListener("started", () => genStore.setStep("started"));
+      es.addEventListener("step", (e: MessageEvent) =>
+        handleStepPayload(e.data)
+      );
+      es.addEventListener("heartbeat", () => {});
+      es.addEventListener("complete", async (e: MessageEvent) => {
+        try {
+          let id: number | undefined = undefined;
+          const raw = (e as MessageEvent).data as unknown;
+          if (typeof raw === "string" && raw.trim().length > 0) {
+            try {
+              const parsed = JSON.parse(raw);
+              id =
+                parsed && typeof parsed.id === "number" ? parsed.id : undefined;
+            } catch {
+              id = undefined;
+            }
+          } else if (
+            raw &&
+            typeof raw === "object" &&
+            typeof (raw as { id?: unknown }).id === "number"
+          ) {
+            id = (raw as { id?: unknown }).id as number;
+          }
+          storyStepsOrder.forEach((k) => markComplete(k));
+          genStore.setStep("complete");
+          streamFinished = true;
+          es.close();
+          await load();
+          setProgressOpen(false);
+          if (id) router.push(`/lessons/${id}`);
+        } catch {
+          streamFinished = true;
+          try {
+            es.close();
+          } catch {}
+          setProgressOpen(false);
+        } finally {
+          setGenerating(false);
+          genStore.finish();
+        }
+      });
+      es.addEventListener("error", async () => {
+        if (streamFinished) return;
+        try {
+          es.close();
+        } catch {}
+        try {
+          await load();
+          const startedAt = genStore.startedAt || Date.now();
+          const startedThreshold = startedAt - 60_000;
+          const recentMine = myItems
+            .filter((i) => i.lessonType === "story")
+            .filter((i) => new Date(i.createdAt).getTime() >= startedThreshold)
+            .sort(
+              (a, b) =>
+                new Date(b.createdAt).getTime() -
+                new Date(a.createdAt).getTime()
+            );
+          if (recentMine.length > 0) {
+            streamFinished = true;
+            setProgressOpen(false);
+            setGenerating(false);
+            genStore.finish();
+            router.push(`/lessons/${recentMine[0].id}`);
+            return;
+          }
+        } catch {}
+        setError("Failed to generate lesson");
+        setGenerating(false);
+        setProgressOpen(false);
+        genStore.finish();
+      });
     } catch {
-      setError("Failed to generate lesson");
-    } finally {
-      setGenerating(false);
+      // Fallback to non-stream API
+      try {
+        const { id } = await lessonsApi.generate({
+          type: "story",
+          readTimeMinutes: 10,
+          level: genLevel ?? undefined,
+          topic: topic.trim() || undefined,
+        });
+        await load();
+        router.push(`/lessons/${id}`);
+      } catch {
+        setError("Failed to generate lesson");
+      } finally {
+        setGenerating(false);
+        setProgressOpen(false);
+        genStore.finish();
+      }
     }
   };
 
+  const genStore = useLessonsGenerationStore();
+  const [progressOpen, setProgressOpen] = useState(false);
+  const progressStep = genStore.progressStep as string | null;
+  const completedSteps = genStore.completedSteps as Record<string, boolean>;
+  const progressStepsOrder = [
+    "openai_generate_dialogue",
+    "segment_dialogue",
+    "rag_retrieve_context",
+    "openai_generate_grammar_notes",
+    "segment_grammar_notes_and_tips",
+    "persist_lesson",
+  ];
+
   const handleGenerateDialogue = async () => {
+    setError(null);
     setGenerating(true);
+    setProgressOpen(true);
+    genStore.start({
+      level: genLevel ?? null,
+      topic: topic.trim() || undefined,
+      readTimeMinutes: 5,
+    });
     try {
-      const { id } = await lessonsApi.generate({
+      const base = (
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
+      ).replace(/\/$/, "");
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("auth-token")
+          : null;
+      if (!token) throw new Error("No auth token");
+      const params = new URLSearchParams({
+        token,
         type: "dialogue",
-        readTimeMinutes: 5,
-        level: genLevel ?? undefined,
-        topic: topic.trim() || undefined,
+        readTimeMinutes: String(5),
       });
-      await load();
-      router.push(`/lessons/${id}`);
+      if (genLevel) params.set("level", String(genLevel));
+      if (topic.trim()) params.set("topic", topic.trim());
+      const url = `${base}/lessons/generate/stream?${params.toString()}`;
+
+      const es = new EventSource(url);
+      let streamFinished = false; // guard to ignore spurious errors after completion
+      const markComplete = (key: string) => genStore.markCompleted(key);
+
+      const handleStepPayload = (raw: unknown) => {
+        let payload: unknown = null;
+        try {
+          payload = typeof raw === "string" ? JSON.parse(raw) : raw;
+        } catch {}
+        // Support { key } or { data: { key } }
+        const key =
+          ((payload as { key?: string } | null)?.key as string | undefined) ||
+          ((payload as { data?: { key?: string } } | null)?.data?.key as
+            | string
+            | undefined);
+        if (!key) return;
+        genStore.setStep(key as ProgressKey);
+        const idx = progressStepsOrder.indexOf(key);
+        if (idx > 0) {
+          for (let i = 0; i < idx; i++) markComplete(progressStepsOrder[i]);
+        }
+      };
+
+      // Support both typed events and default message events
+      es.onmessage = async (e) => {
+        const raw = (e as MessageEvent).data as unknown;
+        // First, try to handle as a step payload
+        handleStepPayload(raw);
+        // If not a step, also check if this looks like a completion payload
+        try {
+          let id: number | undefined = undefined;
+          if (typeof raw === "string" && raw.trim().length > 0) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed.id === "number") id = parsed.id;
+          } else if (
+            raw &&
+            typeof raw === "object" &&
+            typeof (raw as { id?: unknown }).id === "number"
+          ) {
+            id = (raw as { id?: unknown }).id as number;
+          }
+          if (typeof id === "number" && !streamFinished) {
+            progressStepsOrder.forEach((k) => markComplete(k));
+            genStore.setStep("complete");
+            streamFinished = true;
+            es.close();
+            await load();
+            setProgressOpen(false);
+            router.push(`/lessons/${id}`);
+          }
+        } catch {
+          // ignore
+        }
+      };
+      es.addEventListener("queued", () => genStore.setStep("queued"));
+      es.addEventListener("started", () => genStore.setStep("started"));
+      es.addEventListener("step", (e: MessageEvent) =>
+        handleStepPayload(e.data)
+      );
+      es.addEventListener("heartbeat", () => {
+        // no-op, used to keep connection alive
+      });
+      es.addEventListener("complete", async (e: MessageEvent) => {
+        try {
+          let id: number | undefined = undefined;
+          const raw = (e as MessageEvent).data as unknown;
+          if (typeof raw === "string" && raw.trim().length > 0) {
+            try {
+              const parsed = JSON.parse(raw);
+              id =
+                parsed && typeof parsed.id === "number" ? parsed.id : undefined;
+            } catch {
+              id = undefined;
+            }
+          } else if (
+            raw &&
+            typeof raw === "object" &&
+            typeof (raw as { id?: unknown }).id === "number"
+          ) {
+            id = (raw as { id?: unknown }).id as number;
+          }
+          progressStepsOrder.forEach((k) => markComplete(k));
+          genStore.setStep("complete");
+          streamFinished = true;
+          es.close();
+          await load();
+          setProgressOpen(false);
+          if (id) router.push(`/lessons/${id}`);
+        } catch {
+          // Do not surface an error here; treat as completed without redirect
+          streamFinished = true;
+          try {
+            es.close();
+          } catch {}
+          setProgressOpen(false);
+        } finally {
+          setGenerating(false);
+          genStore.finish();
+        }
+      });
+      es.addEventListener("error", async () => {
+        if (streamFinished) return; // ignore errors after completion/close
+        try {
+          es.close();
+        } catch {}
+        // Fallback: try to locate the newly created lesson since backend may have completed successfully
+        try {
+          await load();
+          const startedAt = genStore.startedAt || Date.now();
+          const startedThreshold = startedAt - 60_000; // 1 minute grace
+          // Prefer my items and dialogues only
+          const recentMine = myItems
+            .filter((i) => i.lessonType === "dialogue")
+            .filter((i) => {
+              const ts = new Date(i.createdAt).getTime();
+              return ts >= startedThreshold;
+            })
+            .sort(
+              (a, b) =>
+                new Date(b.createdAt).getTime() -
+                new Date(a.createdAt).getTime()
+            );
+          if (recentMine.length > 0) {
+            streamFinished = true;
+            setProgressOpen(false);
+            setGenerating(false);
+            genStore.finish();
+            router.push(`/lessons/${recentMine[0].id}`);
+            return;
+          }
+        } catch {
+          // ignore and fall through to error UI
+        }
+        setError("Generation failed");
+        setGenerating(false);
+        setProgressOpen(false);
+        genStore.finish();
+      });
+
+      // Do not auto-close the SSE; let backend signal completion or error.
     } catch {
-      setError("Failed to generate dialogue");
-    } finally {
-      setGenerating(false);
+      try {
+        const { id } = await lessonsApi.generate({
+          type: "dialogue",
+          readTimeMinutes: 5,
+          level: genLevel ?? undefined,
+          topic: topic.trim() || undefined,
+        });
+        await load();
+        router.push(`/lessons/${id}`);
+      } catch {
+        setError("Failed to generate dialogue");
+      } finally {
+        setGenerating(false);
+        setProgressOpen(false);
+        genStore.finish();
+      }
     }
   };
 
@@ -159,6 +505,86 @@ export default function LessonsPage() {
       subtitle="Generate and study AI-crafted lessons"
     >
       <div className="p-6 space-y-6">
+        {/* Top progress box (non-blocking) */}
+        {progressOpen && (
+          <div className="sticky top-2 z-30 mb-2">
+            <motion.div
+              className="relative mx-6 rounded-xl px-4 py-3 text-white shadow-lg ring-1 ring-white/15 backdrop-blur-md"
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.06))",
+              }}
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+            >
+              <motion.div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-xl"
+                style={{
+                  background:
+                    "radial-gradient(1200px 300px at -10% -50%, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 60%, transparent 80%)",
+                  maskImage:
+                    "linear-gradient(to bottom, black, transparent 85%)",
+                }}
+                animate={{ backgroundPosition: ["0% 0%", "120% 0%"] }}
+                transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+              />
+              <div className="relative flex items-center justify-between gap-3">
+                <div className="font-inter font-semibold">
+                  Generating dialogue lesson…
+                </div>
+                <div className="text-xs text-white/70">
+                  This can take up to several minutes
+                </div>
+              </div>
+              <ol className="relative mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {(genStore.params?.readTimeMinutes === 10
+                  ? [
+                      "openai_generate_story",
+                      "segment_story",
+                      "openai_generate_grammar_notes",
+                      "segment_grammar_notes_and_tips",
+                      "persist_lesson",
+                    ]
+                  : progressStepsOrder
+                ).map((k) => {
+                  const active = progressStep === k;
+                  const done = !!completedSteps[k];
+                  return (
+                    <li key={k} className="flex items-center gap-2 text-xs">
+                      <div
+                        className={`h-3 w-3 rounded-full border backdrop-blur-sm ${
+                          done
+                            ? "bg-emerald-400/80 border-emerald-300/60 shadow-[0_0_10px_rgba(74,222,128,0.6)]"
+                            : active
+                              ? "border-white/80 motion-safe:animate-pulse"
+                              : "border-white/30"
+                        }`}
+                      />
+                      <span>
+                        {k === "openai_generate_dialogue" &&
+                          "Generating dialogue"}
+                        {k === "openai_generate_story" && "Generating story"}
+                        {k === "segment_dialogue" &&
+                          "Analyzing & segmenting dialogue"}
+                        {k === "segment_story" &&
+                          "Analyzing & segmenting story"}
+                        {k === "rag_retrieve_context" &&
+                          "Retrieving grammar context"}
+                        {k === "openai_generate_grammar_notes" &&
+                          "Generating grammar notes"}
+                        {k === "segment_grammar_notes_and_tips" &&
+                          "Segmenting notes & tips"}
+                        {k === "persist_lesson" && "Saving lesson"}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </motion.div>
+          </div>
+        )}
         {/* Topic & Generation Options */}
         <div className="bg-[#2e323a] rounded-xl p-4 border border-[#404040] space-y-3">
           <div className="text-white font-inter font-semibold">
@@ -249,7 +675,10 @@ export default function LessonsPage() {
               aria-label="Generate dialogue lesson"
             >
               <div className="flex items-center gap-2 justify-center sm:justify-start">
-                <MessageSquare className="hidden sm:block w-4 h-4" aria-hidden="true" />
+                <MessageSquare
+                  className="hidden sm:block w-4 h-4"
+                  aria-hidden="true"
+                />
                 <span className="font-inter text-sm sm:text-base">
                   Generate Dialogue
                 </span>
