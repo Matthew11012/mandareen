@@ -326,7 +326,8 @@ export const useAssessmentStore = create<AssessmentState>()(
             wordAssessments,
           });
 
-          set({ isLoading: false });
+          // Clear session after successful submission so re-entering shows intro
+          set({ isLoading: false, session: null });
           return result;
         } catch (error) {
           console.error("Assessment submission error:", error);

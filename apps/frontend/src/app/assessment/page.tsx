@@ -42,6 +42,8 @@ export default function AssessmentPage() {
 
   const handleAssessmentComplete = (levelPlaced: number) => {
     setPlacementResult(levelPlaced);
+    // Ensure any lingering session is cleared so re-entry shows intro
+    resetAssessment();
     setCurrentPhase("results");
   };
 
