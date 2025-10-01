@@ -267,13 +267,7 @@ export const PassageDisplay: React.FC<PassageDisplayProps> = ({
         </div>
       </div>
 
-      {/* Pinyin */}
-      <div className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]">
-        <h3 className="text-sm font-semibold text-[#a6a6a6] mb-2">Pinyin:</h3>
-        <p className="text-lg text-[#9aa6ff] font-medium leading-relaxed">
-          {passage.pinyin}
-        </p>
-      </div>
+      {/* Pinyin intentionally hidden in assessment to avoid hints */}
 
       {/* Translation */}
       <div className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]">

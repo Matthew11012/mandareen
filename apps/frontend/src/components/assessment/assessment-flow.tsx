@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { PassageDisplay } from "./passage-display";
 import { AssessmentNavigation } from "./assessment-navigation";
@@ -468,13 +469,21 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
       </div>
 
       {/* Multi-select Controls */}
-      <div
-        className="flex flex-wrap items-center justify-between gap-2 bg-[#1a1d23] rounded-xl p-3 border border-[#404040]"
+      <motion.div
+        layout
+        transition={{ type: "spring", bounce: 0.08, duration: 0.3 }}
+        className={cn(
+          "flex flex-wrap items-start sm:items-center justify-start sm:justify-between gap-2 bg-[#1a1d23] rounded-xl p-3 border border-[#404040]",
+          multiSelect ? "w-full" : "inline-flex w-auto"
+        )}
         role="toolbar"
         aria-label="Assessment controls"
       >
-        <div className="flex items-center gap-2">
-          <button
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <motion.button
+            layout
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
             type="button"
             aria-pressed={multiSelect}
             onClick={() => {
@@ -485,45 +494,51 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
                 setMultiSelect(true);
               }
             }}
-            className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#1a1d23] text-[#a6a6a6]"
+            className="inline-flex shrink-0 px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#1a1d23] text-[#a6a6a6] text-center whitespace-normal w-auto"
           >
             {multiSelect ? "Cancel Selection" : "Select Multiple Words"}
-          </button>
+          </motion.button>
           {multiSelect && (
             <>
-              <button
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
                 type="button"
                 onClick={() => applyBulkStatus("unknown")}
                 disabled={Object.keys(selectedWords).length === 0}
-                className="px-3 py-2 bg-red-500/20 text-red-300 border border-red-500/40 rounded-lg hover:border-red-500 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-400 focus-visible:ring-offset-[#1a1d23]"
+                className="px-3 py-2 bg-red-500/20 text-red-300 border border-red-500/40 rounded-lg hover:border-red-500 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-400 focus-visible:ring-offset-[#1a1d23] w-full sm:w-auto text-center whitespace-normal"
               >
                 Mark Unknown ({Object.keys(selectedWords).length})
-              </button>
-              <button
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
                 type="button"
                 onClick={() => applyBulkStatus("partial")}
                 disabled={Object.keys(selectedWords).length === 0}
-                className="px-3 py-2 bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 rounded-lg hover:border-yellow-500 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-[#1a1d23]"
+                className="px-3 py-2 bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 rounded-lg hover:border-yellow-500 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-[#1a1d23] w-full sm:w-auto text-center whitespace-normal"
               >
                 Mark Partial ({Object.keys(selectedWords).length})
-              </button>
-              <button
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
                 type="button"
                 onClick={clearSelection}
                 disabled={Object.keys(selectedWords).length === 0}
-                className="px-3 py-2 bg-[#2e323a] text-white/80 border border-[#404040] rounded-lg hover:border-[#9aa6ff] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#1a1d23]"
+                className="px-3 py-2 bg-[#2e323a] text-white/80 border border-[#404040] rounded-lg hover:border-[#9aa6ff] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#1a1d23] w-full sm:w-auto text-center"
               >
                 Clear
-              </button>
+              </motion.button>
             </>
           )}
         </div>
         {multiSelect && (
-          <div className="text-xs text-[#a6a6a6]">
+          <div className="text-xs text-[#a6a6a6] w-full sm:w-auto">
             Tip: Click words to toggle selection.
           </div>
         )}
-      </div>
+      </motion.div>
 
       {/* Passage Display */}
       <PassageDisplay
