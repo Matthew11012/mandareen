@@ -38,6 +38,7 @@ export default function DashboardPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [lessonsCount, setLessonsCount] = useState(0);
+  const [visibleHistoryCount, setVisibleHistoryCount] = useState(5);
 
   useEffect(() => {
     let isMounted = true;
@@ -178,9 +179,10 @@ export default function DashboardPage() {
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Placement Test - Available */}
-            <div 
-            className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] hover:border-[#4040f2] transition-all duration-200 cursor-pointer group" 
-            onClick={() => router.push("/assessment")}>
+            <div
+              className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] hover:border-[#4040f2] transition-all duration-200 cursor-pointer group"
+              onClick={() => router.push("/assessment")}
+            >
               <div className="space-y-4">
                 <div className="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center group-hover:bg-blue-500/30 transition-colors duration-200">
                   <Target className="w-6 h-6 text-blue-400" />
@@ -255,8 +257,9 @@ export default function DashboardPage() {
             </div>
 
             {/* Conversation - enabled */}
-            <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] relative hover:border-purple-500/60 transition-all duration-200 cursor-pointer" 
-            onClick={() => router.push("/conversations")}
+            <div
+              className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] relative hover:border-purple-500/60 transition-all duration-200 cursor-pointer"
+              onClick={() => router.push("/conversations")}
             >
               <div className="space-y-4">
                 <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center">
@@ -374,7 +377,7 @@ export default function DashboardPage() {
             </p>
           ) : (
             <div className="space-y-3">
-              {history.slice(0, 10).map((item) => (
+              {history.slice(0, visibleHistoryCount).map((item) => (
                 <div
                   key={item.id}
                   className="flex items-center justify-between bg-[#24262b] rounded-lg p-3 border border-[#3a3a3a]"
@@ -397,6 +400,38 @@ export default function DashboardPage() {
                   </div>
                 </div>
               ))}
+
+              {/* Progressive disclosure controls */}
+              {history.length > 0 && (
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-xs text-[#a6a6a6] font-inter">
+                    Showing {Math.min(visibleHistoryCount, history.length)} of{" "}
+                    {history.length}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {visibleHistoryCount > 5 && (
+                      <button
+                        onClick={() => setVisibleHistoryCount(5)}
+                        className="px-3 py-1.5 text-xs bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#6b7280] transition-colors duration-200 cursor-pointer"
+                      >
+                        Show less
+                      </button>
+                    )}
+                    {visibleHistoryCount < history.length && (
+                      <button
+                        onClick={() =>
+                          setVisibleHistoryCount((c) =>
+                            Math.min(c + 5, history.length)
+                          )
+                        }
+                        className="px-3 py-1.5 text-xs bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#6b7280] transition-colors duration-200 cursor-pointer"
+                      >
+                        Show more
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
