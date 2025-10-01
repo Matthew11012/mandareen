@@ -91,9 +91,9 @@ export const useRequireAuth = () => {
   }, []);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.push("/auth/login");
-    }
+    // Only decide redirect after initialize() completes
+    if (isLoading) return;
+    if (!isAuthenticated) router.push("/auth/login");
   }, [isAuthenticated, isLoading, router]);
 
   return { isAuthenticated, isLoading };
