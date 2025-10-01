@@ -82,24 +82,37 @@ export class LessonsService {
 
           if (type === 'dialogue') {
             emit('step', { key: 'segment_dialogue' });
-            const vocabExtras = Array.isArray(generated.vocabulary)
-              ? generated.vocabulary.map((w: any) => ({
-                  text: w.hanzi || w.word || w.text,
-                  pinyin: w.pinyin,
-                  definition: w.translation || w.definition,
-                  hskLevel: w.hskLevel,
-                }))
-              : [];
             const turns = Array.isArray(generated.dialogue?.turns)
               ? generated.dialogue.turns
               : [];
+            const namedEntitiesRaw = Array.isArray(
+              (generated as any).namedEntities,
+            )
+              ? (generated as any).namedEntities
+              : [];
+            const namedEntities = namedEntitiesRaw
+              .filter(
+                (e: any) =>
+                  typeof e?.hanzi === 'string' && e.hanzi.trim().length > 0,
+              )
+              .map((e: any) => ({
+                text: (e.hanzi || '').trim(),
+                pinyin: (e.pinyin || '').toLowerCase().trim(),
+                definition: ((e.translation || e.definition || '') + '').trim(),
+              }));
+            const seenNe = new Set<string>();
+            const dedupNamedEntities = namedEntities.filter((e: any) => {
+              if (seenNe.has(e.text)) return false;
+              seenNe.add(e.text);
+              return true;
+            });
             const turnsWithSegments = [] as any[];
             for (const t of turns) {
               let segs: any[] = [];
               try {
                 segs = await this.segmentationService.segmentText(
                   t.hanzi || '',
-                  vocabExtras,
+                  dedupNamedEntities,
                 );
               } catch (err) {
                 this.logger.warn(
@@ -109,7 +122,7 @@ export class LessonsService {
               }
               const filledSegsRaw = this.fillSegmentPinyinFromLine(
                 t.hanzi || '',
-                t.pinyin || '',
+                '',
                 segs.map((s) => ({
                   text: s.word,
                   startIndex: s.startIndex,
@@ -181,6 +194,39 @@ export class LessonsService {
               emit('step', { key: 'segment_grammar_notes_and_tips' });
             }
 
+            // Upsert named entities into vocabulary (dialogue)
+            if (
+              Array.isArray(dedupNamedEntities) &&
+              dedupNamedEntities.length > 0
+            ) {
+              this.logger.log(
+                `Upserting ${dedupNamedEntities.length} named entities (dialogue)`,
+              );
+              for (const ne of dedupNamedEntities) {
+                try {
+                  await this.prismaService.vocabularyItem.upsert({
+                    where: { hanzi: ne.text },
+                    create: {
+                      hanzi: ne.text,
+                      pinyin: (ne.pinyin || '').toLowerCase(),
+                      definition: (ne.definition || '').toString(),
+                      isCustom: true,
+                      source: 'LLM-NE',
+                    } as any,
+                    update: {
+                      pinyin: (ne.pinyin || '').toLowerCase(),
+                      definition: (ne.definition || '').toString() || undefined,
+                    } as any,
+                  });
+                } catch (err) {
+                  this.logger.warn(
+                    `Failed to upsert named entity ${ne.text} into vocabulary`,
+                    err as any,
+                  );
+                }
+              }
+            }
+
             emit('step', { key: 'persist_lesson' });
             const created = await this.prismaService.lesson.create({
               data: {
@@ -217,18 +263,58 @@ export class LessonsService {
           // story path (mirrors existing non-stream flow with emits)
           emit('step', { key: 'segment_story' });
           const mainText: string = (generated as any).story?.hanzi || '';
-          const wordsExtra = Array.isArray((generated as any).vocabulary)
-            ? (generated as any).vocabulary.map((w: any) => ({
-                text: w.hanzi || w.word || w.text,
-                pinyin: w.pinyin,
-                definition: w.translation || w.definition,
-                hskLevel: w.hskLevel,
-              }))
+          const namedEntities = Array.isArray((generated as any).namedEntities)
+            ? (generated as any).namedEntities
+                .filter(
+                  (e: any) =>
+                    typeof e?.hanzi === 'string' && e.hanzi.trim().length > 0,
+                )
+                .map((e: any) => ({
+                  text: e.hanzi,
+                  pinyin: (e.pinyin || '').toLowerCase(),
+                  definition: e.translation || e.definition || undefined,
+                }))
             : [];
           const segs = await this.segmentationService.segmentText(
             mainText,
-            wordsExtra,
+            namedEntities,
           );
+
+          // Upsert named entities into vocabulary (story - streaming)
+          if (Array.isArray(namedEntities) && namedEntities.length > 0) {
+            const seenNeStream = new Set<string>();
+            const dedupNeStream = namedEntities.filter((e: any) => {
+              if (seenNeStream.has(e.text)) return false;
+              seenNeStream.add(e.text);
+              return true;
+            });
+            this.logger.log(
+              `Upserting ${dedupNeStream.length} named entities (story-stream)`,
+            );
+            for (const ne of dedupNeStream) {
+              try {
+                await this.prismaService.vocabularyItem.upsert({
+                  where: { hanzi: ne.text },
+                  create: {
+                    hanzi: ne.text,
+                    pinyin: (ne.pinyin || '').toLowerCase(),
+                    definition: (ne.definition || '').toString(),
+                    isCustom: true,
+                    source: 'LLM-NE',
+                  } as any,
+                  update: {
+                    pinyin: (ne.pinyin || '').toLowerCase(),
+                    definition: (ne.definition || '').toString() || undefined,
+                  } as any,
+                });
+              } catch (err) {
+                this.logger.warn(
+                  `Failed to upsert named entity ${ne.text} into vocabulary`,
+                  err as any,
+                );
+              }
+            }
+          }
 
           emit('step', { key: 'openai_generate_grammar_notes' });
           let grammarNotes2: any[] | undefined;
@@ -282,7 +368,7 @@ export class LessonsService {
           emit('step', { key: 'persist_lesson' });
           const filledSegsRaw = this.fillSegmentPinyinFromLine(
             (generated as any).story?.hanzi || '',
-            (generated as any).story?.pinyin || '',
+            '',
             segs.map((s) => ({
               text: s.word,
               startIndex: s.startIndex,
@@ -316,9 +402,7 @@ export class LessonsService {
                       titleTranslation:
                         (generated as any).titleTranslation || null,
                       hanzi: (generated as any).story?.hanzi || '',
-                      pinyin: this.toToneMarks(
-                        (generated as any).story?.pinyin || '',
-                      ),
+                      pinyin: undefined,
                       translation: (generated as any).story?.translation || '',
                       segments: filledSegs,
                       grammarNotes: grammarNotes2,
@@ -381,17 +465,27 @@ export class LessonsService {
     // Persist lesson
     let lesson;
     if (type === 'dialogue') {
-      const vocabExtras = Array.isArray(generated.vocabulary)
-        ? generated.vocabulary.map((w: any) => ({
-            text: w.hanzi || w.word || w.text,
-            pinyin: w.pinyin,
-            definition: w.translation || w.definition,
-            hskLevel: w.hskLevel,
-          }))
-        : [];
       const turns = Array.isArray(generated.dialogue?.turns)
         ? generated.dialogue.turns
         : [];
+      const namedEntities = Array.isArray((generated as any).namedEntities)
+        ? (generated as any).namedEntities
+            .filter(
+              (e: any) =>
+                typeof e?.hanzi === 'string' && e.hanzi.trim().length > 0,
+            )
+            .map((e: any) => ({
+              text: (e.hanzi || '').trim(),
+              pinyin: (e.pinyin || '').toLowerCase().trim(),
+              definition: ((e.translation || e.definition || '') + '').trim(),
+            }))
+        : [];
+      const seenGen = new Set<string>();
+      const dedupNamedEntities = namedEntities.filter((e: any) => {
+        if (seenGen.has(e.text)) return false;
+        seenGen.add(e.text);
+        return true;
+      });
 
       const turnsWithSegments = [] as any[];
       for (const t of turns) {
@@ -399,7 +493,7 @@ export class LessonsService {
         try {
           segs = await this.segmentationService.segmentText(
             t.hanzi || '',
-            vocabExtras,
+            dedupNamedEntities,
           );
         } catch (err) {
           this.logger.warn(
@@ -481,8 +575,39 @@ export class LessonsService {
         tipsRichOut = Array.isArray((notes as any).tipsRich)
           ? (notes as any).tipsRich
           : undefined;
-      } catch {
-        // best-effort, ignore
+      } catch (err) {
+        // best-effort, log and continue
+        this.logger.warn('Named entity upsert failed (dialogue)', err as any);
+      }
+
+      // Upsert named entities into vocabulary (dialogue)
+      if (Array.isArray(dedupNamedEntities) && dedupNamedEntities.length > 0) {
+        this.logger.log(
+          `Upserting ${dedupNamedEntities.length} named entities (dialogue)`,
+        );
+        for (const ne of dedupNamedEntities) {
+          try {
+            await this.prismaService.vocabularyItem.upsert({
+              where: { hanzi: ne.text },
+              create: {
+                hanzi: ne.text,
+                pinyin: (ne.pinyin || '').toLowerCase(),
+                definition: (ne.definition || '').toString(),
+                isCustom: true,
+                source: 'LLM-NE',
+              } as any,
+              update: {
+                pinyin: (ne.pinyin || '').toLowerCase(),
+                definition: (ne.definition || '').toString() || undefined,
+              } as any,
+            });
+          } catch (err) {
+            this.logger.warn(
+              `Failed to upsert named entity ${ne.text} into vocabulary`,
+              err as any,
+            );
+          }
+        }
       }
 
       lesson = await this.prismaService.lesson.create({
@@ -514,23 +639,33 @@ export class LessonsService {
     } else {
       // story
       const mainText: string = generated.story?.hanzi || '';
-      const wordsExtra = Array.isArray(generated.vocabulary)
-        ? generated.vocabulary.map((w: any) => ({
-            text: w.hanzi || w.word || w.text,
-            pinyin: w.pinyin,
-            definition: w.translation || w.definition,
-            hskLevel: w.hskLevel,
-          }))
+      const namedEntitiesRaw2 = Array.isArray((generated as any).namedEntities)
+        ? (generated as any).namedEntities
         : [];
+      const namedEntities = namedEntitiesRaw2
+        .filter(
+          (e: any) => typeof e?.hanzi === 'string' && e.hanzi.trim().length > 0,
+        )
+        .map((e: any) => ({
+          text: (e.hanzi || '').trim(),
+          pinyin: (e.pinyin || '').toLowerCase().trim(),
+          definition: ((e.translation || e.definition || '') + '').trim(),
+        }));
+      const seenNe2 = new Set<string>();
+      const dedupNamedEntities2 = namedEntities.filter((e: any) => {
+        if (seenNe2.has(e.text)) return false;
+        seenNe2.add(e.text);
+        return true;
+      });
       const segs = await this.segmentationService.segmentText(
         mainText,
-        wordsExtra,
+        dedupNamedEntities2,
       );
 
       // Fill missing pinyin from story.pinyin (fallback per character)
       const filledSegsRaw = this.fillSegmentPinyinFromLine(
         generated.story?.hanzi || '',
-        generated.story?.pinyin || '',
+        '',
         segs.map((s) => ({
           text: s.word,
           startIndex: s.startIndex,
@@ -591,6 +726,39 @@ export class LessonsService {
           : undefined;
       } catch (err) {
         this.logger.warn('Error generating grammar notes', err as any);
+      }
+
+      // Upsert named entities into vocabulary (story)
+      if (
+        Array.isArray(dedupNamedEntities2) &&
+        dedupNamedEntities2.length > 0
+      ) {
+        this.logger.log(
+          `Upserting ${dedupNamedEntities2.length} named entities (story)`,
+        );
+        for (const ne of dedupNamedEntities2) {
+          try {
+            await this.prismaService.vocabularyItem.upsert({
+              where: { hanzi: ne.text },
+              create: {
+                hanzi: ne.text,
+                pinyin: (ne.pinyin || '').toLowerCase(),
+                definition: (ne.definition || '').toString(),
+                isCustom: true,
+                source: 'LLM-NE',
+              } as any,
+              update: {
+                pinyin: (ne.pinyin || '').toLowerCase(),
+                definition: (ne.definition || '').toString() || undefined,
+              } as any,
+            });
+          } catch (err) {
+            this.logger.warn(
+              `Failed to upsert named entity ${ne.text} into vocabulary`,
+              err as any,
+            );
+          }
+        }
       }
 
       lesson = await this.prismaService.lesson.create({
@@ -749,17 +917,14 @@ Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
   "title": "string || null",
   "titlePinyin": "string || null",
   "titleTranslation": "string || null",
-    lines)",
   "lessonType": "story",
   "level": ${level},
   "story": {
     "hanzi": "string (full Chinese text)",
-    "pinyin": "string (full text pinyin, line aligned if possible; keep paragraph breaks)",
-    "translation": "string (full English translation; mirror paragraph breaks with blank 
-    lines)"
+    "translation": "string (full English translation; mirror paragraph breaks with blank lines)"
   },
-  "vocabulary": [
-    { "hanzi": "string", "pinyin": "string", "translation": "string", "hskLevel": ${level} }
+  "namedEntities": [
+    { "hanzi": "string", "pinyin": "string", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" }
   ]
 }`,
       },
@@ -812,15 +977,14 @@ Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
   "level": ${level},
   "dialogue": {
     "turns": [ // 18-22 turns of practical daily conversation suitable for HSK-${level}
-      { "speaker": ""<Character name 1>|<Character name 2>|<Narrator or Third person (such as waiter(in restaurant setting), etc.)>"", "hanzi": "string", "pinyin": "string <USING tone marks NOT numeric tones>", "translation": "string" }
+      { "speaker": ""<Character name 1>|<Character name 2>|<Narrator or Third person (such as waiter(in restaurant setting), etc.)>"", "hanzi": "string", "translation": "string" }
     ]
   },
-  "vocabulary": [
-    { "hanzi": "string", "pinyin": "string", "translation": "string", "hskLevel": ${level} }
+  "namedEntities": [
+    { "hanzi": "string", "pinyin": "string", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" }
   ]
 }
   - The title MUST include a keyword from the TOPIC (if provided).
-  - Use topic-specific vocabulary and include it in the vocabulary list.
   - Keep JSON concise but content-rich. No markdown, no commentary, JSON only.`,
       },
     ];

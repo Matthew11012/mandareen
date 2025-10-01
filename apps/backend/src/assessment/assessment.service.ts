@@ -38,19 +38,11 @@ export class AssessmentService {
 
       const passages = await Promise.all(passagePromises);
 
-      // Segment each passage and add vocabulary metadata
+      // Segment each passage and add vocabulary metadata (DB-backed only)
       const enrichedPassages = await Promise.all(
         passages.map(async (passage) => {
-          // Prefer LLM-provided words list as high-priority dictionary entries
-          const extraEntries = (passage.words || []).map((w) => ({
-            text: w.text,
-            hskLevel: w.hskLevel,
-            pinyin: w.pinyin,
-            definition: w.definition,
-          }));
           const segments = await this.segmentationService.segmentText(
             passage.content,
-            extraEntries,
           );
           const mappedSegments = segments.map((s) => ({
             text: s.word,
@@ -112,15 +104,8 @@ export class AssessmentService {
               await this.openaiService.generateAssessmentPassage(level);
 
             emit('step', { key: `segment_passage_${i + 1}`, level });
-            const extraEntries = (passage.words || []).map((w) => ({
-              text: w.text,
-              hskLevel: w.hskLevel,
-              pinyin: w.pinyin,
-              definition: w.definition,
-            }));
             const segments = await this.segmentationService.segmentText(
               passage.content,
-              extraEntries,
             );
             const mappedSegments = segments.map((s) => ({
               text: s.word,

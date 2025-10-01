@@ -509,7 +509,7 @@ export default function LessonsPage() {
         {progressOpen && (
           <div className="sticky top-2 z-30 mb-2">
             <motion.div
-              className="relative mx-6 rounded-xl px-4 py-3 text-white shadow-lg ring-1 ring-white/15 backdrop-blur-md"
+              className="relative rounded-xl px-4 py-3 text-white shadow-lg ring-1 ring-white/15 backdrop-blur-md"
               style={{
                 background:
                   "linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.06))",

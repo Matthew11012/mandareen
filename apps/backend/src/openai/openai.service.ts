@@ -342,20 +342,9 @@ export class OpenAIService {
     {
       "title": "Title in Chinese",
       "content": "The full passage in Chinese characters",
-      "pinyin": "The full passage in pinyin",
-      "translation": "English translation of the passage",
-      "words": [
-        {
-          "text": "Chinese word or character",
-          "pinyin": "Pronunciation in pinyin",
-          "hskLevel": HSK level of this word (number),
-          "definition": "English definition"
-        },
-        ...more words
-      ]
+      "translation": "English translation of the passage"
     }
     
-    Include ALL words in the "words" array, focusing on ALL vocabulary from the passage that students at this level should know.
     For levels 1-3, include some words from the next HSK level to challenge students.
     For levels 4+, include a few advanced words that might be unfamiliar.
     `;
