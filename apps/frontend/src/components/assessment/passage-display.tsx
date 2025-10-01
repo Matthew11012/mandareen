@@ -14,6 +14,15 @@ interface PassageDisplayProps {
   wordResponses: WordResponse[];
   onWordResponse: (response: WordResponse) => void;
   onRemoveWordResponse: (word: string) => void;
+  // Multi-select support
+  multiSelect?: boolean;
+  selectedKeys?: Set<string>;
+  onToggleSelect?: (
+    key: string,
+    word: string,
+    startIndex: number,
+    endIndex: number
+  ) => void;
 }
 
 interface ClickableSegment {
@@ -33,6 +42,9 @@ export const PassageDisplay: React.FC<PassageDisplayProps> = ({
   wordResponses,
   onWordResponse,
   onRemoveWordResponse,
+  multiSelect = false,
+  selectedKeys,
+  onToggleSelect,
 }) => {
   const [popupState, setPopupState] = useState<{
     isOpen: boolean;
@@ -145,6 +157,13 @@ export const PassageDisplay: React.FC<PassageDisplayProps> = ({
   ) => {
     if (!segment.isWord || !segment.wordData) return;
 
+    // Multi-select path: toggle selection without opening popup
+    if (multiSelect && onToggleSelect) {
+      const key = `${segment.startIndex}-${segment.endIndex}-${segment.text}`;
+      onToggleSelect(key, segment.text, segment.startIndex, segment.endIndex);
+      return;
+    }
+
     const existingResponse = wordResponses.find((r) => r.word === segment.text);
 
     // Get click position
@@ -224,6 +243,9 @@ export const PassageDisplay: React.FC<PassageDisplayProps> = ({
 
             const status = getWordStatus(segment.text);
             const colorClass = getStatusColor(status);
+            const isSelected = selectedKeys?.has(
+              `${segment.startIndex}-${segment.endIndex}-${segment.text}`
+            );
 
             return (
               <span
@@ -231,7 +253,10 @@ export const PassageDisplay: React.FC<PassageDisplayProps> = ({
                 onClick={(event) => handleWordClick(segment, event)}
                 className={cn(
                   "cursor-pointer rounded border transition-all duration-200 mx-0.5 select-none",
-                  colorClass
+                  colorClass,
+                  multiSelect && isSelected
+                    ? "underline decoration-[#4040f2] decoration-2"
+                    : undefined
                 )}
                 title={`${segment.text} (${segment.wordData?.pinyin}) - Click to mark`}
               >

@@ -105,7 +105,9 @@ export const WordPopup: React.FC<WordPopupProps> = ({
       <div className="space-y-2">
         {/* Partial Button */}
         <button
-          onClick={() => handleStatusSelect("partial")}
+          onClick={() =>
+            handleStatusSelect(currentStatus === "partial" ? null : "partial")
+          }
           className={cn(
             "w-full flex items-center gap-2 p-2 rounded-lg border transition-all duration-200 text-sm cursor-pointer",
             currentStatus === "partial"
@@ -119,7 +121,9 @@ export const WordPopup: React.FC<WordPopupProps> = ({
 
         {/* Unknown Button */}
         <button
-          onClick={() => handleStatusSelect("unknown")}
+          onClick={() =>
+            handleStatusSelect(currentStatus === "unknown" ? null : "unknown")
+          }
           className={cn(
             "w-full flex items-center gap-2 p-2 rounded-lg border transition-all duration-200 text-sm cursor-pointer",
             currentStatus === "unknown"

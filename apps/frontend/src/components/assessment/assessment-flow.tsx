@@ -46,6 +46,36 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
   const initializedRef = useRef(false);
   const fallbackTriggeredRef = useRef(false);
 
+  // Multi-select state for bulk marking (must be before any returns)
+  const [multiSelect, setMultiSelect] = useState(false);
+  const [selectedWords, setSelectedWords] = useState<
+    Record<string, { word: string; startIndex: number; endIndex: number }>
+  >({});
+  const toggleSelectWord = (
+    key: string,
+    data: { word: string; startIndex: number; endIndex: number }
+  ) => {
+    setSelectedWords((prev) => {
+      const next = { ...prev };
+      if (next[key]) delete next[key];
+      else next[key] = data;
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedWords({});
+  const applyBulkStatus = (status: "unknown" | "partial") => {
+    const entries = Object.values(selectedWords);
+    if (entries.length === 0) return;
+    for (const item of entries) {
+      addWordResponse({
+        word: item.word,
+        status,
+        startIndex: item.startIndex,
+        endIndex: item.endIndex,
+      });
+    }
+  };
+
   const progressStepsOrder = useMemo(
     () =>
       [
@@ -437,12 +467,75 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
         </p>
       </div>
 
+      {/* Multi-select Controls */}
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 bg-[#1a1d23] rounded-xl p-3 border border-[#404040]"
+        role="toolbar"
+        aria-label="Assessment controls"
+      >
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-pressed={multiSelect}
+            onClick={() => {
+              if (multiSelect) {
+                setMultiSelect(false);
+                clearSelection();
+              } else {
+                setMultiSelect(true);
+              }
+            }}
+            className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#1a1d23] text-[#a6a6a6]"
+          >
+            {multiSelect ? "Cancel Selection" : "Select Multiple Words"}
+          </button>
+          {multiSelect && (
+            <>
+              <button
+                type="button"
+                onClick={() => applyBulkStatus("unknown")}
+                disabled={Object.keys(selectedWords).length === 0}
+                className="px-3 py-2 bg-red-500/20 text-red-300 border border-red-500/40 rounded-lg hover:border-red-500 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-400 focus-visible:ring-offset-[#1a1d23]"
+              >
+                Mark Unknown ({Object.keys(selectedWords).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => applyBulkStatus("partial")}
+                disabled={Object.keys(selectedWords).length === 0}
+                className="px-3 py-2 bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 rounded-lg hover:border-yellow-500 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-[#1a1d23]"
+              >
+                Mark Partial ({Object.keys(selectedWords).length})
+              </button>
+              <button
+                type="button"
+                onClick={clearSelection}
+                disabled={Object.keys(selectedWords).length === 0}
+                className="px-3 py-2 bg-[#2e323a] text-white/80 border border-[#404040] rounded-lg hover:border-[#9aa6ff] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#1a1d23]"
+              >
+                Clear
+              </button>
+            </>
+          )}
+        </div>
+        {multiSelect && (
+          <div className="text-xs text-[#a6a6a6]">
+            Tip: Click words to toggle selection.
+          </div>
+        )}
+      </div>
+
       {/* Passage Display */}
       <PassageDisplay
         passage={currentPassage}
         wordResponses={currentResponse?.wordResponses || []}
         onWordResponse={addWordResponse}
         onRemoveWordResponse={removeWordResponse}
+        multiSelect={multiSelect}
+        selectedKeys={new Set(Object.keys(selectedWords))}
+        onToggleSelect={(key, word, startIndex, endIndex) =>
+          toggleSelectWord(key, { word, startIndex, endIndex })
+        }
       />
 
       {/* Navigation */}
