@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { DashboardLayout } from "@/components/layout";
 import { AssessmentFlow, AssessmentResults } from "@/components/assessment";
+import { useAssessmentStore } from "@/lib/stores/assessment-store";
 import { Target, Clock, CheckCircle, ArrowRight } from "lucide-react";
 
 type AssessmentPhase = "intro" | "assessment" | "results";
@@ -15,8 +16,17 @@ type AssessmentPhase = "intro" | "assessment" | "results";
  */
 export default function AssessmentPage() {
   const { isLoading } = useRequireAuth();
+  const { session, resetAssessment, checkSessionExpiry } = useAssessmentStore();
   const [currentPhase, setCurrentPhase] = useState<AssessmentPhase>("intro");
   const [placementResult, setPlacementResult] = useState<number | null>(null);
+
+  // Check for existing session on mount
+  useEffect(() => {
+    checkSessionExpiry();
+    if (session) {
+      setCurrentPhase("assessment");
+    }
+  }, [session, checkSessionExpiry]);
 
   if (isLoading) {
     return (
@@ -38,6 +48,7 @@ export default function AssessmentPage() {
   const handleRetakeAssessment = () => {
     setPlacementResult(null);
     setCurrentPhase("intro");
+    resetAssessment();
   };
 
   // Assessment Flow Phase

@@ -81,7 +81,7 @@ export const WordPopup: React.FC<WordPopupProps> = ({
         <div className="flex-1 min-w-0">
           <div className="font-bold text-white text-lg truncate">{word}</div>
           {pinyin && (
-            <div className="text-[#4040f2] text-sm font-medium truncate">
+            <div className="text-[#9aa6ff] text-sm font-medium truncate">
               {pinyin}
             </div>
           )}

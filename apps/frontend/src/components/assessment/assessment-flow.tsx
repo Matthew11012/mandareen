@@ -1,11 +1,19 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PassageDisplay } from "./passage-display";
 import { AssessmentNavigation } from "./assessment-navigation";
 import { useAssessmentStore } from "@/lib/stores/assessment-store";
-import { AlertTriangle, Target } from "lucide-react";
+import {
+  useAssessmentGenerationStore,
+  AssessmentProgressKey,
+} from "@/lib/stores/assessment-generation-store";
+import type {
+  AssessmentSession,
+  AssessmentPassage,
+} from "@/lib/types/assessment";
+import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AssessmentFlowProps {
@@ -30,16 +38,147 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
     submitAssessment,
     clearError,
     checkCompletion,
+    setSession,
   } = useAssessmentStore();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const genStore = useAssessmentGenerationStore();
+  const initializedRef = useRef(false);
+  const fallbackTriggeredRef = useRef(false);
 
-  // Start assessment on component mount (guarded to avoid duplicate calls under React Strict Mode)
+  const progressStepsOrder = useMemo(
+    () =>
+      [
+        "openai_generate_passage_1",
+        "segment_passage_1",
+        "openai_generate_passage_2",
+        "segment_passage_2",
+        "openai_generate_passage_3",
+        "segment_passage_3",
+        "openai_generate_passage_4",
+        "segment_passage_4",
+      ] as const,
+    []
+  );
+
+  // Start assessment on component mount (strict guard to avoid duplicate calls under React Strict Mode)
   useEffect(() => {
-    if (!session && !isLoading) {
-      startAssessment();
+    if (
+      !session &&
+      !isLoading &&
+      !genStore.inProgress &&
+      !initializedRef.current
+    ) {
+      initializedRef.current = true;
+      // Start SSE progress + data fetch
+      try {
+        genStore.start({ passageCount: 4, maxLevel: 7 });
+        const base = (
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
+        ).replace(/\/$/, "");
+        const token =
+          typeof window !== "undefined"
+            ? localStorage.getItem("auth-token")
+            : null;
+        if (!token) throw new Error("No auth token");
+        const params = new URLSearchParams({ token, passageCount: String(4) });
+        const url = `${base}/assess/questions/stream?${params.toString()}`;
+        const es = new EventSource(url);
+        let streamFinished = false;
+
+        const markComplete = (key: string) => genStore.markCompleted(key);
+        const handleStep = (raw: unknown) => {
+          let key: string | undefined;
+          try {
+            const payload =
+              typeof raw === "string"
+                ? JSON.parse(raw)
+                : (raw as { key?: string });
+            key = payload?.key;
+          } catch {}
+          if (!key) return;
+          genStore.setStep(key as AssessmentProgressKey);
+          const idx = progressStepsOrder.indexOf(
+            key as (typeof progressStepsOrder)[number]
+          );
+          if (idx > 0)
+            for (let i = 0; i < idx; i++) markComplete(progressStepsOrder[i]);
+        };
+
+        es.addEventListener("queued", () => genStore.setStep("queued"));
+        es.addEventListener("started", () => genStore.setStep("started"));
+        es.addEventListener("step", (e: MessageEvent) => handleStep(e.data));
+        es.addEventListener("heartbeat", () => {});
+        es.addEventListener("complete", async (e) => {
+          streamFinished = true;
+          try {
+            es.close();
+          } catch {}
+          progressStepsOrder.forEach((k) => markComplete(k));
+          genStore.setStep("complete");
+          try {
+            // Parse the complete event data to get passages
+            const eventData =
+              typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+            if (eventData?.passages) {
+              // Create session directly from streamed data
+              const session: AssessmentSession = {
+                passages: eventData.passages,
+                responses: eventData.passages.map(
+                  (passage: AssessmentPassage) => ({
+                    passageId: passage.id,
+                    wordResponses: [],
+                  })
+                ),
+                currentPassageIndex: 0,
+                isComplete: false,
+                startedAt: new Date(),
+                visitedPassages: [0],
+              };
+              // Update the assessment store directly
+              setSession(session);
+              checkCompletion();
+            } else {
+              // Fallback to non-stream endpoint only if no data received
+              await startAssessment();
+            }
+          } finally {
+            // Briefly delay finishing to allow users to see the final step state
+            await new Promise((r) => setTimeout(r, 600));
+            genStore.finish();
+          }
+        });
+        es.addEventListener("error", async () => {
+          if (streamFinished) return;
+          try {
+            es.close();
+          } catch {}
+          // Grace period to avoid instant jump to the test; keeps progress UI visible
+          await new Promise((r) => setTimeout(r, 1200));
+          // Fallback to immediate fetch to not block user (only once)
+          if (!fallbackTriggeredRef.current) {
+            fallbackTriggeredRef.current = true;
+            await startAssessment();
+          }
+          genStore.finish();
+        });
+      } catch {
+        // Fallback on any init error (only once)
+        if (!fallbackTriggeredRef.current) {
+          fallbackTriggeredRef.current = true;
+          void startAssessment();
+        }
+      }
     }
-  }, [startAssessment, session, isLoading]);
+  }, [
+    startAssessment,
+    session,
+    isLoading,
+    genStore,
+    progressStepsOrder,
+    checkCompletion,
+    setSession,
+  ]);
 
   // Check completion status whenever session changes
   useEffect(() => {
@@ -65,12 +204,29 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
   };
 
   // Loading state
-  if (isLoading && !session) {
+  if ((isLoading && !session) || genStore.inProgress) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-6">
-        <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center">
-          <Target className="w-8 h-8 text-blue-400 animate-pulse" />
+        {/* Animated spinner with spring animation */}
+        <div className="relative">
+          <div className="w-20 h-20 bg-blue-500/10 rounded-full flex items-center justify-center">
+            <div
+              className="w-12 h-12 border-3 border-blue-400/30 border-t-blue-400 rounded-full animate-spin"
+              style={{
+                animation:
+                  "spin 1s linear infinite, pulse 2s ease-in-out infinite",
+              }}
+            />
+          </div>
+          {/* Pulsing ring effect */}
+          <div
+            className="absolute inset-0 w-20 h-20 border-2 border-blue-400/20 rounded-full"
+            style={{
+              animation: "pulse-ring 2s ease-in-out infinite",
+            }}
+          />
         </div>
+
         <div className="text-center space-y-2">
           <h2 className="text-xl font-inter font-semibold text-white">
             Preparing Your Assessment
@@ -78,10 +234,127 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
           <p className="text-[#a6a6a6] font-inter">
             Generating personalized passages...
           </p>
-          <div className="flex justify-center">
-            <div className="w-8 h-8 animate-spin rounded-full border-2 border-[#4040f2] border-t-transparent" />
+
+          {/* Progress bar */}
+          <div className="w-64 h-2 bg-[#3a3f47] rounded-full overflow-hidden mt-4">
+            <div
+              className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-500 ease-out"
+              style={{
+                width: `${(Object.keys(genStore.completedSteps).length / 8) * 100}%`,
+                animation: "progress-shimmer 2s ease-in-out infinite",
+              }}
+            />
+          </div>
+
+          <div className="mt-6 max-w-md mx-auto text-left">
+            <ul className="space-y-3">
+              {(
+                [
+                  "openai_generate_passage_1",
+                  "segment_passage_1",
+                  "openai_generate_passage_2",
+                  "segment_passage_2",
+                  "openai_generate_passage_3",
+                  "segment_passage_3",
+                  "openai_generate_passage_4",
+                  "segment_passage_4",
+                ] as const
+              ).map((k) => {
+                const completed = !!genStore.completedSteps[k];
+                const active = genStore.step === k;
+                return (
+                  <li key={k} className="flex items-center gap-3">
+                    <div className="relative">
+                      <span
+                        className={`inline-block w-3 h-3 rounded-full transition-all duration-300 ${
+                          completed
+                            ? "bg-[#31c48d] scale-110"
+                            : active
+                              ? "bg-[#ffd166] scale-125 animate-pulse"
+                              : "bg-[#3a3f47]"
+                        }`}
+                        style={{
+                          animation: active
+                            ? "step-pulse 1.5s ease-in-out infinite"
+                            : undefined,
+                        }}
+                      />
+                      {/* Active step glow effect */}
+                      {active && (
+                        <div
+                          className="absolute inset-0 w-3 h-3 rounded-full bg-[#ffd166]/30"
+                          style={{
+                            animation: "step-glow 1.5s ease-in-out infinite",
+                          }}
+                        />
+                      )}
+                    </div>
+                    <span
+                      className={`text-sm transition-all duration-300 ${
+                        completed
+                          ? "text-[#31c48d]"
+                          : active
+                            ? "text-[#ffd166] font-medium"
+                            : "text-[#c9d1d9]"
+                      }`}
+                    >
+                      {k.startsWith("openai_generate_passage_") &&
+                        `Generating passage ${k.slice(-1)}`}
+                      {k.startsWith("segment_passage_") &&
+                        `Segmenting passage ${k.slice(-1)}`}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </div>
+
+        <style jsx>{`
+          @keyframes pulse-ring {
+            0% {
+              transform: scale(1);
+              opacity: 1;
+            }
+            100% {
+              transform: scale(1.4);
+              opacity: 0;
+            }
+          }
+
+          @keyframes progress-shimmer {
+            0% {
+              background-position: -200% 0;
+            }
+            100% {
+              background-position: 200% 0;
+            }
+          }
+
+          @keyframes step-pulse {
+            0%,
+            100% {
+              transform: scale(1);
+              opacity: 1;
+            }
+            50% {
+              transform: scale(1.2);
+              opacity: 0.8;
+            }
+          }
+
+          @keyframes step-glow {
+            0%,
+            100% {
+              transform: scale(1);
+              opacity: 0.3;
+            }
+            50% {
+              transform: scale(1.5);
+              opacity: 0.1;
+            }
+          }
+        `}</style>
       </div>
     );
   }
