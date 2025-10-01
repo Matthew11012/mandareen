@@ -349,7 +349,16 @@ export default function LessonViewerPage() {
         let sentenceCtx:
           | { hanzi?: string; pinyin?: string; translation?: string }
           | undefined;
-        if (
+
+        // Handle notes words (paraIndex = -1)
+        if (w.paraIndex === -1) {
+          // For notes words, use the word itself as context
+          sentenceCtx = {
+            hanzi: w.text,
+            pinyin: w.pinyin,
+            translation: undefined,
+          };
+        } else if (
           typeof w.paraIndex === "number" &&
           typeof w.tokenIndex === "number"
         ) {
@@ -577,7 +586,13 @@ export default function LessonViewerPage() {
       | undefined,
     fallbackZh: string,
     fallbackEn?: string,
-    showPinyin?: boolean
+    showPinyin?: boolean,
+    notesContext?: {
+      section: string;
+      noteIndex: number;
+      field: string;
+      exampleIndex?: number;
+    }
   ) => {
     if (!Array.isArray(segments) || segments.length === 0) {
       return (
@@ -614,6 +629,21 @@ export default function LessonViewerPage() {
                 title={seg.definition || ""}
                 onClick={(e: ReactMouseEvent<HTMLSpanElement>) => {
                   if (!isWord) return;
+
+                  // Handle multi-select mode
+                  if (multiSelect && notesContext) {
+                    const key = `notes-${notesContext.section}-${notesContext.noteIndex}-${notesContext.field}${notesContext.exampleIndex !== undefined ? `-${notesContext.exampleIndex}` : ""}-${idx}-${seg.text}`;
+                    toggleSelectWord(
+                      key,
+                      seg.text,
+                      seg.pinyin,
+                      -1, // Use -1 to indicate notes (not main content)
+                      idx
+                    );
+                    return;
+                  }
+
+                  // Handle popup mode
                   const anchor = (
                     e.currentTarget as HTMLSpanElement
                   ).getBoundingClientRect();
@@ -634,7 +664,19 @@ export default function LessonViewerPage() {
                   });
                 }}
               >
-                {seg.text}
+                <span
+                  className={
+                    multiSelect &&
+                    notesContext &&
+                    selectedWords[
+                      `notes-${notesContext.section}-${notesContext.noteIndex}-${notesContext.field}${notesContext.exampleIndex !== undefined ? `-${notesContext.exampleIndex}` : ""}-${idx}-${seg.text}`
+                    ]
+                      ? "underline decoration-[#4040f2] decoration-2"
+                      : undefined
+                  }
+                >
+                  {seg.text}
+                </span>
               </span>
             </span>
           );
@@ -1202,7 +1244,12 @@ export default function LessonViewerPage() {
                                     gn.pointSegments,
                                     gn.point,
                                     gn.pointEn,
-                                    notesPinyinOn
+                                    notesPinyinOn,
+                                    {
+                                      section: "dialogue",
+                                      noteIndex: gi,
+                                      field: "point",
+                                    }
                                   )
                                 ) : (
                                   <>
@@ -1235,7 +1282,12 @@ export default function LessonViewerPage() {
                                     gn.briefSegments,
                                     gn.brief,
                                     gn.briefEn,
-                                    notesPinyinOn
+                                    notesPinyinOn,
+                                    {
+                                      section: "dialogue",
+                                      noteIndex: gi,
+                                      field: "brief",
+                                    }
                                   )
                                 ) : (
                                   <>
@@ -1276,7 +1328,13 @@ export default function LessonViewerPage() {
                                               ex.segments,
                                               ex.zh,
                                               ex.en,
-                                              notesPinyinOn
+                                              notesPinyinOn,
+                                              {
+                                                section: "dialogue",
+                                                noteIndex: gi,
+                                                field: "example",
+                                                exampleIndex: ei,
+                                              }
                                             )}
                                             {ex.en ? (
                                               <div className="text-[14px] text-[#8b949e]">
@@ -1356,7 +1414,12 @@ export default function LessonViewerPage() {
                                 gn.pointSegments,
                                 gn.point,
                                 gn.pointEn,
-                                notesPinyinOn
+                                notesPinyinOn,
+                                {
+                                  section: "story",
+                                  noteIndex: gi,
+                                  field: "point",
+                                }
                               )
                             ) : (
                               <>
@@ -1389,7 +1452,12 @@ export default function LessonViewerPage() {
                                 gn.briefSegments,
                                 gn.brief,
                                 gn.briefEn,
-                                notesPinyinOn
+                                notesPinyinOn,
+                                {
+                                  section: "story",
+                                  noteIndex: gi,
+                                  field: "brief",
+                                }
                               )
                             ) : (
                               <>
@@ -1430,7 +1498,13 @@ export default function LessonViewerPage() {
                                           ex.segments,
                                           ex.zh,
                                           ex.en,
-                                          notesPinyinOn
+                                          notesPinyinOn,
+                                          {
+                                            section: "story",
+                                            noteIndex: gi,
+                                            field: "example",
+                                            exampleIndex: ei,
+                                          }
                                         )}
                                         {ex.en ? (
                                           <div className="text-[14px] text-[#8b949e]">
@@ -1481,7 +1555,8 @@ export default function LessonViewerPage() {
                             tip.segments,
                             tip.zh,
                             tip.en,
-                            notesPinyinOn
+                            notesPinyinOn,
+                            { section: "dialogue", noteIndex: i, field: "tip" }
                           )}
                           {tip.en ? (
                             <div className="text-[#8b949e] text-xs">
@@ -1522,7 +1597,8 @@ export default function LessonViewerPage() {
                               tip.segments,
                               tip.zh,
                               tip.en,
-                              notesPinyinOn
+                              notesPinyinOn,
+                              { section: "story", noteIndex: i, field: "tip" }
                             )}
                             {tip.en ? (
                               <div className="text-[#8b949e] text-xs">
@@ -1728,6 +1804,83 @@ export default function LessonViewerPage() {
                         hskLevel: vocabHskLevel,
                       });
                       setPopup((p) => ({ ...p, open: false }));
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="text-sm font-inter">
+                      Add to Flashcards
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {notesPopup.open && (
+              <div
+                ref={notesPopupRef}
+                style={{
+                  position: "absolute",
+                  left: notesPopup.x,
+                  top: notesPopup.y,
+                  zIndex: 10,
+                  visibility: "visible",
+                  transform: "translate(-50%, calc(-100% - 8px))",
+                }}
+                className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+              >
+                <div className="font-bold text-white text-lg truncate">
+                  {notesPopup.word}
+                </div>
+                {notesPopup.pinyin && (
+                  <div className="text-[#c6ceff] text-sm font-medium truncate">
+                    {notesPopup.pinyin}
+                  </div>
+                )}
+                {Array.isArray(notesPopup.definitions) &&
+                notesPopup.definitions.length > 0 ? (
+                  <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
+                    {notesPopup.definitions.map((d, i) => (
+                      <div key={i}>• {d}</div>
+                    ))}
+                  </div>
+                ) : notesPopup.definition ? (
+                  <div className="text-xs text-[#a6a6a6] mt-2">
+                    {notesPopup.definition}
+                  </div>
+                ) : null}
+                <div className="mt-3 pt-3 border-t border-[#404040]">
+                  <button
+                    onClick={async () => {
+                      // Create context from the notes popup data
+                      const ctx = {
+                        hanzi: notesPopup.word,
+                        pinyin: notesPopup.pinyin,
+                        translation:
+                          notesPopup.definition ||
+                          (Array.isArray(notesPopup.definitions) &&
+                          notesPopup.definitions.length > 0
+                            ? notesPopup.definitions[0]
+                            : undefined),
+                      };
+
+                      // Derive vocab metadata from popup
+                      let vocabDef: string | undefined = undefined;
+                      if (
+                        Array.isArray(notesPopup.definitions) &&
+                        notesPopup.definitions.length > 0
+                      ) {
+                        vocabDef = notesPopup.definitions[0];
+                      } else if (notesPopup.definition) {
+                        vocabDef = notesPopup.definition;
+                      }
+
+                      void addSingleToFlashcards(notesPopup.word, ctx, {
+                        pinyin: notesPopup.pinyin,
+                        definition: vocabDef,
+                        hskLevel: undefined, // Notes don't have HSK level info
+                      });
+                      setNotesPopup((p) => ({ ...p, open: false }));
                     }}
                     className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
                   >
