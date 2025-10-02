@@ -57,6 +57,8 @@ export const useAssessmentStore = create<AssessmentState>()(
       },
 
       startAssessment: async () => {
+        const { isLoading, session } = get();
+        if (isLoading || session) return; // prevent duplicate requests
         set({ isLoading: true, error: null });
 
         try {

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { toToneMarks } from '../utils/pinyin';
 import { PrismaService } from '../prisma/prisma.service';
 import { SegmentationService } from '../vocabulary/segmentation.service';
 
@@ -288,7 +289,7 @@ export class FlashcardsService {
     }>;
 
     for (const f of due) {
-      let pinyin = this.toToneMarks(f.vocab?.pinyin || '') || '';
+      let pinyin = toToneMarks(f.vocab?.pinyin || '') || '';
       let definition = f.vocab?.definition || '';
       let hskLevel = f.vocab?.hskLevel ?? null;
       if (!pinyin || !definition || !hskLevel) {
@@ -296,7 +297,7 @@ export class FlashcardsService {
         const segs = await this.segmentationService.segmentText(wordHanzi);
         const best = segs.find((s) => s.isWord && s.word === wordHanzi);
         if (best) {
-          pinyin = pinyin || this.toToneMarks(best.pinyin || '') || '';
+          pinyin = pinyin || toToneMarks(best.pinyin || '') || '';
           if (!definition) {
             definition =
               (best.definitions && best.definitions.join('; ')) ||

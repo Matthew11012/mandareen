@@ -5,6 +5,7 @@ import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { DashboardLayout } from "@/components/layout";
 import { AssessmentFlow, AssessmentResults } from "@/components/assessment";
 import { useAssessmentStore } from "@/lib/stores/assessment-store";
+import { useAssessmentGenerationStore } from "@/lib/stores/assessment-generation-store";
 import { Target, Clock, CheckCircle, ArrowRight } from "lucide-react";
 
 type AssessmentPhase = "intro" | "assessment" | "results";
@@ -19,14 +20,19 @@ export default function AssessmentPage() {
   const { session, resetAssessment, checkSessionExpiry } = useAssessmentStore();
   const [currentPhase, setCurrentPhase] = useState<AssessmentPhase>("intro");
   const [placementResult, setPlacementResult] = useState<number | null>(null);
+  const genStore = useAssessmentGenerationStore();
 
   // Check for existing session on mount
   useEffect(() => {
     checkSessionExpiry();
-    if (session) {
+    // Do not override when showing results or when user explicitly started
+    if (currentPhase === "results" || currentPhase === "assessment") return;
+    if (session || genStore.inProgress) {
       setCurrentPhase("assessment");
+    } else {
+      setCurrentPhase("intro");
     }
-  }, [session, checkSessionExpiry]);
+  }, [session, genStore.inProgress, checkSessionExpiry, currentPhase]);
 
   if (isLoading) {
     return (
@@ -42,7 +48,8 @@ export default function AssessmentPage() {
 
   const handleAssessmentComplete = (levelPlaced: number) => {
     setPlacementResult(levelPlaced);
-    // Ensure any lingering session is cleared so re-entry shows intro
+    // Clear generation state and session; show results
+    genStore.reset();
     resetAssessment();
     setCurrentPhase("results");
   };
@@ -54,14 +61,17 @@ export default function AssessmentPage() {
   };
 
   // Assessment Flow Phase
-  if (currentPhase === "assessment") {
+  if (currentPhase === "assessment" || genStore.inProgress) {
     return (
       <DashboardLayout
         title="Taking Assessment"
         subtitle="Mark your knowledge level for each word"
       >
         <div className="p-6">
-          <AssessmentFlow onComplete={handleAssessmentComplete} />
+          <AssessmentFlow
+            onComplete={handleAssessmentComplete}
+            autoStart={currentPhase === "assessment"}
+          />
         </div>
       </DashboardLayout>
     );

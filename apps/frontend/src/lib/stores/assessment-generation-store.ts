@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export type AssessmentProgressKey =
   | "queued"
@@ -31,32 +32,44 @@ interface AssessmentGenerationState {
   reset: () => void;
 }
 
-export const useAssessmentGenerationStore = create<AssessmentGenerationState>(
-  (set) => ({
-    inProgress: false,
-    startedAt: null,
-    params: null,
-    step: null,
-    completedSteps: {},
-    start: (p) =>
-      set({
-        inProgress: true,
-        startedAt: Date.now(),
-        params: p || null,
-        step: "queued",
-        completedSteps: {},
+export const useAssessmentGenerationStore = create<AssessmentGenerationState>()(
+  persist(
+    (set) => ({
+      inProgress: false,
+      startedAt: null,
+      params: null,
+      step: null,
+      completedSteps: {},
+      start: (p) =>
+        set({
+          inProgress: true,
+          startedAt: Date.now(),
+          params: p || null,
+          step: "queued",
+          completedSteps: {},
+        }),
+      setStep: (k) => set({ step: k }),
+      markCompleted: (k) =>
+        set((s) => ({ completedSteps: { ...s.completedSteps, [k]: true } })),
+      finish: () => set({ inProgress: false }),
+      reset: () =>
+        set({
+          inProgress: false,
+          startedAt: null,
+          params: null,
+          step: null,
+          completedSteps: {},
+        }),
+    }),
+    {
+      name: "assessment-generation-store",
+      partialize: (s) => ({
+        inProgress: s.inProgress,
+        startedAt: s.startedAt,
+        params: s.params,
+        step: s.step,
+        completedSteps: s.completedSteps,
       }),
-    setStep: (k) => set({ step: k }),
-    markCompleted: (k) =>
-      set((s) => ({ completedSteps: { ...s.completedSteps, [k]: true } })),
-    finish: () => set({ inProgress: false }),
-    reset: () =>
-      set({
-        inProgress: false,
-        startedAt: null,
-        params: null,
-        step: null,
-        completedSteps: {},
-      }),
-  })
+    }
+  )
 );

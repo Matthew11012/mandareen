@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { toToneMarks } from '../utils/pinyin';
 import { OpenAIService } from '../openai/openai.service';
 import { Passage } from './models/passage.model';
 import { FetchQuestionsDto } from './dto/fetch-questions.dto';
@@ -19,6 +20,9 @@ export class AssessmentService {
     private openaiService: OpenAIService,
     private segmentationService: SegmentationService,
   ) {}
+
+  // Convert numeric pinyin (ni3 hao3) to tone marks (nǐ hǎo)
+  // removed: use shared toToneMarks from utils
 
   async fetchAssessmentQuestions(
     userId: number,
@@ -50,7 +54,7 @@ export class AssessmentService {
             endIndex: s.endIndex,
             isWord: s.isWord,
             hskLevel: s.hskLevel,
-            pinyin: s.pinyin,
+            pinyin: toToneMarks(s.pinyin),
             definition: s.definition,
           }));
           return {
@@ -91,6 +95,8 @@ export class AssessmentService {
 
           emit('queued');
           emit('started');
+          // Immediate heartbeat to prompt client that connection is alive
+          emit('heartbeat', { t: Date.now() });
           heartbeat = setInterval(
             () => emit('heartbeat', { t: Date.now() }),
             15000,
@@ -113,7 +119,7 @@ export class AssessmentService {
               endIndex: s.endIndex,
               isWord: s.isWord,
               hskLevel: s.hskLevel,
-              pinyin: s.pinyin,
+              pinyin: toToneMarks(s.pinyin),
               definition: s.definition,
             }));
             results.push({ ...passage, segments: mappedSegments });

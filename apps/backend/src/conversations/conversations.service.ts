@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { toToneMarks } from '../utils/pinyin';
 import { PrismaService } from '../prisma/prisma.service';
 import { OpenAIService } from '../openai/openai.service';
 import { Observable } from 'rxjs';
@@ -59,7 +60,7 @@ export class ConversationsService {
                 .filter((p) => (p || '').trim().length > 0);
               if (slice.length > 0) segPinyin = slice.join(' ');
             }
-            const segPinyinTone = this.toToneMarks(segPinyin);
+            const segPinyinTone = toToneMarks(segPinyin);
             return {
               text: s.word,
               startIndex: s.startIndex,
@@ -260,7 +261,7 @@ export class ConversationsService {
                     .filter((p) => (p || '').trim().length > 0);
                   if (slice.length > 0) segPinyin = slice.join(' ');
                 }
-                const segPinyinTone = this.toToneMarks(segPinyin);
+                const segPinyinTone = toToneMarks(segPinyin);
                 return {
                   text: s.word,
                   startIndex: s.startIndex,
@@ -281,7 +282,7 @@ export class ConversationsService {
                 await this.prisma.message.update({
                   where: { id: latestUser.id },
                   data: {
-                    pinyin: this.toToneMarks(analyzed.pinyin) || '',
+                    pinyin: toToneMarks(analyzed.pinyin) || '',
                     translation: analyzed.translation || '',
                   },
                 });
@@ -289,7 +290,7 @@ export class ConversationsService {
                 const userUpdatePayload = JSON.stringify({
                   id: latestUser.id,
                   segments,
-                  pinyin: this.toToneMarks(analyzed.pinyin) || '',
+                  pinyin: toToneMarks(analyzed.pinyin) || '',
                   translation: analyzed.translation || '',
                 });
                 // Default event for onmessage handlers
@@ -407,7 +408,7 @@ export class ConversationsService {
                 .filter((p) => (p || '').trim().length > 0);
               if (slice.length > 0) segPinyin = slice.join(' ');
             }
-            const segPinyinTone = this.toToneMarks(segPinyin);
+            const segPinyinTone = toToneMarks(segPinyin);
             return {
               text: s.word,
               startIndex: s.startIndex,
@@ -490,7 +491,7 @@ export class ConversationsService {
                   .filter((p) => (p || '').trim().length > 0);
                 if (slice.length > 0) segPinyin = slice.join(' ');
               }
-              const segPinyinTone = this.toToneMarks(segPinyin);
+              const segPinyinTone = toToneMarks(segPinyin);
               return {
                 text: s.word,
                 startIndex: s.startIndex,

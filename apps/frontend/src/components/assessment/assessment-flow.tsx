@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { PassageDisplay } from "./passage-display";
@@ -10,19 +10,18 @@ import {
   useAssessmentGenerationStore,
   AssessmentProgressKey,
 } from "@/lib/stores/assessment-generation-store";
-import type {
-  AssessmentSession,
-  AssessmentPassage,
-} from "@/lib/types/assessment";
+// types kept in store usage; no direct imports needed here
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AssessmentFlowProps {
   onComplete: (levelPlaced: number) => void;
+  autoStart?: boolean;
 }
 
 export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
   onComplete,
+  autoStart = false,
 }) => {
   const router = useRouter();
   const {
@@ -39,13 +38,13 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
     submitAssessment,
     clearError,
     checkCompletion,
-    setSession,
   } = useAssessmentStore();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const genStore = useAssessmentGenerationStore();
   const initializedRef = useRef(false);
-  const fallbackTriggeredRef = useRef(false);
+  // removed SSE fallback
+  // const fallbackTriggeredRef = useRef(false);
 
   // Multi-select state for bulk marking (must be before any returns)
   const [multiSelect, setMultiSelect] = useState(false);
@@ -77,139 +76,34 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
     }
   };
 
-  const progressStepsOrder = useMemo(
-    () =>
-      [
-        "openai_generate_passage_1",
-        "segment_passage_1",
-        "openai_generate_passage_2",
-        "segment_passage_2",
-        "openai_generate_passage_3",
-        "segment_passage_3",
-        "openai_generate_passage_4",
-        "segment_passage_4",
-      ] as const,
-    []
-  );
+  // order defined once for faux progress (inlined where used)
 
-  // Start assessment on component mount (strict guard to avoid duplicate calls under React Strict Mode)
+  // Start or reattach on mount (non-SSE only)
   useEffect(() => {
-    if (
-      !session &&
-      !isLoading &&
-      !genStore.inProgress &&
-      !initializedRef.current
-    ) {
-      initializedRef.current = true;
-      // Start SSE progress + data fetch
-      try {
-        genStore.start({ passageCount: 4, maxLevel: 7 });
-        const base = (
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
-        ).replace(/\/$/, "");
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("auth-token")
-            : null;
-        if (!token) throw new Error("No auth token");
-        const params = new URLSearchParams({ token, passageCount: String(4) });
-        const url = `${base}/assess/questions/stream?${params.toString()}`;
-        const es = new EventSource(url);
-        let streamFinished = false;
+    const run = async () => {
+      if (session || isLoading) return;
+      const stale = genStore.startedAt
+        ? Date.now() - genStore.startedAt > 10 * 60 * 1000
+        : false;
+      if (stale) genStore.reset();
 
-        const markComplete = (key: string) => genStore.markCompleted(key);
-        const handleStep = (raw: unknown) => {
-          let key: string | undefined;
-          try {
-            const payload =
-              typeof raw === "string"
-                ? JSON.parse(raw)
-                : (raw as { key?: string });
-            key = payload?.key;
-          } catch {}
-          if (!key) return;
-          genStore.setStep(key as AssessmentProgressKey);
-          const idx = progressStepsOrder.indexOf(
-            key as (typeof progressStepsOrder)[number]
-          );
-          if (idx > 0)
-            for (let i = 0; i < idx; i++) markComplete(progressStepsOrder[i]);
-        };
-
-        es.addEventListener("queued", () => genStore.setStep("queued"));
-        es.addEventListener("started", () => genStore.setStep("started"));
-        es.addEventListener("step", (e: MessageEvent) => handleStep(e.data));
-        es.addEventListener("heartbeat", () => {});
-        es.addEventListener("complete", async (e) => {
-          streamFinished = true;
-          try {
-            es.close();
-          } catch {}
-          progressStepsOrder.forEach((k) => markComplete(k));
-          genStore.setStep("complete");
-          try {
-            // Parse the complete event data to get passages
-            const eventData =
-              typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-            if (eventData?.passages) {
-              // Create session directly from streamed data
-              const session: AssessmentSession = {
-                passages: eventData.passages,
-                responses: eventData.passages.map(
-                  (passage: AssessmentPassage) => ({
-                    passageId: passage.id,
-                    wordResponses: [],
-                  })
-                ),
-                currentPassageIndex: 0,
-                isComplete: false,
-                startedAt: new Date(),
-                visitedPassages: [0],
-              };
-              // Update the assessment store directly
-              setSession(session);
-              checkCompletion();
-            } else {
-              // Fallback to non-stream endpoint only if no data received
-              await startAssessment();
-            }
-          } finally {
-            // Briefly delay finishing to allow users to see the final step state
-            await new Promise((r) => setTimeout(r, 600));
-            genStore.finish();
-          }
-        });
-        es.addEventListener("error", async () => {
-          if (streamFinished) return;
-          try {
-            es.close();
-          } catch {}
-          // Grace period to avoid instant jump to the test; keeps progress UI visible
-          await new Promise((r) => setTimeout(r, 1200));
-          // Fallback to immediate fetch to not block user (only once)
-          if (!fallbackTriggeredRef.current) {
-            fallbackTriggeredRef.current = true;
-            await startAssessment();
-          }
-          genStore.finish();
-        });
-      } catch {
-        // Fallback on any init error (only once)
-        if (!fallbackTriggeredRef.current) {
-          fallbackTriggeredRef.current = true;
-          void startAssessment();
-        }
+      // If already in progress from persisted state, do NOT trigger another request.
+      // Just wait for the original request to complete and set session.
+      if (genStore.inProgress && !initializedRef.current) {
+        initializedRef.current = true;
+        return;
       }
-    }
-  }, [
-    startAssessment,
-    session,
-    isLoading,
-    genStore,
-    progressStepsOrder,
-    checkCompletion,
-    setSession,
-  ]);
+
+      // Fresh start
+      if (!genStore.inProgress && autoStart && !initializedRef.current) {
+        initializedRef.current = true;
+        genStore.start({ passageCount: 4, maxLevel: 7 });
+        await startAssessment();
+      }
+    };
+    void run();
+    return () => {};
+  }, [session, isLoading, genStore, startAssessment, autoStart]);
 
   // Check completion status whenever session changes
   useEffect(() => {
@@ -217,6 +111,62 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
       checkCompletion();
     }
   }, [session, checkCompletion]);
+
+  // If session is ready but generation state persists (eg, fallback non-stream path), finish loading
+  useEffect(() => {
+    if (session && genStore.inProgress) {
+      genStore.finish();
+    }
+  }, [session, genStore]);
+
+  // Faux progress driver when using non-stream fallback: advance steps on a timer until session arrives
+  const fauxIdxRef = useRef(0);
+  const fauxTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (!genStore.inProgress || session) {
+      if (fauxTimerRef.current) {
+        clearInterval(fauxTimerRef.current);
+        fauxTimerRef.current = null;
+      }
+      fauxIdxRef.current = 0;
+      return;
+    }
+    const steps = [
+      "openai_generate_passage_1",
+      "segment_passage_1",
+      "openai_generate_passage_2",
+      "segment_passage_2",
+      "openai_generate_passage_3",
+      "segment_passage_3",
+      "openai_generate_passage_4",
+      "segment_passage_4",
+    ] as const;
+    const tickMs = 6000; // ~32s total; adjust as needed
+    if (fauxTimerRef.current) clearInterval(fauxTimerRef.current);
+    fauxTimerRef.current = setInterval(() => {
+      if (session) {
+        if (fauxTimerRef.current) clearInterval(fauxTimerRef.current);
+        fauxTimerRef.current = null;
+        return;
+      }
+      const idx = fauxIdxRef.current;
+      const key = steps[idx];
+      if (key) {
+        genStore.setStep(key as AssessmentProgressKey);
+        genStore.markCompleted(key);
+        fauxIdxRef.current = idx + 1;
+      } else {
+        if (fauxTimerRef.current) clearInterval(fauxTimerRef.current);
+        fauxTimerRef.current = null;
+      }
+    }, tickMs);
+    return () => {
+      if (fauxTimerRef.current) {
+        clearInterval(fauxTimerRef.current);
+        fauxTimerRef.current = null;
+      }
+    };
+  }, [genStore, genStore.inProgress, session]);
 
   // Handle assessment submission
   const handleSubmit = async () => {
@@ -295,7 +245,7 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
                 const active = genStore.step === k;
                 return (
                   <li key={k} className="flex items-center gap-3">
-                    <div className="relative">
+                    <div className="relative w-3 h-3 flex items-center justify-center">
                       <span
                         className={`inline-block w-3 h-3 rounded-full transition-all duration-300 ${
                           completed
@@ -313,7 +263,7 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
                       {/* Active step glow effect */}
                       {active && (
                         <div
-                          className="absolute inset-0 w-3 h-3 rounded-full bg-[#ffd166]/30"
+                          className="absolute w-5 h-5 rounded-full bg-[#ffd166]/30"
                           style={{
                             animation: "step-glow 1.5s ease-in-out infinite",
                           }}

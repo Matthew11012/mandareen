@@ -1,5 +1,6 @@
 /* eslint-disable no-unused-vars */
 import { Injectable, Logger } from '@nestjs/common';
+import { toToneMarks } from '../utils/pinyin';
 import { Observable } from 'rxjs';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -162,12 +163,12 @@ export class LessonsService {
               );
               const filledSegs = filledSegsRaw.map((s) => ({
                 ...s,
-                pinyin: this.toToneMarks(s.pinyin),
+                pinyin: toToneMarks(s.pinyin),
               }));
               turnsWithSegments.push({
                 speaker: t.speaker,
                 hanzi: t.hanzi || '',
-                pinyin: this.toToneMarks(t.pinyin || ''),
+                pinyin: toToneMarks(t.pinyin || ''),
                 translation: t.translation || '',
                 segments: filledSegs,
               });
@@ -266,7 +267,7 @@ export class LessonsService {
                       content: {
                         title: generated.title || null,
                         titlePinyin:
-                          this.toToneMarks(generated.titlePinyin || '') || null,
+                          toToneMarks(generated.titlePinyin || '') || null,
                         titleTranslation: generated.titleTranslation || null,
                         turns: turnsWithSegments,
                         grammarNotes,
@@ -408,7 +409,7 @@ export class LessonsService {
           );
           const filledSegs = filledSegsRaw.map((s) => ({
             ...s,
-            pinyin: this.toToneMarks(s.pinyin),
+            pinyin: toToneMarks(s.pinyin),
           }));
           const created = await this.prismaService.lesson.create({
             data: {
@@ -422,9 +423,8 @@ export class LessonsService {
                     content: {
                       title: (generated as any).title || null,
                       titlePinyin:
-                        this.toToneMarks(
-                          (generated as any).titlePinyin || '',
-                        ) || null,
+                        toToneMarks((generated as any).titlePinyin || '') ||
+                        null,
                       titleTranslation:
                         (generated as any).titleTranslation || null,
                       hanzi: (generated as any).story?.hanzi || '',
@@ -705,7 +705,7 @@ export class LessonsService {
       );
       const filledSegs = filledSegsRaw.map((s) => ({
         ...s,
-        pinyin: this.toToneMarks(s.pinyin),
+        pinyin: toToneMarks(s.pinyin),
       }));
 
       // Optionally compute grounded grammar notes for the story text
@@ -798,11 +798,10 @@ export class LessonsService {
                 sectionType: 'story',
                 content: {
                   title: generated.title || null,
-                  titlePinyin:
-                    this.toToneMarks(generated.titlePinyin || '') || null,
+                  titlePinyin: toToneMarks(generated.titlePinyin || '') || null,
                   titleTranslation: generated.titleTranslation || null,
                   hanzi: generated.story?.hanzi || '',
-                  pinyin: this.toToneMarks(generated.story?.pinyin || ''),
+                  pinyin: toToneMarks(generated.story?.pinyin || ''),
                   translation: generated.story?.translation || '',
                   segments: filledSegs,
                   grammarNotes,

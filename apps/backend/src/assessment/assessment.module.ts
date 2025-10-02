@@ -8,7 +8,9 @@ import { VocabularyModule } from '../vocabulary/vocabulary.module';
 
 @Module({
   imports: [
-    PrismaModule, OpenAIModule, VocabularyModule,
+    PrismaModule,
+    OpenAIModule,
+    VocabularyModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: { expiresIn: '1d' },
@@ -18,4 +20,4 @@ import { VocabularyModule } from '../vocabulary/vocabulary.module';
   providers: [AssessmentService],
   exports: [AssessmentService],
 })
-export class AssessmentModule {} 
+export class AssessmentModule {}
