@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export type ProgressKey =
   | "openai_generate_dialogue"
@@ -17,6 +18,7 @@ interface GenParams {
   level?: number | null;
   topic?: string;
   readTimeMinutes?: number;
+  type?: "story" | "dialogue";
 }
 
 export interface LessonsGenerationState {
@@ -37,40 +39,53 @@ export interface LessonsGenerationState {
   reset: () => void;
 }
 
-export const useLessonsGenerationStore = create<LessonsGenerationState>(
-  (set) => ({
-    inProgress: false,
-    progressStep: null,
-    completedSteps: {},
-    startedAt: null,
-    params: null,
-    attached: false,
-    lessonId: null,
+export const useLessonsGenerationStore = create<LessonsGenerationState>()(
+  persist(
+    (set) => ({
+      inProgress: false,
+      progressStep: null,
+      completedSteps: {},
+      startedAt: null,
+      params: null,
+      attached: false,
+      lessonId: null,
 
-    start: (params) =>
-      set({
-        inProgress: true,
-        params,
-        progressStep: null,
-        completedSteps: {},
-        startedAt: Date.now(),
-        lessonId: null,
+      start: (params) =>
+        set({
+          inProgress: true,
+          params,
+          progressStep: null,
+          completedSteps: {},
+          startedAt: Date.now(),
+          lessonId: null,
+        }),
+      setStep: (key) => set({ progressStep: key }),
+      markCompleted: (key) =>
+        set((s) => ({ completedSteps: { ...s.completedSteps, [key]: true } })),
+      setAttached: (v) => set({ attached: v }),
+      setLessonId: (id) => set({ lessonId: id ?? null }),
+      finish: () => set({ inProgress: false, attached: false }),
+      reset: () =>
+        set({
+          inProgress: false,
+          progressStep: null,
+          completedSteps: {},
+          startedAt: null,
+          params: null,
+          attached: false,
+          lessonId: null,
+        }),
+    }),
+    {
+      name: "lessons-generation-store",
+      partialize: (state) => ({
+        inProgress: state.inProgress,
+        progressStep: state.progressStep,
+        completedSteps: state.completedSteps,
+        startedAt: state.startedAt,
+        params: state.params,
+        lessonId: state.lessonId,
       }),
-    setStep: (key) => set({ progressStep: key }),
-    markCompleted: (key) =>
-      set((s) => ({ completedSteps: { ...s.completedSteps, [key]: true } })),
-    setAttached: (v) => set({ attached: v }),
-    setLessonId: (id) => set({ lessonId: id ?? null }),
-    finish: () => set({ inProgress: false, attached: false }),
-    reset: () =>
-      set({
-        inProgress: false,
-        progressStep: null,
-        completedSteps: {},
-        startedAt: null,
-        params: null,
-        attached: false,
-        lessonId: null,
-      }),
-  })
+    }
+  )
 );

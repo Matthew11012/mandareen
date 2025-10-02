@@ -14,6 +14,7 @@ export class LessonsStreamController {
     @Query('level') level?: string,
     @Query('readTimeMinutes') readTimeMinutes?: string,
     @Query('topic') topic?: string,
+    @Query('requestId') requestId?: string,
   ) {
     if (!token) {
       throw new Error('Unauthorized');
@@ -25,6 +26,7 @@ export class LessonsStreamController {
         ? parseInt(readTimeMinutes, 10)
         : undefined,
       topic,
+      requestId,
     });
   }
 }

@@ -121,6 +121,7 @@ export default function LessonsPage() {
       level: genLevel ?? null,
       topic: topic.trim() || undefined,
       readTimeMinutes: 10,
+      type: "story",
     });
     try {
       const base = (
@@ -141,6 +142,7 @@ export default function LessonsPage() {
       const url = `${base}/lessons/generate/stream?${params.toString()}`;
 
       const es = new EventSource(url);
+      genStore.setAttached(true);
       let streamFinished = false;
       const markComplete = (key: string) => genStore.markCompleted(key);
 
@@ -188,6 +190,7 @@ export default function LessonsPage() {
           if (typeof id === "number" && !streamFinished) {
             storyStepsOrder.forEach((k) => markComplete(k));
             genStore.setStep("complete");
+            genStore.setLessonId(id);
             streamFinished = true;
             es.close();
             await load();
@@ -227,7 +230,10 @@ export default function LessonsPage() {
           es.close();
           await load();
           setProgressOpen(false);
-          if (id) router.push(`/lessons/${id}`);
+          if (id) {
+            genStore.setLessonId(id);
+            router.push(`/lessons/${id}`);
+          }
         } catch {
           streamFinished = true;
           try {
@@ -280,6 +286,7 @@ export default function LessonsPage() {
           topic: topic.trim() || undefined,
         });
         await load();
+        genStore.setLessonId(id);
         router.push(`/lessons/${id}`);
       } catch {
         setError("Failed to generate lesson");
@@ -312,6 +319,7 @@ export default function LessonsPage() {
       level: genLevel ?? null,
       topic: topic.trim() || undefined,
       readTimeMinutes: 5,
+      type: "dialogue",
     });
     try {
       const base = (
@@ -332,6 +340,7 @@ export default function LessonsPage() {
       const url = `${base}/lessons/generate/stream?${params.toString()}`;
 
       const es = new EventSource(url);
+      genStore.setAttached(true);
       let streamFinished = false; // guard to ignore spurious errors after completion
       const markComplete = (key: string) => genStore.markCompleted(key);
 
@@ -375,6 +384,7 @@ export default function LessonsPage() {
           if (typeof id === "number" && !streamFinished) {
             progressStepsOrder.forEach((k) => markComplete(k));
             genStore.setStep("complete");
+            genStore.setLessonId(id);
             streamFinished = true;
             es.close();
             await load();
@@ -418,7 +428,10 @@ export default function LessonsPage() {
           es.close();
           await load();
           setProgressOpen(false);
-          if (id) router.push(`/lessons/${id}`);
+          if (id) {
+            genStore.setLessonId(id);
+            router.push(`/lessons/${id}`);
+          }
         } catch {
           // Do not surface an error here; treat as completed without redirect
           streamFinished = true;
@@ -480,6 +493,7 @@ export default function LessonsPage() {
           topic: topic.trim() || undefined,
         });
         await load();
+        genStore.setLessonId(id);
         router.push(`/lessons/${id}`);
       } catch {
         setError("Failed to generate dialogue");
@@ -490,6 +504,57 @@ export default function LessonsPage() {
       }
     }
   };
+
+  // Reattach on mount if generation is underway: avoid starting a new SSE; poll for completion
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const reattach = async () => {
+      if (!genStore.inProgress) {
+        if (genStore.lessonId) {
+          const id = genStore.lessonId;
+          genStore.setLessonId(null);
+          router.push(`/lessons/${id}`);
+        }
+        return;
+      }
+      const params = genStore.params;
+      const startedAt = genStore.startedAt || 0;
+      if (!params || Date.now() - startedAt > 10 * 60 * 1000) {
+        genStore.reset();
+        setProgressOpen(false);
+        return;
+      }
+      setProgressOpen(true);
+      const poll = async () => {
+        try {
+          const createdAfter = startedAt - 60_000;
+          const type = params.readTimeMinutes === 10 ? "story" : "dialogue";
+          const mineData = await lessonsApi.listMine();
+          const candidates = mineData
+            .filter((i) => i.lessonType === type)
+            .filter((i) => new Date(i.createdAt).getTime() >= createdAfter)
+            .sort(
+              (a, b) =>
+                new Date(b.createdAt).getTime() -
+                new Date(a.createdAt).getTime()
+            );
+          if (candidates.length > 0) {
+            const id = candidates[0].id;
+            genStore.setLessonId(id);
+            genStore.finish();
+            setProgressOpen(false);
+            router.push(`/lessons/${id}`);
+          }
+        } catch {}
+      };
+      await poll();
+      interval = setInterval(poll, 5000);
+    };
+    reattach();
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [genStore, router]);
 
   if (authLoading) {
     return (

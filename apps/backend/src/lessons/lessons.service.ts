@@ -12,6 +12,7 @@ interface GenerateOptions {
   type?: 'story' | 'dialogue';
   readTimeMinutes?: number;
   topic?: string;
+  requestId?: string;
 }
 
 @Injectable()
@@ -65,6 +66,31 @@ export class LessonsService {
           const readTimeMinutes =
             options.readTimeMinutes ?? (type === 'dialogue' ? 10 : 15);
           const topic = options.topic?.trim();
+          const requestId = (options.requestId || '').trim();
+
+          // Idempotency: if requestId provided, check if we already have a lesson persisted recently for this user+requestId
+          if (requestId.length > 0) {
+            try {
+              const existing = await this.prismaService.lesson.findFirst({
+                where: {
+                  userId: user.id,
+                  requestId,
+                } as any,
+                orderBy: { createdAt: 'desc' },
+              } as any);
+              if (existing) {
+                // Immediately emit completion with existing id and end stream
+                subscriber.next({
+                  event: 'complete',
+                  data: { id: existing.id },
+                });
+                subscriber.complete();
+                return;
+              }
+            } catch (err) {
+              this.logger.warn('Idempotency lookup failed', err as any);
+            }
+          }
 
           emit('step', { key: 'openai_generate_' + type });
           const generated =
@@ -905,8 +931,7 @@ export class LessonsService {
     const messages = [
       {
         role: 'system' as const,
-        content:
-          `You are a native Mandarin speaker and a senior Mandarin curriculum and lesson designer with much creativity in creating engaging lessons types and topics. Generate long, engaging lessons strictly as JSON. Do not include any extra commentary.
+        content: `You are a native Mandarin speaker and a senior Mandarin curriculum and lesson designer with much creativity in creating engaging lessons types and topics. Generate long, engaging lessons strictly as JSON. Do not include any extra commentary.
           
           - **Content Requirements:**
             - Embed the entire story around the user-supplied TOPIC.
@@ -968,8 +993,7 @@ export class LessonsService {
     const messages = [
       {
         role: 'system' as const,
-        content:
-          `You are a native Mandarin speaker and an expert Mandarin lesson designer. Your task is to generate an engaging, topical, practical Mandarin DIALOGUE lesson about the user-supplied TOPIC, tailored for the specified HSK level and focused on realistic learning objectives.
+        content: `You are a native Mandarin speaker and an expert Mandarin lesson designer. Your task is to generate an engaging, topical, practical Mandarin DIALOGUE lesson about the user-supplied TOPIC, tailored for the specified HSK level and focused on realistic learning objectives.
           
           - **Topicality & Engagement**:
             - The entire dialogue must revolve around and deeply explore the TOPIC. Keep the flow realistic and practical.
