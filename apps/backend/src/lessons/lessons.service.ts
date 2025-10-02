@@ -63,7 +63,7 @@ export class LessonsService {
           const level = options.level ?? (await this.resolveUserLevel(user.id));
           const type = options.type ?? 'dialogue';
           const readTimeMinutes =
-            options.readTimeMinutes ?? (type === 'dialogue' ? 5 : 10);
+            options.readTimeMinutes ?? (type === 'dialogue' ? 10 : 15);
           const topic = options.topic?.trim();
 
           emit('step', { key: 'openai_generate_' + type });
@@ -906,27 +906,34 @@ export class LessonsService {
       {
         role: 'system' as const,
         content:
-          'You are a native Mandarin speaker and a senior Mandarin curriculum and lesson designer with much creativity in creating engaging lessons types and topics. Generate long, engaging lessons strictly as JSON. Do not include any extra commentary.',
+          `You are a native Mandarin speaker and a senior Mandarin curriculum and lesson designer with much creativity in creating engaging lessons types and topics. Generate long, engaging lessons strictly as JSON. Do not include any extra commentary.
+          
+          - **Content Requirements:**
+            - Embed the entire story around the user-supplied TOPIC.
+            - If possible, infuse the story with inspiration from current events, trends, or recent cultural happenings (news, pop culture, popular activities, contemporary issues) relevant to the topic and appropriate for the specified HSK level.
+            - The story must progress at a pace suited to the specified HSK level, introducing and reinforcing level-appropriate vocabulary and grammar, but with occasional inclusion of a few “stretch” words/structures.
+            - Promote gradual learning by organizing the story in a way that helps learners follow and understand (logical sequence, appropriate complexity for HSK level).
+            - Be creative and use storytelling techniques that engage learners emotionally and intellectually (e.g., character motivation, some conflict/resolution, surprise, or humor if suited)`,
       },
       {
         role: 'user' as const,
         content: `Generate a Mandarin Chinese story lesson tailored to HSK level ${level}. Tell a coherent, engaging story strictly about the TOPIC. Length target: ~${approxChars} characters. Provide rich content. Use HSK-${level} vocab and grammar, with a few stretch words.${topicLine}
 
-Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
-{
-  "title": "string || null",
-  "titlePinyin": "string || null",
-  "titleTranslation": "string || null",
-  "lessonType": "story",
-  "level": ${level},
-  "story": {
-    "hanzi": "string (full Chinese text)",
-    "translation": "string (full English translation; mirror paragraph breaks with blank lines)"
-  },
-  "namedEntities": [
-    { "hanzi": "string", "pinyin": "string", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" }
-  ]
-}`,
+        Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
+        {
+          "title": "string",
+          "titlePinyin": "string <using tone marks>",
+          "titleTranslation": "string",
+          "lessonType": "story",
+          "level": ${level},
+          "story": {
+            "hanzi": "string (full Chinese text)",
+            "translation": "string (full English translation; mirror paragraph breaks with blank lines)"
+          },
+          "namedEntities": [
+            { "hanzi": "string", "pinyin": "string", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" } <list main characters, locations, brands, organizations, title phrases, events, festivals introduced (as relevant to the story)> 
+          ]
+        }`,
       },
     ];
     const completion = await client.chat.completions.create({
@@ -962,30 +969,57 @@ Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
       {
         role: 'system' as const,
         content:
-          'You are a native Mandarin speaker and an expert lesson designer. Return STRICT JSON only.',
+          `You are a native Mandarin speaker and an expert Mandarin lesson designer. Your task is to generate an engaging, topical, practical Mandarin DIALOGUE lesson about the user-supplied TOPIC, tailored for the specified HSK level and focused on realistic learning objectives.
+          
+          - **Topicality & Engagement**:
+            - The entire dialogue must revolve around and deeply explore the TOPIC. Keep the flow realistic and practical.
+            - If possible, incorporate current events, trends, pop culture, or recent news relevant to the TOPIC and suitable for the HSK level.
+            - Ensure the dialogue is contextually engaging—use light conflict, diverse opinions, practical needs, humor, or surprise if suited to the topic and learners' level.
+            
+          - **Quality and Pedagogy**:
+            - The dialogue must be achievable for a learner at the specified HSK level, with scaffolding achieved through clear progression and repeated or paraphrased information.
+            - Avoid unnatural or overly simplistic exchanges; ensure each turn moves the scenario forward and offers learning value.
+            
+            ## Reasoning Process
+            Before constructing your dialogue:
+            1. Internally analyze the TOPIC, HSK level, and recent/quasi-contemporary context to shape a realistic scenario.
+            2. Determine character types, main communicative goal(s), likely challenges, and learning value.
+            3. Select or invent core and stretch vocabulary with high topicality and utility for learners.
+            4. Ensure dialogue pacing, complexity, and vocabulary align with HSK level objectives.
+            5. **Do not output your reasoning—apply it only to craft your JSON.**`,
       },
       {
         role: 'user' as const,
-        content: `Generate a Mandarin Chinese dialogue lesson tailored to HSK level ${level}. Provide ${approxTurns} turns of natural conversation. Use HSK-${level} vocab and grammar, with a few stretch words.${topicLine}
+        content: `Generate a Mandarin Chinese dialogue lesson tailored to HSK level ${level}. Provide ${approxTurns} turns of natural conversation. Use HSK-${level} vocab and grammar, with a few stretch words.  
+        TOPIC (mandatory): ${topicLine}  
+        Use realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC.
 
-Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
-{
-  "title": "string | null",
-  "titlePinyin": "string | null",
-  "titleTranslation": "string | null",
-  "lessonType": "dialogue",
-  "level": ${level},
-  "dialogue": {
-    "turns": [ // 18-22 turns of practical daily conversation suitable for HSK-${level}
-      { "speaker": ""<Character name 1>|<Character name 2>|<Narrator or Third person (such as waiter(in restaurant setting), etc.)>"", "hanzi": "string", "translation": "string" }
-    ]
-  },
-  "namedEntities": [
-    { "hanzi": "string", "pinyin": "string", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" }
-  ]
-}
-  - The title MUST include a keyword from the TOPIC (if provided).
-  - Keep JSON concise but content-rich. No markdown, no commentary, JSON only.`,
+        Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
+        {
+          "title": "string",
+          "titlePinyin": "string",
+          "titleTranslation": "string",
+          "lessonType": "dialogue",
+          "level": ${level},
+          "dialogue": {
+            "turns": [ // 18-22 turns of practical daily conversation suitable for HSK-${level}
+              { "speaker": "<Character name or role(could be narrator or third person or other roles befitting the scenario)>", "hanzi": "string", "translation": "string" }
+              // ...repeat until at least ${approxTurns} turns
+            ]
+          },
+          "namedEntities": [
+            { "hanzi": "string", "pinyin": "string", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" }
+            // ...all topic-specific and stretch words/phrases
+          ]
+        }
+        (Note: Real dialogues must hit the requested turn count with plausible, progressively unfolding conversation. Some turns may be longer or shorter depending on authenticity.)
+        Choose appropriate roles for speakers: e.g., named characters, service staff, family members, etc. Use names, titles, or role descriptors as needed for realism.
+
+        - The title MUST include a keyword from the TOPIC (if provided).
+        - Keep JSON concise but content-rich. No markdown, no commentary, JSON only.
+        
+        **REMINDER:**  
+        Your main goal is to create a realistic, engaging, educational dialogue strictly about the supplied topic, perfectly matched to the learner's HSK level, turning the scenario into a practical lesson—all output as valid, strict JSON.`,
       },
     ];
     const completion = await client.chat.completions.create({
