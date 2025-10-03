@@ -320,7 +320,7 @@ export default function LessonsPage() {
     genStore.start({
       level: genLevel ?? null,
       topic: topic.trim() || undefined,
-      readTimeMinutes: 5,
+      readTimeMinutes: 8,
       type: "dialogue",
     });
     try {
@@ -574,10 +574,10 @@ export default function LessonsPage() {
       title="AI Lessons"
       subtitle="Generate and study AI-crafted lessons"
     >
-      <div className="p-6 space-y-6">
+      <div className="p-6 pt-4 space-y-6">
         {/* Top progress box (non-blocking) */}
         {progressOpen && (
-          <div className="sticky top-2 z-30 mb-2">
+          <div className="sticky top-2 z-30 mb-4">
             <motion.div
               className="relative rounded-xl px-4 py-3 text-white shadow-lg ring-1 ring-white/15 backdrop-blur-md"
               style={{
@@ -654,7 +654,7 @@ export default function LessonsPage() {
               </ol>
             </motion.div>
           </div>
-        )}
+         )} 
         {/* Topic & Generation Options */}
         <div className="bg-[#2e323a] rounded-xl p-4 border border-[#404040] space-y-3">
           <div className="text-white font-inter font-semibold">
