@@ -602,55 +602,6 @@ export class ConversationsService {
     );
   }
 
-  private toToneMarkSyllable(syl: string): string {
-    // Normalize alternate representations of ü before parsing tones
-    const normalized = (syl || '').replace(/u:/gi, 'ü').replace(/v/gi, 'ü');
-    const m = normalized.match(
-      /^(zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw]?)([aeiouüv]+[a-z]*)([1-5])?$/i,
-    );
-    if (!m) return normalized.toLowerCase();
-    const head = (m[1] || '').toLowerCase();
-    let body = (m[2] || '').toLowerCase();
-    const tone = parseInt(m[3] || '0', 10);
-    body = body.replace('v', 'ü').replace('u:', 'ü');
-    if (!tone || tone === 5) return head + body;
-    const toneMap: Record<string, string[]> = {
-      a: ['ā', 'á', 'ǎ', 'à'],
-      e: ['ē', 'é', 'ě', 'è'],
-      i: ['ī', 'í', 'ǐ', 'ì'],
-      o: ['ō', 'ó', 'ǒ', 'ò'],
-      u: ['ū', 'ú', 'ǔ', 'ù'],
-      ü: ['ǖ', 'ǘ', 'ǚ', 'ǜ'],
-    };
-    let idx = -1;
-    if (body.includes('a')) idx = body.indexOf('a');
-    else if (body.includes('e')) idx = body.indexOf('e');
-    else if (body.includes('ou')) idx = body.indexOf('o');
-    else {
-      for (const v of ['i', 'o', 'u', 'ü']) {
-        const pos = body.indexOf(v);
-        if (pos >= 0) {
-          idx = pos;
-          break;
-        }
-      }
-    }
-    if (idx >= 0) {
-      const v = body[idx];
-      const marked = (toneMap as any)[v]?.[tone - 1];
-      if (marked) body = body.slice(0, idx) + marked + body.slice(idx + 1);
-    }
-    return head + body;
-  }
-  private toToneMarks(line?: string): string | undefined {
-    if (!line) return undefined;
-    return line
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((s) => this.toToneMarkSyllable(s))
-      .join(' ');
-  }
-
   private async computeSentencePinyinPerCharacter(
     text: string,
   ): Promise<string> {
@@ -681,7 +632,7 @@ export class ConversationsService {
         .trim()
         .split(/\s+/)
         .filter(Boolean)
-        .map((s) => this.toToneMarkSyllable(s));
+        .map((s) => toToneMarks(s) || '');
       const chineseLen = Array.from(seg.word).filter((c) =>
         this.isChineseChar(c),
       ).length;
@@ -717,7 +668,7 @@ export class ConversationsService {
           .filter((p) => (p || '').trim().length > 0);
         if (slice.length > 0) segPinyin = slice.join(' ');
       }
-      const segPinyinTone = this.toToneMarks(segPinyin);
+      const segPinyinTone = toToneMarks(segPinyin);
       return {
         text: s.word,
         startIndex: s.startIndex,

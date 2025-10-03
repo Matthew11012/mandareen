@@ -34,10 +34,15 @@ export function toToneMarks(line?: string): string | undefined {
     return line
       .split(/\s+/)
       .map((syll) => {
-        const m = syll.match(/^(.*?)([1-4])$/);
+        const m = syll.match(/^(.*?)([1-5])$/);
         if (!m) return syll.replace(/v/g, 'ü');
         const base = m[1].replace(/v/g, 'ü');
-        const tone = parseInt(m[2], 10) - 1;
+        const toneNum = parseInt(m[2], 10);
+        if (toneNum === 5) {
+          // Neutral tone: strip the digit and return base without diacritics
+          return base;
+        }
+        const tone = toneNum - 1;
         return placeOn(base, tone);
       })
       .join(' ');
