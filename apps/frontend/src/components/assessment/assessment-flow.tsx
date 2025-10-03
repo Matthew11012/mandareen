@@ -1,19 +1,27 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { PassageDisplay } from "./passage-display";
 import { AssessmentNavigation } from "./assessment-navigation";
 import { useAssessmentStore } from "@/lib/stores/assessment-store";
-import { AlertTriangle, Target } from "lucide-react";
+import {
+  useAssessmentGenerationStore,
+  AssessmentProgressKey,
+} from "@/lib/stores/assessment-generation-store";
+// types kept in store usage; no direct imports needed here
+import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AssessmentFlowProps {
   onComplete: (levelPlaced: number) => void;
+  autoStart?: boolean;
 }
 
 export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
   onComplete,
+  autoStart = false,
 }) => {
   const router = useRouter();
   const {
@@ -33,11 +41,69 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
   } = useAssessmentStore();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const genStore = useAssessmentGenerationStore();
+  const initializedRef = useRef(false);
+  // removed SSE fallback
+  // const fallbackTriggeredRef = useRef(false);
 
-  // Start assessment on component mount
+  // Multi-select state for bulk marking (must be before any returns)
+  const [multiSelect, setMultiSelect] = useState(false);
+  const [selectedWords, setSelectedWords] = useState<
+    Record<string, { word: string; startIndex: number; endIndex: number }>
+  >({});
+  const toggleSelectWord = (
+    key: string,
+    data: { word: string; startIndex: number; endIndex: number }
+  ) => {
+    setSelectedWords((prev) => {
+      const next = { ...prev };
+      if (next[key]) delete next[key];
+      else next[key] = data;
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedWords({});
+  const applyBulkStatus = (status: "unknown" | "partial") => {
+    const entries = Object.values(selectedWords);
+    if (entries.length === 0) return;
+    for (const item of entries) {
+      addWordResponse({
+        word: item.word,
+        status,
+        startIndex: item.startIndex,
+        endIndex: item.endIndex,
+      });
+    }
+  };
+
+  // order defined once for faux progress (inlined where used)
+
+  // Start or reattach on mount (non-SSE only)
   useEffect(() => {
-    startAssessment();
-  }, [startAssessment]);
+    const run = async () => {
+      if (session || isLoading) return;
+      const stale = genStore.startedAt
+        ? Date.now() - genStore.startedAt > 10 * 60 * 1000
+        : false;
+      if (stale) genStore.reset();
+
+      // If already in progress from persisted state, do NOT trigger another request.
+      // Just wait for the original request to complete and set session.
+      if (genStore.inProgress && !initializedRef.current) {
+        initializedRef.current = true;
+        return;
+      }
+
+      // Fresh start
+      if (!genStore.inProgress && autoStart && !initializedRef.current) {
+        initializedRef.current = true;
+        genStore.start({ passageCount: 4, maxLevel: 7 });
+        await startAssessment();
+      }
+    };
+    void run();
+    return () => {};
+  }, [session, isLoading, genStore, startAssessment, autoStart]);
 
   // Check completion status whenever session changes
   useEffect(() => {
@@ -45,6 +111,62 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
       checkCompletion();
     }
   }, [session, checkCompletion]);
+
+  // If session is ready but generation state persists (eg, fallback non-stream path), finish loading
+  useEffect(() => {
+    if (session && genStore.inProgress) {
+      genStore.finish();
+    }
+  }, [session, genStore]);
+
+  // Faux progress driver when using non-stream fallback: advance steps on a timer until session arrives
+  const fauxIdxRef = useRef(0);
+  const fauxTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (!genStore.inProgress || session) {
+      if (fauxTimerRef.current) {
+        clearInterval(fauxTimerRef.current);
+        fauxTimerRef.current = null;
+      }
+      fauxIdxRef.current = 0;
+      return;
+    }
+    const steps = [
+      "openai_generate_passage_1",
+      "segment_passage_1",
+      "openai_generate_passage_2",
+      "segment_passage_2",
+      "openai_generate_passage_3",
+      "segment_passage_3",
+      "openai_generate_passage_4",
+      "segment_passage_4",
+    ] as const;
+    const tickMs = 6000; // ~32s total; adjust as needed
+    if (fauxTimerRef.current) clearInterval(fauxTimerRef.current);
+    fauxTimerRef.current = setInterval(() => {
+      if (session) {
+        if (fauxTimerRef.current) clearInterval(fauxTimerRef.current);
+        fauxTimerRef.current = null;
+        return;
+      }
+      const idx = fauxIdxRef.current;
+      const key = steps[idx];
+      if (key) {
+        genStore.setStep(key as AssessmentProgressKey);
+        genStore.markCompleted(key);
+        fauxIdxRef.current = idx + 1;
+      } else {
+        if (fauxTimerRef.current) clearInterval(fauxTimerRef.current);
+        fauxTimerRef.current = null;
+      }
+    }, tickMs);
+    return () => {
+      if (fauxTimerRef.current) {
+        clearInterval(fauxTimerRef.current);
+        fauxTimerRef.current = null;
+      }
+    };
+  }, [genStore, genStore.inProgress, session]);
 
   // Handle assessment submission
   const handleSubmit = async () => {
@@ -63,12 +185,29 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
   };
 
   // Loading state
-  if (isLoading && !session) {
+  if ((isLoading && !session) || genStore.inProgress) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-6">
-        <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center">
-          <Target className="w-8 h-8 text-blue-400 animate-pulse" />
+        {/* Animated spinner with spring animation */}
+        <div className="relative">
+          <div className="w-20 h-20 bg-blue-500/10 rounded-full flex items-center justify-center">
+            <div
+              className="w-12 h-12 border-3 border-blue-400/30 border-t-blue-400 rounded-full animate-spin"
+              style={{
+                animation:
+                  "spin 1s linear infinite, pulse 2s ease-in-out infinite",
+              }}
+            />
+          </div>
+          {/* Pulsing ring effect */}
+          <div
+            className="absolute inset-0 w-20 h-20 border-2 border-blue-400/20 rounded-full"
+            style={{
+              animation: "pulse-ring 2s ease-in-out infinite",
+            }}
+          />
         </div>
+
         <div className="text-center space-y-2">
           <h2 className="text-xl font-inter font-semibold text-white">
             Preparing Your Assessment
@@ -76,10 +215,127 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
           <p className="text-[#a6a6a6] font-inter">
             Generating personalized passages...
           </p>
-          <div className="flex justify-center">
-            <div className="w-8 h-8 animate-spin rounded-full border-2 border-[#4040f2] border-t-transparent" />
+
+          {/* Progress bar */}
+          <div className="w-64 h-2 bg-[#3a3f47] rounded-full overflow-hidden mt-4">
+            <div
+              className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-500 ease-out"
+              style={{
+                width: `${(Object.keys(genStore.completedSteps).length / 8) * 100}%`,
+                animation: "progress-shimmer 2s ease-in-out infinite",
+              }}
+            />
+          </div>
+
+          <div className="mt-6 max-w-md mx-auto text-left">
+            <ul className="space-y-3">
+              {(
+                [
+                  "openai_generate_passage_1",
+                  "segment_passage_1",
+                  "openai_generate_passage_2",
+                  "segment_passage_2",
+                  "openai_generate_passage_3",
+                  "segment_passage_3",
+                  "openai_generate_passage_4",
+                  "segment_passage_4",
+                ] as const
+              ).map((k) => {
+                const completed = !!genStore.completedSteps[k];
+                const active = genStore.step === k;
+                return (
+                  <li key={k} className="flex items-center gap-3">
+                    <div className="relative w-3 h-3 flex items-center justify-center">
+                      <span
+                        className={`inline-block w-3 h-3 rounded-full transition-all duration-300 ${
+                          completed
+                            ? "bg-[#31c48d] scale-110"
+                            : active
+                              ? "bg-[#ffd166] scale-125 animate-pulse"
+                              : "bg-[#3a3f47]"
+                        }`}
+                        style={{
+                          animation: active
+                            ? "step-pulse 1.5s ease-in-out infinite"
+                            : undefined,
+                        }}
+                      />
+                      {/* Active step glow effect */}
+                      {active && (
+                        <div
+                          className="absolute w-5 h-5 rounded-full bg-[#ffd166]/30"
+                          style={{
+                            animation: "step-glow 1.5s ease-in-out infinite",
+                          }}
+                        />
+                      )}
+                    </div>
+                    <span
+                      className={`text-sm transition-all duration-300 ${
+                        completed
+                          ? "text-[#31c48d]"
+                          : active
+                            ? "text-[#ffd166] font-medium"
+                            : "text-[#c9d1d9]"
+                      }`}
+                    >
+                      {k.startsWith("openai_generate_passage_") &&
+                        `Generating passage ${k.slice(-1)}`}
+                      {k.startsWith("segment_passage_") &&
+                        `Segmenting passage ${k.slice(-1)}`}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </div>
+
+        <style jsx>{`
+          @keyframes pulse-ring {
+            0% {
+              transform: scale(1);
+              opacity: 1;
+            }
+            100% {
+              transform: scale(1.4);
+              opacity: 0;
+            }
+          }
+
+          @keyframes progress-shimmer {
+            0% {
+              background-position: -200% 0;
+            }
+            100% {
+              background-position: 200% 0;
+            }
+          }
+
+          @keyframes step-pulse {
+            0%,
+            100% {
+              transform: scale(1);
+              opacity: 1;
+            }
+            50% {
+              transform: scale(1.2);
+              opacity: 0.8;
+            }
+          }
+
+          @keyframes step-glow {
+            0%,
+            100% {
+              transform: scale(1);
+              opacity: 0.3;
+            }
+            50% {
+              transform: scale(1.5);
+              opacity: 0.1;
+            }
+          }
+        `}</style>
       </div>
     );
   }
@@ -162,12 +418,89 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
         </p>
       </div>
 
+      {/* Multi-select Controls */}
+      <motion.div
+        layout
+        transition={{ type: "spring", bounce: 0.08, duration: 0.3 }}
+        className={cn(
+          "flex flex-wrap items-start sm:items-center justify-start sm:justify-between gap-2 bg-[#1a1d23] rounded-xl p-3 border border-[#404040]",
+          multiSelect ? "w-full" : "inline-flex w-auto"
+        )}
+        role="toolbar"
+        aria-label="Assessment controls"
+      >
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <motion.button
+            layout
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
+            type="button"
+            aria-pressed={multiSelect}
+            onClick={() => {
+              if (multiSelect) {
+                setMultiSelect(false);
+                clearSelection();
+              } else {
+                setMultiSelect(true);
+              }
+            }}
+            className="inline-flex shrink-0 px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#1a1d23] text-[#a6a6a6] text-center whitespace-normal w-auto"
+          >
+            {multiSelect ? "Cancel Selection" : "Select Multiple Words"}
+          </motion.button>
+          {multiSelect && (
+            <>
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                type="button"
+                onClick={() => applyBulkStatus("unknown")}
+                disabled={Object.keys(selectedWords).length === 0}
+                className="px-3 py-2 bg-red-500/20 text-red-300 border border-red-500/40 rounded-lg hover:border-red-500 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-400 focus-visible:ring-offset-[#1a1d23] w-full sm:w-auto text-center whitespace-normal"
+              >
+                Mark Unknown ({Object.keys(selectedWords).length})
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                type="button"
+                onClick={() => applyBulkStatus("partial")}
+                disabled={Object.keys(selectedWords).length === 0}
+                className="px-3 py-2 bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 rounded-lg hover:border-yellow-500 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-[#1a1d23] w-full sm:w-auto text-center whitespace-normal"
+              >
+                Mark Partial ({Object.keys(selectedWords).length})
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                type="button"
+                onClick={clearSelection}
+                disabled={Object.keys(selectedWords).length === 0}
+                className="px-3 py-2 bg-[#2e323a] text-white/80 border border-[#404040] rounded-lg hover:border-[#9aa6ff] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#1a1d23] w-full sm:w-auto text-center"
+              >
+                Clear
+              </motion.button>
+            </>
+          )}
+        </div>
+        {multiSelect && (
+          <div className="text-xs text-[#a6a6a6] w-full sm:w-auto">
+            Tip: Click words to toggle selection.
+          </div>
+        )}
+      </motion.div>
+
       {/* Passage Display */}
       <PassageDisplay
         passage={currentPassage}
         wordResponses={currentResponse?.wordResponses || []}
         onWordResponse={addWordResponse}
         onRemoveWordResponse={removeWordResponse}
+        multiSelect={multiSelect}
+        selectedKeys={new Set(Object.keys(selectedWords))}
+        onToggleSelect={(key, word, startIndex, endIndex) =>
+          toggleSelectWord(key, { word, startIndex, endIndex })
+        }
       />
 
       {/* Navigation */}

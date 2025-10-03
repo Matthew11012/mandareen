@@ -178,7 +178,7 @@ export const AssessmentResults: React.FC<AssessmentResultsProps> = ({
                 level
               </p>
               <div className="flex items-center gap-2 text-sm text-green-400 font-inter">
-                <span>Coming Soon</span>
+                <span>Available</span>
                 <ArrowRight className="w-4 h-4" />
               </div>
             </div>

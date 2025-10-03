@@ -342,20 +342,9 @@ export class OpenAIService {
     {
       "title": "Title in Chinese",
       "content": "The full passage in Chinese characters",
-      "pinyin": "The full passage in pinyin",
-      "translation": "English translation of the passage",
-      "words": [
-        {
-          "text": "Chinese word or character",
-          "pinyin": "Pronunciation in pinyin",
-          "hskLevel": HSK level of this word (number),
-          "definition": "English definition"
-        },
-        ...more words
-      ]
+      "translation": "English translation of the passage"
     }
     
-    Include ALL words in the "words" array, focusing on ALL vocabulary from the passage that students at this level should know.
     For levels 1-3, include some words from the next HSK level to challenge students.
     For levels 4+, include a few advanced words that might be unfamiliar.
     `;
@@ -386,22 +375,22 @@ export class OpenAIService {
       briefEn?: string;
       examplesPinyin?: Array<{ zh: string; pinyin?: string; en?: string }>;
     }>;
-    tips?: string[];
+    tips?: Array<{ zh: string; en?: string }>;
     citations?: Array<{ key?: string; chunkId?: number }>;
   }> {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const sys = `You are a precise Mandarin tutor. Using ONLY the provided context snippets when present, explain grammar used in the student's/assistant's Chinese text.
-Focus on 2-3 concise GRAMMAR points only. Avoid long lists. Prefer patterns/particles/word order.
-For any Chinese you output, also include its pinyin and a short English gloss so the client doesn't have to make extra API calls.
-Return STRICT JSON with keys grammarNotes (array), tips (array), citations (array). Avoid speculation.`;
+    Focus on 3 concise GRAMMAR points only. Avoid long lists. Prefer patterns/particles/word order.
+    For any Chinese you output, also include its pinyin and a short English gloss so the client doesn't have to make extra API calls.
+    Return STRICT JSON with keys grammarNotes (array), tips (array), citations (array). Avoid speculation.`;
     const userParts = [
       opts?.contextText
-        ? `Grounding context with numbered sources:\n${opts.contextText}`
+        ? `Grounding context with numbered sources:\n${opts.contextText}\n`
         : undefined,
-      `User text (Chinese):\n${hanzi}`,
-      `Level: HSK-${opts.level ?? ''}`,
+      `User text (Chinese):\n${hanzi}\n`,
+      `Level: HSK-${opts.level ?? ''}\n`,
       opts?.strugglingWords?.length
-        ? `User struggles: ${opts.strugglingWords.slice(0, 10).join(', ')}`
+        ? `User struggles: ${opts.strugglingWords.slice(0, 10).join(', ')}\n`
         : undefined,
       `Return JSON EXACTLY like (limit grammarNotes to at most 3):\n{
   "grammarNotes": [
@@ -418,7 +407,7 @@ Return STRICT JSON with keys grammarNotes (array), tips (array), citations (arra
       "sources": [{"key":"S1"}]
     }
   ],
-  "tips": ["注意受事宾语通常已知。"],
+  "tips": [{"zh":"注意受事宾语通常已知。","en":"Note that the object is usually known to both parties."}],
   "citations": [{"key":"S1"}]
 }`,
     ]

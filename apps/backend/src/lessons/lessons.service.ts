@@ -1,5 +1,8 @@
 /* eslint-disable no-unused-vars */
 import { Injectable, Logger } from '@nestjs/common';
+import { toToneMarks } from '../utils/pinyin';
+import { Observable } from 'rxjs';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { OpenAIService } from '../openai/openai.service';
 import { SegmentationService } from '../vocabulary/segmentation.service';
@@ -10,6 +13,7 @@ interface GenerateOptions {
   type?: 'story' | 'dialogue';
   readTimeMinutes?: number;
   topic?: string;
+  requestId?: string;
 }
 
 @Injectable()
@@ -21,7 +25,446 @@ export class LessonsService {
     private readonly openAIService: OpenAIService,
     private readonly segmentationService: SegmentationService,
     private readonly ragService: RagService,
+    private readonly jwt?: JwtService,
   ) {}
+
+  // Stream generation progress via SSE-compatible Observable
+  streamGenerateWithToken(
+    token: string,
+    options: GenerateOptions,
+  ): Observable<{ event: string; data: any } | { data: string }> {
+    return new Observable((subscriber) => {
+      // heartbeat handle must be visible to error/complete paths
+      let heartbeat: ReturnType<typeof setInterval> | null = null;
+      (async () => {
+        try {
+          if (!this.jwt) throw new Error('JWT service not available');
+          const payload = this.jwt.verify(token, {
+            secret: process.env.JWT_SECRET as string,
+          }) as any;
+          const userId = Number(payload?.sub || payload?.id);
+          const email = String(payload?.email || payload?.username || '');
+          if (!userId) throw new Error('Unauthorized');
+
+          const user = { id: userId, email } as { id: number; email: string };
+          const emit = (event: string, data?: any) =>
+            subscriber.next({ event, data });
+
+          emit('queued');
+          emit('started');
+
+          // Heartbeat to keep SSE alive on proxies/browsers until completion
+          heartbeat = setInterval(() => {
+            try {
+              subscriber.next({ event: 'heartbeat', data: { t: Date.now() } });
+            } catch {
+              void 0;
+            }
+          }, 15000);
+
+          const level = options.level ?? (await this.resolveUserLevel(user.id));
+          const type = options.type ?? 'dialogue';
+          const readTimeMinutes =
+            options.readTimeMinutes ?? (type === 'dialogue' ? 10 : 15);
+          const topic = options.topic?.trim();
+          const requestId = (options.requestId || '').trim();
+
+          // Idempotency: if requestId provided, check if we already have a lesson persisted recently for this user+requestId
+          if (requestId.length > 0) {
+            try {
+              const existing = await this.prismaService.lesson.findFirst({
+                where: {
+                  userId: user.id,
+                  requestId,
+                } as any,
+                orderBy: { createdAt: 'desc' },
+              } as any);
+              if (existing) {
+                // Immediately emit completion with existing id and end stream
+                subscriber.next({
+                  event: 'complete',
+                  data: { id: existing.id },
+                });
+                subscriber.complete();
+                return;
+              }
+            } catch (err) {
+              this.logger.warn('Idempotency lookup failed', err as any);
+            }
+          }
+
+          emit('step', { key: 'openai_generate_' + type });
+          const generated =
+            type === 'dialogue'
+              ? await this.openaiGenerateDialogueLesson({
+                  level,
+                  readTimeMinutes,
+                  topic,
+                })
+              : await this.openaiGenerateStoryLesson({
+                  level,
+                  readTimeMinutes,
+                  topic,
+                });
+
+          if (type === 'dialogue') {
+            emit('step', { key: 'segment_dialogue' });
+            const turns = Array.isArray(generated.dialogue?.turns)
+              ? generated.dialogue.turns
+              : [];
+            const namedEntitiesRaw = Array.isArray(
+              (generated as any).namedEntities,
+            )
+              ? (generated as any).namedEntities
+              : [];
+            const namedEntities = namedEntitiesRaw
+              .filter(
+                (e: any) =>
+                  typeof e?.hanzi === 'string' && e.hanzi.trim().length > 0,
+              )
+              .map((e: any) => ({
+                text: (e.hanzi || '').trim(),
+                pinyin: (e.pinyin || '').toLowerCase().trim(),
+                definition: ((e.translation || e.definition || '') + '').trim(),
+              }));
+            const seenNe = new Set<string>();
+            const dedupNamedEntities = namedEntities.filter((e: any) => {
+              if (seenNe.has(e.text)) return false;
+              seenNe.add(e.text);
+              return true;
+            });
+            const turnsWithSegments = [] as any[];
+            for (const t of turns) {
+              let segs: any[] = [];
+              try {
+                segs = await this.segmentationService.segmentText(
+                  t.hanzi || '',
+                  dedupNamedEntities,
+                );
+              } catch (err) {
+                this.logger.warn(
+                  `Segmentation failed for a dialogue turn: ${String(err)}`,
+                );
+                segs = [];
+              }
+              const filledSegsRaw = this.fillSegmentPinyinFromLine(
+                t.hanzi || '',
+                '',
+                segs.map((s) => ({
+                  text: s.word,
+                  startIndex: s.startIndex,
+                  endIndex: s.endIndex,
+                  isWord: s.isWord,
+                  hskLevel: s.hskLevel,
+                  pinyin: (s.pinyin || '')?.toLowerCase(),
+                  definition: s.definition,
+                  definitions: s.definitions,
+                })),
+              );
+              const filledSegs = filledSegsRaw.map((s) => ({
+                ...s,
+                pinyin: toToneMarks(s.pinyin),
+              }));
+              turnsWithSegments.push({
+                speaker: t.speaker,
+                hanzi: t.hanzi || '',
+                pinyin: toToneMarks(t.pinyin || ''),
+                translation: t.translation || '',
+                segments: filledSegs,
+              });
+            }
+
+            emit('step', { key: 'rag_retrieve_context' });
+            let grammarNotes: any[] | undefined;
+            let tipsRichOut:
+              | Array<{ zh: string; en?: string; segments?: any[] }>
+              | undefined;
+            try {
+              const fullDialogue = turns.map((t: any) => t.hanzi).join('\n');
+              const ctx = await this.ragService.retrieveForLesson(user.id, {
+                topic: topic || generated.title || undefined,
+                level,
+              });
+              emit('step', { key: 'openai_generate_grammar_notes' });
+              const profile = await this.ragService.getUserProfile(user.id);
+              let notes = await (
+                this.openAIService as any
+              ).generateGrammarNotes(fullDialogue, {
+                level: profile.level,
+                strugglingWords: profile.strugglingWords,
+                contextText: ctx?.contextText,
+              });
+              emit('step', { key: 'segment_grammar_notes_and_tips' });
+              notes = await this.enrichNotesWithSegments(notes as any);
+              if (Array.isArray((notes as any).tips)) {
+                const tipsRich = [] as Array<{
+                  zh: string;
+                  en?: string;
+                  segments?: any[];
+                }>;
+                for (const t of (notes as any).tips) {
+                  if (t && typeof t.zh === 'string') {
+                    const segs = await this.enrichTextWithSegments(t.zh);
+                    tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
+                  }
+                }
+                (notes as any).tipsRich = tipsRich;
+              }
+              grammarNotes = Array.isArray((notes as any).grammarNotes)
+                ? (notes as any).grammarNotes
+                : undefined;
+              tipsRichOut = Array.isArray((notes as any).tipsRich)
+                ? (notes as any).tipsRich
+                : undefined;
+            } catch {
+              // best-effort: still advance so UI can proceed
+              emit('step', { key: 'segment_grammar_notes_and_tips' });
+            }
+
+            // Upsert named entities into vocabulary (dialogue)
+            if (
+              Array.isArray(dedupNamedEntities) &&
+              dedupNamedEntities.length > 0
+            ) {
+              this.logger.log(
+                `Upserting ${dedupNamedEntities.length} named entities (dialogue)`,
+              );
+              for (const ne of dedupNamedEntities) {
+                try {
+                  await this.prismaService.vocabularyItem.upsert({
+                    where: { hanzi: ne.text },
+                    create: {
+                      hanzi: ne.text,
+                      pinyin: (ne.pinyin || '').toLowerCase(),
+                      definition: (ne.definition || '').toString(),
+                      isCustom: true,
+                      source: 'LLM-NE',
+                    } as any,
+                    update: {
+                      pinyin: (ne.pinyin || '').toLowerCase(),
+                      definition: (ne.definition || '').toString() || undefined,
+                    } as any,
+                  });
+                } catch (err) {
+                  this.logger.warn(
+                    `Failed to upsert named entity ${ne.text} into vocabulary`,
+                    err as any,
+                  );
+                }
+              }
+            }
+
+            emit('step', { key: 'persist_lesson' });
+            const created = await this.prismaService.lesson.create({
+              data: {
+                level,
+                title: generated.title || null,
+                createdBy: user.email,
+                sections: {
+                  create: [
+                    {
+                      sectionType: 'dialogue',
+                      content: {
+                        title: generated.title || null,
+                        titlePinyin:
+                          toToneMarks(generated.titlePinyin || '') || null,
+                        titleTranslation: generated.titleTranslation || null,
+                        turns: turnsWithSegments,
+                        grammarNotes,
+                        tipsRich: (typeof tipsRichOut !== 'undefined'
+                          ? tipsRichOut
+                          : undefined) as any,
+                      },
+                    },
+                  ],
+                },
+              },
+              select: { id: true },
+            });
+            emit('complete', { id: created.id });
+            if (heartbeat) clearInterval(heartbeat);
+            subscriber.complete();
+            return;
+          }
+
+          // story path (mirrors existing non-stream flow with emits)
+          emit('step', { key: 'segment_story' });
+          const mainText: string = (generated as any).story?.hanzi || '';
+          const namedEntities = Array.isArray((generated as any).namedEntities)
+            ? (generated as any).namedEntities
+                .filter(
+                  (e: any) =>
+                    typeof e?.hanzi === 'string' && e.hanzi.trim().length > 0,
+                )
+                .map((e: any) => ({
+                  text: e.hanzi,
+                  pinyin: (e.pinyin || '').toLowerCase(),
+                  definition: e.translation || e.definition || undefined,
+                }))
+            : [];
+          const segs = await this.segmentationService.segmentText(
+            mainText,
+            namedEntities,
+          );
+
+          // Upsert named entities into vocabulary (story - streaming)
+          if (Array.isArray(namedEntities) && namedEntities.length > 0) {
+            const seenNeStream = new Set<string>();
+            const dedupNeStream = namedEntities.filter((e: any) => {
+              if (seenNeStream.has(e.text)) return false;
+              seenNeStream.add(e.text);
+              return true;
+            });
+            this.logger.log(
+              `Upserting ${dedupNeStream.length} named entities (story-stream)`,
+            );
+            for (const ne of dedupNeStream) {
+              try {
+                await this.prismaService.vocabularyItem.upsert({
+                  where: { hanzi: ne.text },
+                  create: {
+                    hanzi: ne.text,
+                    pinyin: (ne.pinyin || '').toLowerCase(),
+                    definition: (ne.definition || '').toString(),
+                    isCustom: true,
+                    source: 'LLM-NE',
+                  } as any,
+                  update: {
+                    pinyin: (ne.pinyin || '').toLowerCase(),
+                    definition: (ne.definition || '').toString() || undefined,
+                  } as any,
+                });
+              } catch (err) {
+                this.logger.warn(
+                  `Failed to upsert named entity ${ne.text} into vocabulary`,
+                  err as any,
+                );
+              }
+            }
+          }
+
+          emit('step', { key: 'openai_generate_grammar_notes' });
+          let grammarNotes2: any[] | undefined;
+          let tipsRichOut2:
+            | Array<{ zh: string; en?: string; segments?: any[] }>
+            | undefined;
+          try {
+            const ctx = await this.ragService.retrieveForLesson(user.id, {
+              topic: topic || (generated as any).title || undefined,
+              level,
+            });
+            const profile = await this.ragService.getUserProfile(user.id);
+            let notes = await (this.openAIService as any).generateGrammarNotes(
+              (generated as any).story?.hanzi || '',
+              {
+                level: profile.level,
+                strugglingWords: profile.strugglingWords,
+                contextText: ctx?.contextText,
+              },
+            );
+            emit('step', { key: 'segment_grammar_notes_and_tips' });
+            notes = await this.enrichNotesWithSegments(notes as any);
+            if (Array.isArray((notes as any).tips)) {
+              const tipsRich = [] as Array<{
+                zh: string;
+                en?: string;
+                segments?: any[];
+              }>;
+              for (const t of (notes as any).tips) {
+                if (t && typeof t.zh === 'string') {
+                  const seg = await this.enrichTextWithSegments(t.zh);
+                  tipsRich.push({ zh: t.zh, en: t.en, segments: seg });
+                }
+              }
+              (notes as any).tipsRich = tipsRich;
+            }
+            grammarNotes2 = Array.isArray((notes as any).grammarNotes)
+              ? (notes as any).grammarNotes
+              : undefined;
+            tipsRichOut2 = Array.isArray((notes as any).tipsRich)
+              ? (notes as any).tipsRich
+              : undefined;
+          } catch (e) {
+            this.logger.warn(
+              'Error generating grammar notes for story',
+              e as any,
+            );
+            emit('step', { key: 'segment_grammar_notes_and_tips' });
+          }
+
+          emit('step', { key: 'persist_lesson' });
+          const filledSegsRaw = this.fillSegmentPinyinFromLine(
+            (generated as any).story?.hanzi || '',
+            '',
+            segs.map((s) => ({
+              text: s.word,
+              startIndex: s.startIndex,
+              endIndex: s.endIndex,
+              isWord: s.isWord,
+              hskLevel: s.hskLevel,
+              pinyin: (s.pinyin || '')?.toLowerCase(),
+              definition: s.definition,
+              definitions: s.definitions,
+            })),
+          );
+          const filledSegs = filledSegsRaw.map((s) => ({
+            ...s,
+            pinyin: toToneMarks(s.pinyin),
+          }));
+          const created = await this.prismaService.lesson.create({
+            data: {
+              level,
+              title: (generated as any).title || null,
+              createdBy: user.email,
+              sections: {
+                create: [
+                  {
+                    sectionType: 'story',
+                    content: {
+                      title: (generated as any).title || null,
+                      titlePinyin:
+                        toToneMarks((generated as any).titlePinyin || '') ||
+                        null,
+                      titleTranslation:
+                        (generated as any).titleTranslation || null,
+                      hanzi: (generated as any).story?.hanzi || '',
+                      pinyin: undefined,
+                      translation: (generated as any).story?.translation || '',
+                      segments: filledSegs,
+                      grammarNotes: grammarNotes2,
+                      tipsRich: (typeof tipsRichOut2 !== 'undefined'
+                        ? tipsRichOut2
+                        : undefined) as any,
+                    },
+                  },
+                ],
+              },
+            },
+            select: { id: true },
+          });
+          emit('complete', { id: created.id });
+          if (heartbeat) clearInterval(heartbeat);
+          subscriber.complete();
+        } catch (err) {
+          this.logger.error('Stream generation failed', err as any);
+          try {
+            subscriber.next({
+              event: 'error',
+              data: { message: 'Generation failed' },
+            });
+          } finally {
+            // ensure heartbeat is cleared on error
+            try {
+              if (heartbeat) clearInterval(heartbeat);
+            } catch {
+              void 0;
+            }
+            subscriber.complete();
+          }
+        }
+      })();
+    });
+  }
 
   async generateAndStoreLesson(
     user: { id: number; email: string },
@@ -48,17 +491,27 @@ export class LessonsService {
     // Persist lesson
     let lesson;
     if (type === 'dialogue') {
-      const vocabExtras = Array.isArray(generated.vocabulary)
-        ? generated.vocabulary.map((w: any) => ({
-            text: w.hanzi || w.word || w.text,
-            pinyin: w.pinyin,
-            definition: w.translation || w.definition,
-            hskLevel: w.hskLevel,
-          }))
-        : [];
       const turns = Array.isArray(generated.dialogue?.turns)
         ? generated.dialogue.turns
         : [];
+      const namedEntities = Array.isArray((generated as any).namedEntities)
+        ? (generated as any).namedEntities
+            .filter(
+              (e: any) =>
+                typeof e?.hanzi === 'string' && e.hanzi.trim().length > 0,
+            )
+            .map((e: any) => ({
+              text: (e.hanzi || '').trim(),
+              pinyin: (e.pinyin || '').toLowerCase().trim(),
+              definition: ((e.translation || e.definition || '') + '').trim(),
+            }))
+        : [];
+      const seenGen = new Set<string>();
+      const dedupNamedEntities = namedEntities.filter((e: any) => {
+        if (seenGen.has(e.text)) return false;
+        seenGen.add(e.text);
+        return true;
+      });
 
       const turnsWithSegments = [] as any[];
       for (const t of turns) {
@@ -66,7 +519,7 @@ export class LessonsService {
         try {
           segs = await this.segmentationService.segmentText(
             t.hanzi || '',
-            vocabExtras,
+            dedupNamedEntities,
           );
         } catch (err) {
           this.logger.warn(
@@ -92,13 +545,13 @@ export class LessonsService {
         );
         const filledSegs = filledSegsRaw.map((s) => ({
           ...s,
-          pinyin: this.toToneMarks(s.pinyin),
+          pinyin: toToneMarks(s.pinyin),
         }));
 
         turnsWithSegments.push({
           speaker: t.speaker,
           hanzi: t.hanzi || '',
-          pinyin: this.toToneMarks(t.pinyin || ''),
+          pinyin: toToneMarks(t.pinyin || ''),
           translation: t.translation || '',
           segments: filledSegs,
         });
@@ -106,6 +559,9 @@ export class LessonsService {
 
       // Optionally compute grounded grammar notes for the whole dialogue text
       let grammarNotes: any[] | undefined;
+      let tipsRichOut:
+        | Array<{ zh: string; en?: string; segments?: any[] }>
+        | undefined;
       try {
         const fullDialogue = turns.map((t: any) => t.hanzi).join('\n');
         const ctx = await this.ragService.retrieveForLesson(user.id, {
@@ -113,7 +569,7 @@ export class LessonsService {
           level,
         });
         const profile = await this.ragService.getUserProfile(user.id);
-        const notes = await (this.openAIService as any).generateGrammarNotes(
+        let notes = await (this.openAIService as any).generateGrammarNotes(
           fullDialogue,
           {
             level: profile.level,
@@ -121,11 +577,63 @@ export class LessonsService {
             contextText: ctx?.contextText,
           },
         );
+        // Enrich notes with segments for clickable tokens
+        notes = await this.enrichNotesWithSegments(notes as any);
+        // Also enrich tips into tipsRich with segments
+        if (Array.isArray((notes as any).tips)) {
+          const tipsRich = [] as Array<{
+            zh: string;
+            en?: string;
+            segments?: any[];
+          }>;
+          for (const t of (notes as any).tips) {
+            if (t && typeof t.zh === 'string') {
+              const segs = await this.enrichTextWithSegments(t.zh);
+              tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
+            }
+          }
+          (notes as any).tipsRich = tipsRich;
+        }
         grammarNotes = Array.isArray((notes as any).grammarNotes)
           ? (notes as any).grammarNotes
           : undefined;
-      } catch {
-        // best-effort, ignore
+        // attach tipsRich to be stored with section content
+        tipsRichOut = Array.isArray((notes as any).tipsRich)
+          ? (notes as any).tipsRich
+          : undefined;
+      } catch (err) {
+        // best-effort, log and continue
+        this.logger.warn('Named entity upsert failed (dialogue)', err as any);
+      }
+
+      // Upsert named entities into vocabulary (dialogue)
+      if (Array.isArray(dedupNamedEntities) && dedupNamedEntities.length > 0) {
+        this.logger.log(
+          `Upserting ${dedupNamedEntities.length} named entities (dialogue)`,
+        );
+        for (const ne of dedupNamedEntities) {
+          try {
+            await this.prismaService.vocabularyItem.upsert({
+              where: { hanzi: ne.text },
+              create: {
+                hanzi: ne.text,
+                pinyin: (ne.pinyin || '').toLowerCase(),
+                definition: (ne.definition || '').toString(),
+                isCustom: true,
+                source: 'LLM-NE',
+              } as any,
+              update: {
+                pinyin: (ne.pinyin || '').toLowerCase(),
+                definition: (ne.definition || '').toString() || undefined,
+              } as any,
+            });
+          } catch (err) {
+            this.logger.warn(
+              `Failed to upsert named entity ${ne.text} into vocabulary`,
+              err as any,
+            );
+          }
+        }
       }
 
       lesson = await this.prismaService.lesson.create({
@@ -139,11 +647,13 @@ export class LessonsService {
                 sectionType: 'dialogue',
                 content: {
                   title: generated.title || null,
-                  titlePinyin:
-                    this.toToneMarks(generated.titlePinyin || '') || null,
+                  titlePinyin: toToneMarks(generated.titlePinyin || '') || null,
                   titleTranslation: generated.titleTranslation || null,
                   turns: turnsWithSegments,
                   grammarNotes,
+                  tipsRich: (typeof tipsRichOut !== 'undefined'
+                    ? tipsRichOut
+                    : undefined) as any,
                 },
               },
             ],
@@ -154,23 +664,33 @@ export class LessonsService {
     } else {
       // story
       const mainText: string = generated.story?.hanzi || '';
-      const wordsExtra = Array.isArray(generated.vocabulary)
-        ? generated.vocabulary.map((w: any) => ({
-            text: w.hanzi || w.word || w.text,
-            pinyin: w.pinyin,
-            definition: w.translation || w.definition,
-            hskLevel: w.hskLevel,
-          }))
+      const namedEntitiesRaw2 = Array.isArray((generated as any).namedEntities)
+        ? (generated as any).namedEntities
         : [];
+      const namedEntities = namedEntitiesRaw2
+        .filter(
+          (e: any) => typeof e?.hanzi === 'string' && e.hanzi.trim().length > 0,
+        )
+        .map((e: any) => ({
+          text: (e.hanzi || '').trim(),
+          pinyin: (e.pinyin || '').toLowerCase().trim(),
+          definition: ((e.translation || e.definition || '') + '').trim(),
+        }));
+      const seenNe2 = new Set<string>();
+      const dedupNamedEntities2 = namedEntities.filter((e: any) => {
+        if (seenNe2.has(e.text)) return false;
+        seenNe2.add(e.text);
+        return true;
+      });
       const segs = await this.segmentationService.segmentText(
         mainText,
-        wordsExtra,
+        dedupNamedEntities2,
       );
 
       // Fill missing pinyin from story.pinyin (fallback per character)
       const filledSegsRaw = this.fillSegmentPinyinFromLine(
         generated.story?.hanzi || '',
-        generated.story?.pinyin || '',
+        '',
         segs.map((s) => ({
           text: s.word,
           startIndex: s.startIndex,
@@ -184,18 +704,21 @@ export class LessonsService {
       );
       const filledSegs = filledSegsRaw.map((s) => ({
         ...s,
-        pinyin: this.toToneMarks(s.pinyin),
+        pinyin: toToneMarks(s.pinyin),
       }));
 
       // Optionally compute grounded grammar notes for the story text
       let grammarNotes: any[] | undefined;
+      let tipsRichOut2:
+        | Array<{ zh: string; en?: string; segments?: any[] }>
+        | undefined;
       try {
         const ctx = await this.ragService.retrieveForLesson(user.id, {
           topic: topic || generated.title || undefined,
           level,
         });
         const profile = await this.ragService.getUserProfile(user.id);
-        const notes = await (this.openAIService as any).generateGrammarNotes(
+        let notes = await (this.openAIService as any).generateGrammarNotes(
           generated.story?.hanzi || '',
           {
             level: profile.level,
@@ -203,11 +726,64 @@ export class LessonsService {
             contextText: ctx?.contextText,
           },
         );
+        // Enrich notes with segments for clickable tokens
+        notes = await this.enrichNotesWithSegments(notes as any);
+        // Also enrich tips into tipsRich with segments
+        if (Array.isArray((notes as any).tips)) {
+          const tipsRich = [] as Array<{
+            zh: string;
+            en?: string;
+            segments?: any[];
+          }>;
+          for (const t of (notes as any).tips) {
+            if (t && typeof t.zh === 'string') {
+              const segs = await this.enrichTextWithSegments(t.zh);
+              tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
+            }
+          }
+          (notes as any).tipsRich = tipsRich;
+        }
         grammarNotes = Array.isArray((notes as any).grammarNotes)
           ? (notes as any).grammarNotes
           : undefined;
+        tipsRichOut2 = Array.isArray((notes as any).tipsRich)
+          ? (notes as any).tipsRich
+          : undefined;
       } catch (err) {
         this.logger.warn('Error generating grammar notes', err as any);
+      }
+
+      // Upsert named entities into vocabulary (story)
+      if (
+        Array.isArray(dedupNamedEntities2) &&
+        dedupNamedEntities2.length > 0
+      ) {
+        this.logger.log(
+          `Upserting ${dedupNamedEntities2.length} named entities (story)`,
+        );
+        for (const ne of dedupNamedEntities2) {
+          try {
+            await this.prismaService.vocabularyItem.upsert({
+              where: { hanzi: ne.text },
+              create: {
+                hanzi: ne.text,
+                pinyin: (ne.pinyin || '').toLowerCase(),
+                definition: (ne.definition || '').toString(),
+                isCustom: true,
+                source: 'LLM-NE',
+              } as any,
+              update: {
+                pinyin: (ne.pinyin || '').toLowerCase(),
+                definition: (ne.definition || '').toString() || undefined,
+              } as any,
+            });
+          } catch (err) {
+            this.logger.warn(
+              `Failed to upsert named entity ${ne.text} into vocabulary`,
+              err as any,
+            );
+          }
+        }
       }
 
       lesson = await this.prismaService.lesson.create({
@@ -221,14 +797,16 @@ export class LessonsService {
                 sectionType: 'story',
                 content: {
                   title: generated.title || null,
-                  titlePinyin:
-                    this.toToneMarks(generated.titlePinyin || '') || null,
+                  titlePinyin: toToneMarks(generated.titlePinyin || '') || null,
                   titleTranslation: generated.titleTranslation || null,
                   hanzi: generated.story?.hanzi || '',
-                  pinyin: this.toToneMarks(generated.story?.pinyin || ''),
+                  pinyin: toToneMarks(generated.story?.pinyin || ''),
                   translation: generated.story?.translation || '',
                   segments: filledSegs,
                   grammarNotes,
+                  tipsRich: (typeof tipsRichOut2 !== 'undefined'
+                    ? tipsRichOut2
+                    : undefined) as any,
                 },
               },
             ],
@@ -351,31 +929,34 @@ export class LessonsService {
     const messages = [
       {
         role: 'system' as const,
-        content:
-          'You are a native Mandarin speaker and a senior Mandarin curriculum and lesson designer with much creativity in creating engaging lessons types and topics. Generate long, engaging lessons strictly as JSON. Do not include any extra commentary.',
+        content: `You are a native Mandarin speaker and a senior Mandarin curriculum and lesson designer with much creativity in creating engaging lessons types and topics. Generate long, engaging lessons strictly as JSON. Do not include any extra commentary.
+          
+          - **Content Requirements:**
+            - Embed the entire story around the user-supplied TOPIC.
+            - If possible, infuse the story with inspiration from current events, trends, or recent cultural happenings (news, pop culture, popular activities, contemporary issues) relevant to the topic and appropriate for the specified HSK level.
+            - The story must progress at a pace suited to the specified HSK level, introducing and reinforcing level-appropriate vocabulary and grammar, but with occasional inclusion of a few “stretch” words/structures.
+            - Promote gradual learning by organizing the story in a way that helps learners follow and understand (logical sequence, appropriate complexity for HSK level).
+            - Be creative and use storytelling techniques that engage learners emotionally and intellectually (e.g., character motivation, some conflict/resolution, surprise, or humor if suited)`,
       },
       {
         role: 'user' as const,
         content: `Generate a Mandarin Chinese story lesson tailored to HSK level ${level}. Tell a coherent, engaging story strictly about the TOPIC. Length target: ~${approxChars} characters. Provide rich content. Use HSK-${level} vocab and grammar, with a few stretch words.${topicLine}
 
-Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
-{
-  "title": "string || null",
-  "titlePinyin": "string || null",
-  "titleTranslation": "string || null",
-    lines)",
-  "lessonType": "story",
-  "level": ${level},
-  "story": {
-    "hanzi": "string (full Chinese text)",
-    "pinyin": "string (full text pinyin, line aligned if possible; keep paragraph breaks)",
-    "translation": "string (full English translation; mirror paragraph breaks with blank 
-    lines)"
-  },
-  "vocabulary": [
-    { "hanzi": "string", "pinyin": "string", "translation": "string", "hskLevel": ${level} }
-  ]
-}`,
+        Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
+        {
+          "title": "string",
+          "titlePinyin": "string <using tone marks>",
+          "titleTranslation": "string",
+          "lessonType": "story",
+          "level": ${level},
+          "story": {
+            "hanzi": "string (full Chinese text)",
+            "translation": "string (full English translation; mirror paragraph breaks with blank lines)"
+          },
+          "namedEntities": [
+            { "hanzi": "string", "pinyin": "string", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" } <list main characters, locations, brands, organizations, title phrases, events, festivals introduced (as relevant to the story)> 
+          ]
+        }`,
       },
     ];
     const completion = await client.chat.completions.create({
@@ -410,32 +991,57 @@ Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
     const messages = [
       {
         role: 'system' as const,
-        content:
-          'You are a native Mandarin speaker and an expert lesson designer. Return STRICT JSON only.',
+        content: `You are a native Mandarin speaker and an expert Mandarin lesson designer. Your task is to generate an engaging, topical, practical Mandarin DIALOGUE lesson about the user-supplied TOPIC, tailored for the specified HSK level and focused on realistic learning objectives.
+          
+          - **Topicality & Engagement**:
+            - The entire dialogue must revolve around and deeply explore the TOPIC. Keep the flow realistic and practical.
+            - If possible, incorporate current events, trends, pop culture, or recent news relevant to the TOPIC and suitable for the HSK level.
+            - Ensure the dialogue is contextually engaging—use light conflict, diverse opinions, practical needs, humor, or surprise if suited to the topic and learners' level.
+            
+          - **Quality and Pedagogy**:
+            - The dialogue must be achievable for a learner at the specified HSK level, with scaffolding achieved through clear progression and repeated or paraphrased information.
+            - Avoid unnatural or overly simplistic exchanges; ensure each turn moves the scenario forward and offers learning value.
+            
+            ## Reasoning Process
+            Before constructing your dialogue:
+            1. Internally analyze the TOPIC, HSK level, and recent/quasi-contemporary context to shape a realistic scenario.
+            2. Determine character types, main communicative goal(s), likely challenges, and learning value.
+            3. Select or invent core and stretch vocabulary with high topicality and utility for learners.
+            4. Ensure dialogue pacing, complexity, and vocabulary align with HSK level objectives.
+            5. **Do not output your reasoning—apply it only to craft your JSON.**`,
       },
       {
         role: 'user' as const,
-        content: `Generate a Mandarin Chinese dialogue lesson tailored to HSK level ${level}. Provide ${approxTurns} turns of natural conversation. Use HSK-${level} vocab and grammar, with a few stretch words.${topicLine}
+        content: `Generate a Mandarin Chinese dialogue lesson tailored to HSK level ${level}. Provide ${approxTurns} turns of natural conversation. Use HSK-${level} vocab and grammar, with a few stretch words.  
+        TOPIC (mandatory): ${topicLine}  
+        Use realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC.
 
-Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
-{
-  "title": "string | null",
-  "titlePinyin": "string | null",
-  "titleTranslation": "string | null",
-  "lessonType": "dialogue",
-  "level": ${level},
-  "dialogue": {
-    "turns": [ // 18-22 turns of practical daily conversation suitable for HSK-${level}
-      { "speaker": ""<Character name 1>|<Character name 2>|<Narrator or Third person (such as waiter(in restaurant setting), etc.)>"", "hanzi": "string", "pinyin": "string", "translation": "string" }
-    ]
-  },
-  "vocabulary": [
-    { "hanzi": "string", "pinyin": "string", "translation": "string", "hskLevel": ${level} }
-  ]
-}
-  - The title MUST include a keyword from the TOPIC (if provided).
-  - Use topic-specific vocabulary and include it in the vocabulary list.
-  - Keep JSON concise but content-rich. No markdown, no commentary, JSON only.`,
+        Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
+        {
+          "title": "string",
+          "titlePinyin": "string",
+          "titleTranslation": "string",
+          "lessonType": "dialogue",
+          "level": ${level},
+          "dialogue": {
+            "turns": [ // 18-22 turns of practical daily conversation suitable for HSK-${level}
+              { "speaker": "<Character name or role(could be narrator or third person or other roles befitting the scenario)>", "hanzi": "string", "translation": "string" }
+              // ...repeat until at least ${approxTurns} turns
+            ]
+          },
+          "namedEntities": [
+            { "hanzi": "string", "pinyin": "string", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" }
+            // ...all topic-specific and stretch words/phrases
+          ]
+        }
+        (Note: Real dialogues must hit the requested turn count with plausible, progressively unfolding conversation. Some turns may be longer or shorter depending on authenticity.)
+        Choose appropriate roles for speakers: e.g., named characters, service staff, family members, etc. Use names, titles, or role descriptors as needed for realism.
+
+        - The title MUST include a keyword from the TOPIC (if provided).
+        - Keep JSON concise but content-rich. No markdown, no commentary, JSON only.
+        
+        **REMINDER:**  
+        Your main goal is to create a realistic, engaging, educational dialogue strictly about the supplied topic, perfectly matched to the learner's HSK level, turning the scenario into a practical lesson—all output as valid, strict JSON.`,
       },
     ];
     const completion = await client.chat.completions.create({
@@ -500,53 +1106,63 @@ Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
     );
   }
 
-  // Convert numeric tones to tone marks (e.g., ni3hao3 -> nǐ hǎo)
-  private toToneMarkSyllable(syl: string): string {
-    // Normalize alternate representations of ü before parsing tones
-    const normalized = (syl || '').replace(/u:/gi, 'ü').replace(/v/gi, 'ü');
-    const m = normalized.match(
-      /^(zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw]?)([aeiouüv]+[a-z]*)([1-5])?$/i,
-    );
-    if (!m) return normalized.toLowerCase();
-    const head = (m[1] || '').toLowerCase();
-    let body = (m[2] || '').toLowerCase();
-    const tone = parseInt(m[3] || '0', 10);
-    body = body.replace('v', 'ü').replace('u:', 'ü');
-    if (!tone || tone === 5) return head + body;
-    const toneMap: Record<string, string[]> = {
-      a: ['ā', 'á', 'ǎ', 'à'],
-      e: ['ē', 'é', 'ě', 'è'],
-      i: ['ī', 'í', 'ǐ', 'ì'],
-      o: ['ō', 'ó', 'ǒ', 'ò'],
-      u: ['ū', 'ú', 'ǔ', 'ù'],
-      ü: ['ǖ', 'ǘ', 'ǚ', 'ǜ'],
-    };
-    let idx = -1;
-    if (body.includes('a')) idx = body.indexOf('a');
-    else if (body.includes('e')) idx = body.indexOf('e');
-    else if (body.includes('ou')) idx = body.indexOf('o');
-    else {
-      for (const v of ['i', 'o', 'u', 'ü']) {
-        const pos = body.indexOf(v);
-        if (pos >= 0) {
-          idx = pos;
-          break;
+  private async enrichTextWithSegments(text?: string, pinyin?: string) {
+    if (!text || !Array.from(text).some((c) => this.isChineseChar(c)))
+      return undefined as any[] | undefined;
+    const segs = await this.segmentationService.segmentText(text);
+    const charPinyinArray = (pinyin || '')
+      .split(/\s+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const segments = segs.map((s) => {
+      let segPinyin = (s.pinyin || '').toLowerCase();
+      if (!segPinyin || segPinyin.trim().length === 0) {
+        const slice = charPinyinArray
+          .slice(s.startIndex, s.endIndex)
+          .filter((_, idx) => this.isChineseChar(text[s.startIndex + idx]))
+          .filter((p) => (p || '').trim().length > 0);
+        if (slice.length > 0) segPinyin = slice.join(' ');
+      }
+      const segPinyinTone = toToneMarks(segPinyin);
+      return {
+        text: s.word,
+        startIndex: s.startIndex,
+        endIndex: s.endIndex,
+        isWord: s.isWord,
+        hskLevel: s.hskLevel,
+        pinyin: segPinyinTone,
+        definition: s.definition,
+        definitions: s.definitions,
+      };
+    });
+    return segments;
+  }
+
+  private async enrichNotesWithSegments(notes: any) {
+    if (!notes || typeof notes !== 'object') return notes;
+    if (Array.isArray(notes.grammarNotes)) {
+      for (const n of notes.grammarNotes) {
+        if (typeof n?.point === 'string') {
+          n.pointSegments = await this.enrichTextWithSegments(
+            n.point,
+            n.pointPinyin,
+          );
+        }
+        if (typeof n?.brief === 'string') {
+          n.briefSegments = await this.enrichTextWithSegments(
+            n.brief,
+            n.briefPinyin,
+          );
+        }
+        if (Array.isArray(n?.examples)) {
+          for (const ex of n.examples) {
+            if (typeof ex?.zh === 'string') {
+              ex.segments = await this.enrichTextWithSegments(ex.zh, ex.pinyin);
+            }
+          }
         }
       }
     }
-    if (idx >= 0) {
-      const v = body[idx];
-      const marked = (toneMap as any)[v]?.[tone - 1];
-      if (marked) body = body.slice(0, idx) + marked + body.slice(idx + 1);
-    }
-    return head + body;
-  }
-  private toToneMarks(line?: string): string | undefined {
-    if (!line) return undefined;
-    return line
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((s) => this.toToneMarkSyllable(s))
-      .join(' ');
+    return notes;
   }
 }

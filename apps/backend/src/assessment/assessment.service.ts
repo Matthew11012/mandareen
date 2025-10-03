@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { toToneMarks } from '../utils/pinyin';
 import { OpenAIService } from '../openai/openai.service';
 import { Passage } from './models/passage.model';
 import { FetchQuestionsDto } from './dto/fetch-questions.dto';
@@ -8,6 +9,7 @@ import {
   WordKnowledgeLevel,
 } from './dto/submit-assessment.dto';
 import { SegmentationService } from '../vocabulary/segmentation.service';
+import { Observable } from 'rxjs';
 
 @Injectable()
 export class AssessmentService {
@@ -18,6 +20,9 @@ export class AssessmentService {
     private openaiService: OpenAIService,
     private segmentationService: SegmentationService,
   ) {}
+
+  // Convert numeric pinyin (ni3 hao3) to tone marks (nǐ hǎo)
+  // removed: use shared toToneMarks from utils
 
   async fetchAssessmentQuestions(
     userId: number,
@@ -37,19 +42,11 @@ export class AssessmentService {
 
       const passages = await Promise.all(passagePromises);
 
-      // Segment each passage and add vocabulary metadata
+      // Segment each passage and add vocabulary metadata (DB-backed only)
       const enrichedPassages = await Promise.all(
         passages.map(async (passage) => {
-          // Prefer LLM-provided words list as high-priority dictionary entries
-          const extraEntries = (passage.words || []).map((w) => ({
-            text: w.text,
-            hskLevel: w.hskLevel,
-            pinyin: w.pinyin,
-            definition: w.definition,
-          }));
           const segments = await this.segmentationService.segmentText(
             passage.content,
-            extraEntries,
           );
           const mappedSegments = segments.map((s) => ({
             text: s.word,
@@ -57,7 +54,7 @@ export class AssessmentService {
             endIndex: s.endIndex,
             isWord: s.isWord,
             hskLevel: s.hskLevel,
-            pinyin: s.pinyin,
+            pinyin: toToneMarks(s.pinyin),
             definition: s.definition,
           }));
           return {
@@ -74,6 +71,71 @@ export class AssessmentService {
       this.logger.error('Error fetching assessment questions:', error);
       throw new Error(`Failed to fetch assessment questions: ${error.message}`);
     }
+  }
+
+  /**
+   * Stream assessment questions generation with progress events via SSE.
+   */
+  streamAssessmentQuestions(
+    userId: number,
+    dto: FetchQuestionsDto,
+  ): Observable<{ data: string } | { event: string; data: any }> {
+    return new Observable((subscriber) => {
+      let heartbeat: NodeJS.Timeout | undefined;
+      const emit = (event: string, data?: any) =>
+        subscriber.next({ event, data });
+      (async () => {
+        try {
+          const { maxLevel = 7, passageCount = 4 } =
+            dto || ({} as FetchQuestionsDto);
+          const levelDistribution = this.calculateLevelDistribution(
+            maxLevel,
+            passageCount,
+          );
+
+          emit('queued');
+          emit('started');
+          // Immediate heartbeat to prompt client that connection is alive
+          emit('heartbeat', { t: Date.now() });
+          heartbeat = setInterval(
+            () => emit('heartbeat', { t: Date.now() }),
+            15000,
+          );
+
+          const results: Passage[] = [];
+          for (let i = 0; i < levelDistribution.length; i++) {
+            const level = levelDistribution[i];
+            emit('step', { key: `openai_generate_passage_${i + 1}`, level });
+            const passage =
+              await this.openaiService.generateAssessmentPassage(level);
+
+            emit('step', { key: `segment_passage_${i + 1}`, level });
+            const segments = await this.segmentationService.segmentText(
+              passage.content,
+            );
+            const mappedSegments = segments.map((s) => ({
+              text: s.word,
+              startIndex: s.startIndex,
+              endIndex: s.endIndex,
+              isWord: s.isWord,
+              hskLevel: s.hskLevel,
+              pinyin: toToneMarks(s.pinyin),
+              definition: s.definition,
+            }));
+            results.push({ ...passage, segments: mappedSegments });
+          }
+
+          emit('complete', { passages: results });
+          subscriber.complete();
+        } catch (error) {
+          this.logger.error('Error streaming assessment questions:', error);
+          emit('error', { message: (error as any)?.message || 'error' });
+          subscriber.error(error);
+        } finally {
+          if (heartbeat) clearInterval(heartbeat);
+        }
+      })();
+    });
   }
 
   async submitAssessment(

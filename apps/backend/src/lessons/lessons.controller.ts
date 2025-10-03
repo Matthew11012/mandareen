@@ -77,6 +77,8 @@ export class LessonsController {
     }));
   }
 
+  // SSE stream moved to `LessonsStreamController` (unauthenticated controller validating token)
+
   @Get('mine')
   async listMyLessons(
     @Req() req: AuthenticatedRequest,

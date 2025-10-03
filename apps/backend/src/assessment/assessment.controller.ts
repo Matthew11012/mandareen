@@ -6,6 +6,7 @@ import {
   UseGuards,
   Req,
   Query,
+  Sse,
 } from '@nestjs/common';
 import { AssessmentService } from './assessment.service';
 import { FetchQuestionsDto } from './dto/fetch-questions.dto';
@@ -25,6 +26,17 @@ export class AssessmentController {
     @Query() queryParams: FetchQuestionsDto,
   ): Promise<Passage[]> {
     return this.assessmentService.fetchAssessmentQuestions(
+      req.user.id,
+      queryParams,
+    );
+  }
+
+  @Sse('questions/stream')
+  streamAssessmentQuestions(
+    @Req() req: AuthenticatedRequest,
+    @Query() queryParams: FetchQuestionsDto,
+  ) {
+    return this.assessmentService.streamAssessmentQuestions(
       req.user.id,
       queryParams,
     );

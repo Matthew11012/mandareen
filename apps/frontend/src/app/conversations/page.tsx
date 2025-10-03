@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, memo } from "react";
 import { DashboardLayout } from "@/components/layout";
 import {
   conversationsApi,
@@ -42,6 +42,17 @@ type MessageNotes = {
   grammarNotes?: GrammarNote[];
   tipsRich?: Tip[];
 };
+
+const TranslationBlock = memo(function TranslationBlock({
+  show,
+  text,
+}: {
+  show: boolean;
+  text?: string;
+}) {
+  if (!show || !text) return null;
+  return <div className="text-[#a6a6a6] text-sm mt-1">{text}</div>;
+});
 
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -351,6 +362,16 @@ export default function ConversationsPage() {
           } else if (payload.type === "user-update" && payload.data) {
             try {
               const data = JSON.parse(payload.data);
+              const notesCamel = data?.notes
+                ? {
+                    grammarNotes:
+                      data.notes.grammarNotes ||
+                      data.notes.grammar_notes ||
+                      undefined,
+                    tipsRich:
+                      data.notes.tipsRich || data.notes.tips_rich || undefined,
+                  }
+                : undefined;
               setMessages((prev) => {
                 const next = prev.map((m) =>
                   m.id === data.id
@@ -367,6 +388,7 @@ export default function ConversationsPage() {
                         segments: Array.isArray(data.segments)
                           ? data.segments
                           : undefined,
+                        notes: notesCamel !== undefined ? notesCamel : m.notes,
                       }
                     : m
                 );
@@ -376,6 +398,16 @@ export default function ConversationsPage() {
             } catch {}
           } else if (payload.type === "final" && payload.data) {
             const data = JSON.parse(payload.data);
+            const notesCamel = data?.notes
+              ? {
+                  grammarNotes:
+                    data.notes.grammarNotes ||
+                    data.notes.grammar_notes ||
+                    undefined,
+                  tipsRich:
+                    data.notes.tipsRich || data.notes.tips_rich || undefined,
+                }
+              : undefined;
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === aiMsgId
@@ -385,6 +417,7 @@ export default function ConversationsPage() {
                       hanzi: data.hanzi || m.hanzi,
                       pinyin: data.pinyin || "",
                       translation: data.translation || "",
+                      notes: notesCamel ?? m.notes,
                       audioUrl: data.audioUrl || undefined,
                       segments: Array.isArray(data.segments)
                         ? data.segments
@@ -429,6 +462,16 @@ export default function ConversationsPage() {
           const data = JSON.parse(
             (e as unknown as MessageEvent).data as string
           );
+          const notesCamel = data?.notes
+            ? {
+                grammarNotes:
+                  data.notes.grammarNotes ||
+                  data.notes.grammar_notes ||
+                  undefined,
+                tipsRich:
+                  data.notes.tipsRich || data.notes.tips_rich || undefined,
+              }
+            : undefined;
           setMessages((prev) =>
             prev.map((m) =>
               m.id === aiMsgId
@@ -438,7 +481,7 @@ export default function ConversationsPage() {
                     hanzi: data.hanzi || m.hanzi,
                     pinyin: data.pinyin || "",
                     translation: data.translation || "",
-                    notes: data.notes || m.notes,
+                    notes: notesCamel ?? m.notes,
                     segments: Array.isArray(data.segments)
                       ? data.segments
                       : undefined,
@@ -587,6 +630,18 @@ export default function ConversationsPage() {
                 );
               } else if (payload.type === "final" && payload.data) {
                 const data = JSON.parse(payload.data);
+                const notesCamel = data?.notes
+                  ? {
+                      grammarNotes:
+                        data.notes.grammarNotes ||
+                        data.notes.grammar_notes ||
+                        undefined,
+                      tipsRich:
+                        data.notes.tipsRich ||
+                        data.notes.tips_rich ||
+                        undefined,
+                    }
+                  : undefined;
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === aiMsgId
@@ -596,6 +651,7 @@ export default function ConversationsPage() {
                           hanzi: data.hanzi || m.hanzi,
                           pinyin: data.pinyin || "",
                           translation: data.translation || "",
+                          notes: notesCamel ?? m.notes,
                           audioUrl: data.audioUrl || undefined,
                           segments: Array.isArray(data.segments)
                             ? data.segments
@@ -640,6 +696,16 @@ export default function ConversationsPage() {
               const data = JSON.parse(
                 (e as unknown as MessageEvent).data as string
               );
+              const notesCamel = data?.notes
+                ? {
+                    grammarNotes:
+                      data.notes.grammarNotes ||
+                      data.notes.grammar_notes ||
+                      undefined,
+                    tipsRich:
+                      data.notes.tipsRich || data.notes.tips_rich || undefined,
+                  }
+                : undefined;
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === aiMsgId
@@ -649,7 +715,7 @@ export default function ConversationsPage() {
                         hanzi: data.hanzi || m.hanzi,
                         pinyin: data.pinyin || "",
                         translation: data.translation || "",
-                        notes: data.notes || m.notes,
+                        notes: notesCamel || m.notes,
                         audioUrl: data.audioUrl || undefined,
                         segments: Array.isArray(data.segments)
                           ? data.segments
@@ -909,6 +975,45 @@ export default function ConversationsPage() {
               <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#1d2128] to-transparent" />
             ) : null}
           </div>
+          {Array.isArray((m.notes as MessageNotes).tipsRich) &&
+          (m.notes as MessageNotes).tipsRich!.length > 0 ? (
+            <div className="mt-2 pt-2 border-t border-[#2a2e36]">
+              <div className="text-[10px] uppercase tracking-wide text-[#8a8f99] mb-1">
+                Tips
+              </div>
+              <ul className="space-y-1 list-disc list-outside pl-4 marker:text-[#596080]">
+                {(m.notes as MessageNotes).tipsRich!.slice(0, 2).map((t, i) => (
+                  <li key={i}>
+                    {Array.isArray(t.segments) && t.segments.length > 0 ? (
+                      <>
+                        {renderSegmentsWithPopup(
+                          t.segments,
+                          t.zh,
+                          t.en,
+                          notesPinyinOn
+                        )}
+                        {t.en ? (
+                          <div className="text-[#8b949e] text-xs">{t.en}</div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-[#c9d1d9]">{t.zh}</div>
+                        {notesPinyinOn && t.pinyin ? (
+                          <div className="text-[#9aa6ff] text-xs">
+                            {t.pinyin}
+                          </div>
+                        ) : null}
+                        {t.en ? (
+                          <div className="text-[#8b949e] text-xs">{t.en}</div>
+                        ) : null}
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div className="mt-2 flex justify-between items-center">
             <div className="text-[11px] text-[#a6a6a6]">
               {Array.isArray((m.notes as MessageNotes).tipsRich) &&
@@ -930,9 +1035,7 @@ export default function ConversationsPage() {
     return (
       <div>
         {renderAligned(m.hanzi, m.pinyin)}
-        {showT && m.translation ? (
-          <div className="text-[#a6a6a6] text-xs mt-1">{m.translation}</div>
-        ) : null}
+        <TranslationBlock show={showT} text={m.translation} />
         {showN ? <NotesBlock /> : null}
         {popup.open && (
           <div
@@ -1225,7 +1328,7 @@ export default function ConversationsPage() {
           >
             {messages.map((m) => (
               <div
-                key={`${m.id}-${m.createdAt}`}
+                key={m.id}
                 className={m.role === "user" ? "ml-auto" : "mr-auto"}
               >
                 <div
@@ -1358,7 +1461,8 @@ export default function ConversationsPage() {
                         <span className="relative inline-flex rounded-full h-3 w-3 bg-[#4040f2]"></span>
                       </span>
                       <span>
-                        Processing… pinyin & translation will appear shortly
+                        Processing… pinyin, translation, audio and notes will
+                        appear shortly
                       </span>
                     </div>
                   )}
@@ -1590,12 +1694,19 @@ export default function ConversationsPage() {
                             {gn.examples.map((ex: Tip, i: number) => (
                               <li key={i}>
                                 {Array.isArray(ex.segments) ? (
-                                  renderSegmentsWithPopup(
-                                    ex.segments,
-                                    ex.zh,
-                                    ex.en,
-                                    notesPinyinOn
-                                  )
+                                  <>
+                                    {renderSegmentsWithPopup(
+                                      ex.segments,
+                                      ex.zh,
+                                      ex.en,
+                                      notesPinyinOn
+                                    )}
+                                    {ex.en ? (
+                                      <div className="text-[#8b949e] text-xs">
+                                        {ex.en}
+                                      </div>
+                                    ) : null}
+                                  </>
                                 ) : (
                                   <>
                                     <div className="text-[#c9d1d9]">
@@ -1630,23 +1741,44 @@ export default function ConversationsPage() {
                   <div className="text-sm font-semibold text-white mb-2">
                     Tips
                   </div>
-                  <div className="space-y-2">
+                  <ul className="space-y-2 list-disc list-outside pl-5 marker:text-[#596080]">
                     {(notesModal.message.notes as MessageNotes).tipsRich!.map(
                       (t: Tip, i: number) => (
-                        <div key={i}>
-                          <div className="text-[#c9d1d9]">{t.zh}</div>
-                          {t.pinyin ? (
-                            <div className="text-[#9aa6ff] text-xs">
-                              {t.pinyin}
-                            </div>
-                          ) : null}
-                          {t.en ? (
-                            <div className="text-[#8b949e] text-xs">{t.en}</div>
-                          ) : null}
-                        </div>
+                        <li key={i}>
+                          {Array.isArray(t.segments) &&
+                          t.segments.length > 0 ? (
+                            <>
+                              {renderSegmentsWithPopup(
+                                t.segments,
+                                t.zh,
+                                t.en,
+                                notesPinyinOn
+                              )}
+                              {t.en ? (
+                                <div className="text-[#8b949e] text-xs">
+                                  {t.en}
+                                </div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-[#c9d1d9]">{t.zh}</div>
+                              {t.pinyin ? (
+                                <div className="text-[#9aa6ff] text-xs">
+                                  {t.pinyin}
+                                </div>
+                              ) : null}
+                              {t.en ? (
+                                <div className="text-[#8b949e] text-xs">
+                                  {t.en}
+                                </div>
+                              ) : null}
+                            </>
+                          )}
+                        </li>
                       )
                     )}
-                  </div>
+                  </ul>
                 </div>
               ) : null}
             </div>

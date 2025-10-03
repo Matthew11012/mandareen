@@ -38,7 +38,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       isAuthenticated: false,
-      isLoading: false,
+      isLoading: true,
       error: null,
 
       /**
@@ -165,6 +165,8 @@ export const useAuthStore = create<AuthState>()(
        * Call this on app startup to restore authentication
        */
       initialize: () => {
+        // Begin initialization; block redirects until we finish
+        set({ isLoading: true });
         const token = localStorage.getItem("auth-token");
         if (token) {
           try {
@@ -217,6 +219,9 @@ export const useAuthStore = create<AuthState>()(
               error: null,
             });
           }
+        } else {
+          // No token present; finish initialization
+          set({ isLoading: false, isAuthenticated: false });
         }
       },
     }),

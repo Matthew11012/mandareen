@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { toToneMarks } from '../utils/pinyin';
 import { PrismaService } from '../prisma/prisma.service';
 import { OpenAIService } from '../openai/openai.service';
 import { Observable } from 'rxjs';
@@ -59,7 +60,7 @@ export class ConversationsService {
                 .filter((p) => (p || '').trim().length > 0);
               if (slice.length > 0) segPinyin = slice.join(' ');
             }
-            const segPinyinTone = this.toToneMarks(segPinyin);
+            const segPinyinTone = toToneMarks(segPinyin);
             return {
               text: s.word,
               startIndex: s.startIndex,
@@ -202,7 +203,7 @@ export class ConversationsService {
               {
                 role: 'system',
                 content:
-                  'You are a native Mandarin tutor. While streaming, output ONLY Simplified Chinese characters (no JSON, pinyin, or translation). If the user uses Traditional characters, convert to Simplified in your reply. Keep it concise. After streaming ends, we will run a separate non-stream call to obtain JSON with hanzi, pinyin, and translation for persistence.',
+                  'You are a native Mandarin speaker. Make the conversation reply as natural as possible, just like a daily conversation between two friends. Add humour or fun facts when appropriate or other conversation details as needed. While streaming, output ONLY Simplified Chinese characters (no JSON, pinyin, or translation). If the user uses Traditional characters, convert to Simplified in your reply. Keep it concise. After streaming ends, we will run a separate non-stream call to obtain JSON with hanzi, pinyin, and translation for persistence.',
               },
               ...history,
             ],
@@ -260,7 +261,7 @@ export class ConversationsService {
                     .filter((p) => (p || '').trim().length > 0);
                   if (slice.length > 0) segPinyin = slice.join(' ');
                 }
-                const segPinyinTone = this.toToneMarks(segPinyin);
+                const segPinyinTone = toToneMarks(segPinyin);
                 return {
                   text: s.word,
                   startIndex: s.startIndex,
@@ -281,7 +282,7 @@ export class ConversationsService {
                 await this.prisma.message.update({
                   where: { id: latestUser.id },
                   data: {
-                    pinyin: this.toToneMarks(analyzed.pinyin) || '',
+                    pinyin: toToneMarks(analyzed.pinyin) || '',
                     translation: analyzed.translation || '',
                   },
                 });
@@ -289,7 +290,7 @@ export class ConversationsService {
                 const userUpdatePayload = JSON.stringify({
                   id: latestUser.id,
                   segments,
-                  pinyin: this.toToneMarks(analyzed.pinyin) || '',
+                  pinyin: toToneMarks(analyzed.pinyin) || '',
                   translation: analyzed.translation || '',
                 });
                 // Default event for onmessage handlers
@@ -354,6 +355,21 @@ export class ConversationsService {
             const enrichedNotes = await this.enrichNotesWithSegments(
               notes as any,
             );
+            // Also enrich tips into tipsRich with segments
+            if (Array.isArray((enrichedNotes as any).tips)) {
+              const tipsRich = [] as Array<{
+                zh: string;
+                en?: string;
+                segments?: any[];
+              }>;
+              for (const t of (enrichedNotes as any).tips) {
+                if (t && typeof t.zh === 'string') {
+                  const segs = await this.enrichTextWithSegments(t.zh);
+                  tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
+                }
+              }
+              (enrichedNotes as any).tipsRich = tipsRich;
+            }
             aiMsg = await this.prisma.message.update({
               where: { id: aiMsg.id },
               data: { notes: enrichedNotes as any },
@@ -392,7 +408,7 @@ export class ConversationsService {
                 .filter((p) => (p || '').trim().length > 0);
               if (slice.length > 0) segPinyin = slice.join(' ');
             }
-            const segPinyinTone = this.toToneMarks(segPinyin);
+            const segPinyinTone = toToneMarks(segPinyin);
             return {
               text: s.word,
               startIndex: s.startIndex,
@@ -475,7 +491,7 @@ export class ConversationsService {
                   .filter((p) => (p || '').trim().length > 0);
                 if (slice.length > 0) segPinyin = slice.join(' ');
               }
-              const segPinyinTone = this.toToneMarks(segPinyin);
+              const segPinyinTone = toToneMarks(segPinyin);
               return {
                 text: s.word,
                 startIndex: s.startIndex,
@@ -586,55 +602,6 @@ export class ConversationsService {
     );
   }
 
-  private toToneMarkSyllable(syl: string): string {
-    // Normalize alternate representations of ü before parsing tones
-    const normalized = (syl || '').replace(/u:/gi, 'ü').replace(/v/gi, 'ü');
-    const m = normalized.match(
-      /^(zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw]?)([aeiouüv]+[a-z]*)([1-5])?$/i,
-    );
-    if (!m) return normalized.toLowerCase();
-    const head = (m[1] || '').toLowerCase();
-    let body = (m[2] || '').toLowerCase();
-    const tone = parseInt(m[3] || '0', 10);
-    body = body.replace('v', 'ü').replace('u:', 'ü');
-    if (!tone || tone === 5) return head + body;
-    const toneMap: Record<string, string[]> = {
-      a: ['ā', 'á', 'ǎ', 'à'],
-      e: ['ē', 'é', 'ě', 'è'],
-      i: ['ī', 'í', 'ǐ', 'ì'],
-      o: ['ō', 'ó', 'ǒ', 'ò'],
-      u: ['ū', 'ú', 'ǔ', 'ù'],
-      ü: ['ǖ', 'ǘ', 'ǚ', 'ǜ'],
-    };
-    let idx = -1;
-    if (body.includes('a')) idx = body.indexOf('a');
-    else if (body.includes('e')) idx = body.indexOf('e');
-    else if (body.includes('ou')) idx = body.indexOf('o');
-    else {
-      for (const v of ['i', 'o', 'u', 'ü']) {
-        const pos = body.indexOf(v);
-        if (pos >= 0) {
-          idx = pos;
-          break;
-        }
-      }
-    }
-    if (idx >= 0) {
-      const v = body[idx];
-      const marked = (toneMap as any)[v]?.[tone - 1];
-      if (marked) body = body.slice(0, idx) + marked + body.slice(idx + 1);
-    }
-    return head + body;
-  }
-  private toToneMarks(line?: string): string | undefined {
-    if (!line) return undefined;
-    return line
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((s) => this.toToneMarkSyllable(s))
-      .join(' ');
-  }
-
   private async computeSentencePinyinPerCharacter(
     text: string,
   ): Promise<string> {
@@ -665,7 +632,7 @@ export class ConversationsService {
         .trim()
         .split(/\s+/)
         .filter(Boolean)
-        .map((s) => this.toToneMarkSyllable(s));
+        .map((s) => toToneMarks(s) || '');
       const chineseLen = Array.from(seg.word).filter((c) =>
         this.isChineseChar(c),
       ).length;
@@ -701,7 +668,7 @@ export class ConversationsService {
           .filter((p) => (p || '').trim().length > 0);
         if (slice.length > 0) segPinyin = slice.join(' ');
       }
-      const segPinyinTone = this.toToneMarks(segPinyin);
+      const segPinyinTone = toToneMarks(segPinyin);
       return {
         text: s.word,
         startIndex: s.startIndex,
