@@ -6,10 +6,10 @@
 
 :root {
   --font-inter: "Inter", sans-serif;
-  --font-roboto: "Roboto", sans-serif;
+  --font-roboto: "Roboto", sans-serif;  
 
   /* Figma Design System Colors */
-  --color-primary-bg: #040405;
+  --color-primary-bg: #20242b;
   --color-secondary-bg: #2e323a;
   --color-surface-1: #191d23;
   --color-surface-2: #2a2f39;
