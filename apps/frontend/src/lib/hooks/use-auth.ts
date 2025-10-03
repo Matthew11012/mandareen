@@ -104,8 +104,17 @@ export const useRequireAuth = () => {
  * Use on login/register pages to prevent access when already logged in
  */
 export const useRedirectAuthenticated = () => {
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const store = useAuthStore();
+  const { isAuthenticated, isLoading } = store;
+  const initialize = (store as unknown as { initialize?: () => void })
+    .initialize;
   const router = useRouter();
+
+  // Ensure auth state is restored from token on first load of auth pages
+  useEffect(() => {
+    initialize?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {

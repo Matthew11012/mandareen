@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, memo } from "react";
 import { DashboardLayout } from "@/components/layout";
 import {
   conversationsApi,
@@ -42,6 +42,17 @@ type MessageNotes = {
   grammarNotes?: GrammarNote[];
   tipsRich?: Tip[];
 };
+
+const TranslationBlock = memo(function TranslationBlock({
+  show,
+  text,
+}: {
+  show: boolean;
+  text?: string;
+}) {
+  if (!show || !text) return null;
+  return <div className="text-[#a6a6a6] text-sm mt-1">{text}</div>;
+});
 
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -351,6 +362,16 @@ export default function ConversationsPage() {
           } else if (payload.type === "user-update" && payload.data) {
             try {
               const data = JSON.parse(payload.data);
+              const notesCamel = data?.notes
+                ? {
+                    grammarNotes:
+                      data.notes.grammarNotes ||
+                      data.notes.grammar_notes ||
+                      undefined,
+                    tipsRich:
+                      data.notes.tipsRich || data.notes.tips_rich || undefined,
+                  }
+                : undefined;
               setMessages((prev) => {
                 const next = prev.map((m) =>
                   m.id === data.id
@@ -367,6 +388,7 @@ export default function ConversationsPage() {
                         segments: Array.isArray(data.segments)
                           ? data.segments
                           : undefined,
+                        notes: notesCamel !== undefined ? notesCamel : m.notes,
                       }
                     : m
                 );
@@ -376,6 +398,16 @@ export default function ConversationsPage() {
             } catch {}
           } else if (payload.type === "final" && payload.data) {
             const data = JSON.parse(payload.data);
+            const notesCamel = data?.notes
+              ? {
+                  grammarNotes:
+                    data.notes.grammarNotes ||
+                    data.notes.grammar_notes ||
+                    undefined,
+                  tipsRich:
+                    data.notes.tipsRich || data.notes.tips_rich || undefined,
+                }
+              : undefined;
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === aiMsgId
@@ -385,6 +417,7 @@ export default function ConversationsPage() {
                       hanzi: data.hanzi || m.hanzi,
                       pinyin: data.pinyin || "",
                       translation: data.translation || "",
+                      notes: notesCamel ?? m.notes,
                       audioUrl: data.audioUrl || undefined,
                       segments: Array.isArray(data.segments)
                         ? data.segments
@@ -429,6 +462,16 @@ export default function ConversationsPage() {
           const data = JSON.parse(
             (e as unknown as MessageEvent).data as string
           );
+          const notesCamel = data?.notes
+            ? {
+                grammarNotes:
+                  data.notes.grammarNotes ||
+                  data.notes.grammar_notes ||
+                  undefined,
+                tipsRich:
+                  data.notes.tipsRich || data.notes.tips_rich || undefined,
+              }
+            : undefined;
           setMessages((prev) =>
             prev.map((m) =>
               m.id === aiMsgId
@@ -438,7 +481,7 @@ export default function ConversationsPage() {
                     hanzi: data.hanzi || m.hanzi,
                     pinyin: data.pinyin || "",
                     translation: data.translation || "",
-                    notes: data.notes || m.notes,
+                    notes: notesCamel ?? m.notes,
                     segments: Array.isArray(data.segments)
                       ? data.segments
                       : undefined,
@@ -587,6 +630,18 @@ export default function ConversationsPage() {
                 );
               } else if (payload.type === "final" && payload.data) {
                 const data = JSON.parse(payload.data);
+                const notesCamel = data?.notes
+                  ? {
+                      grammarNotes:
+                        data.notes.grammarNotes ||
+                        data.notes.grammar_notes ||
+                        undefined,
+                      tipsRich:
+                        data.notes.tipsRich ||
+                        data.notes.tips_rich ||
+                        undefined,
+                    }
+                  : undefined;
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === aiMsgId
@@ -596,6 +651,7 @@ export default function ConversationsPage() {
                           hanzi: data.hanzi || m.hanzi,
                           pinyin: data.pinyin || "",
                           translation: data.translation || "",
+                          notes: notesCamel ?? m.notes,
                           audioUrl: data.audioUrl || undefined,
                           segments: Array.isArray(data.segments)
                             ? data.segments
@@ -640,6 +696,16 @@ export default function ConversationsPage() {
               const data = JSON.parse(
                 (e as unknown as MessageEvent).data as string
               );
+              const notesCamel = data?.notes
+                ? {
+                    grammarNotes:
+                      data.notes.grammarNotes ||
+                      data.notes.grammar_notes ||
+                      undefined,
+                    tipsRich:
+                      data.notes.tipsRich || data.notes.tips_rich || undefined,
+                  }
+                : undefined;
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === aiMsgId
@@ -649,7 +715,7 @@ export default function ConversationsPage() {
                         hanzi: data.hanzi || m.hanzi,
                         pinyin: data.pinyin || "",
                         translation: data.translation || "",
-                        notes: data.notes || m.notes,
+                        notes: notesCamel || m.notes,
                         audioUrl: data.audioUrl || undefined,
                         segments: Array.isArray(data.segments)
                           ? data.segments
@@ -969,9 +1035,7 @@ export default function ConversationsPage() {
     return (
       <div>
         {renderAligned(m.hanzi, m.pinyin)}
-        {showT && m.translation ? (
-          <div className="text-[#a6a6a6] text-xs mt-1">{m.translation}</div>
-        ) : null}
+        <TranslationBlock show={showT} text={m.translation} />
         {showN ? <NotesBlock /> : null}
         {popup.open && (
           <div
@@ -1264,7 +1328,7 @@ export default function ConversationsPage() {
           >
             {messages.map((m) => (
               <div
-                key={`${m.id}-${m.createdAt}`}
+                key={m.id}
                 className={m.role === "user" ? "ml-auto" : "mr-auto"}
               >
                 <div
@@ -1397,7 +1461,8 @@ export default function ConversationsPage() {
                         <span className="relative inline-flex rounded-full h-3 w-3 bg-[#4040f2]"></span>
                       </span>
                       <span>
-                        Processing… pinyin & translation will appear shortly
+                        Processing… pinyin, translation, audio and notes will
+                        appear shortly
                       </span>
                     </div>
                   )}
