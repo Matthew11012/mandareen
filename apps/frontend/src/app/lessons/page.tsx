@@ -1341,7 +1341,7 @@ export default function LessonsPage() {
                         const idx = Math.round(el.scrollLeft / el.clientWidth);
                         if (idx !== storiesPage) setStoriesPage(idx);
                       }}
-                      className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4"
+                      className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide"
                     >
                       <AnimatePresence mode="popLayout">
                         {storiesFiltered
@@ -1586,7 +1586,7 @@ export default function LessonsPage() {
                       const idx = Math.round(el.scrollLeft / el.clientWidth);
                       if (idx !== dialoguesPage) setDialoguesPage(idx);
                     }}
-                    className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4"
+                    className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide"
                   >
                     <AnimatePresence mode="popLayout">
                       {allDialogues

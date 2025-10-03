@@ -22,6 +22,7 @@ import {
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 // import { flashcardsApi } from "@/lib/api/flashcards";
+import { AnimatePresence, motion } from "framer-motion";
 
 export default function LessonViewerPage() {
   const router = useRouter();
@@ -249,20 +250,49 @@ export default function LessonViewerPage() {
     const margin = 8;
     const contW = contRect.width;
     const contH = contRect.height;
+
+    // Compute visible vertical region inside container accounting for sticky toolbar and viewport
+    const toolbar = document.querySelector(
+      '[role="toolbar"][aria-label="Lesson controls"]'
+    ) as HTMLElement | null;
+    const toolbarRect = toolbar?.getBoundingClientRect();
+    const toolbarBottom = toolbarRect ? toolbarRect.bottom : 0;
+    const visibleTopInContainer = Math.max(0, toolbarBottom - contRect.top);
+    const visibleBottomInContainer = Math.min(
+      contH,
+      Math.max(0, window.innerHeight - contRect.top)
+    );
+
+    // Horizontal: center on anchor, then clamp within container bounds
     let left = popup.x - modalRect.width / 2;
     left = Math.max(margin, Math.min(left, contW - modalRect.width - margin));
-    // Prefer above; if not enough space, place below the token
-    let top = popup.y - modalRect.height - margin;
-    if (top < margin) {
-      const anchorH = popup.anchorH || 0;
-      top = popup.y + anchorH + margin;
-      if (top + modalRect.height > contH - margin) {
-        top = Math.max(
-          margin,
-          Math.min(top, contH - modalRect.height - margin)
-        );
-      }
+
+    // Vertical: decide above/below by available space within visible region
+    const anchorH = popup.anchorH || 0;
+    const availableAbove = popup.y - visibleTopInContainer - margin;
+    const availableBelow =
+      visibleBottomInContainer - (popup.y + anchorH) - margin;
+    let top: number;
+    if (modalRect.height <= availableAbove || availableBelow < 0) {
+      // Above fits (or no space below)
+      top = Math.max(
+        visibleTopInContainer + margin,
+        popup.y - modalRect.height - margin
+      );
+    } else if (modalRect.height <= availableBelow || availableAbove < 0) {
+      // Below fits (or no space above)
+      top = Math.min(
+        visibleBottomInContainer - modalRect.height - margin,
+        popup.y + anchorH + margin
+      );
+    } else {
+      // Prefer below but clamp inside visible region
+      top = Math.min(
+        visibleBottomInContainer - modalRect.height - margin,
+        Math.max(visibleTopInContainer + margin, popup.y + anchorH + margin)
+      );
     }
+
     setPopupPos({ left, top });
   }, [popup.open, popup.x, popup.y, popup.anchorH]);
 
@@ -573,6 +603,69 @@ export default function LessonViewerPage() {
   }, [notesPopup.open]);
 
   const notesPopupRef = useRef<HTMLDivElement | null>(null);
+  const [notesPopupPos, setNotesPopupPos] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!notesPopup.open) {
+      setNotesPopupPos(null);
+      return;
+    }
+    const modal = notesPopupRef.current;
+    const container = contentRef.current;
+    if (!modal || !container) return;
+    const modalRect = modal.getBoundingClientRect();
+    const contRect = container.getBoundingClientRect();
+    const margin = 8;
+    const contW = contRect.width;
+    const contH = contRect.height;
+
+    // Compute visible vertical region inside container accounting for sticky toolbar and viewport
+    const toolbar = document.querySelector(
+      '[role="toolbar"][aria-label="Lesson controls"]'
+    ) as HTMLElement | null;
+    const toolbarRect = toolbar?.getBoundingClientRect();
+    const toolbarBottom = toolbarRect ? toolbarRect.bottom : 0;
+    const visibleTopInContainer = Math.max(0, toolbarBottom - contRect.top);
+    const visibleBottomInContainer = Math.min(
+      contH,
+      Math.max(0, window.innerHeight - contRect.top)
+    );
+
+    // Horizontal: center on anchor, then clamp within container bounds
+    let left = notesPopup.x - modalRect.width / 2;
+    left = Math.max(margin, Math.min(left, contW - modalRect.width - margin));
+
+    // Vertical: decide above/below by available space within visible region
+    const anchorH = notesPopup.anchorH || 0;
+    const availableAbove = notesPopup.y - visibleTopInContainer - margin;
+    const availableBelow =
+      visibleBottomInContainer - (notesPopup.y + anchorH) - margin;
+    let top: number;
+    if (modalRect.height <= availableAbove || availableBelow < 0) {
+      top = Math.max(
+        visibleTopInContainer + margin,
+        notesPopup.y - modalRect.height - margin
+      );
+    } else if (modalRect.height <= availableBelow || availableAbove < 0) {
+      top = Math.min(
+        visibleBottomInContainer - modalRect.height - margin,
+        notesPopup.y + anchorH + margin
+      );
+    } else {
+      top = Math.min(
+        visibleBottomInContainer - modalRect.height - margin,
+        Math.max(
+          visibleTopInContainer + margin,
+          notesPopup.y + anchorH + margin
+        )
+      );
+    }
+
+    setNotesPopupPos({ left, top });
+  }, [notesPopup.open, notesPopup.x, notesPopup.y, notesPopup.anchorH]);
 
   const renderNotesSegmentsWithPopup = (
     segments:
@@ -1039,11 +1132,21 @@ export default function LessonViewerPage() {
                         );
                       })}
                     </div>
-                    {isChunkTransOn(ci) && translationParagraphs[ci] && (
-                      <div className="text-[#a6a6a6] font-inter text-[15px] border-l border-[#404040] pl-3">
-                        {translationParagraphs[ci]}
-                      </div>
-                    )}
+                    <AnimatePresence initial={false}>
+                      {isChunkTransOn(ci) && translationParagraphs[ci] && (
+                        <motion.div
+                          key="chunk-translation"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.28, ease: "easeOut" }}
+                          style={{ overflow: "hidden" }}
+                          className="text-[#a6a6a6] font-inter text-[15px] border-l border-[#404040] pl-3"
+                        >
+                          {translationParagraphs[ci]}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 ))}
               </div>
@@ -1191,11 +1294,21 @@ export default function LessonViewerPage() {
                         );
                       })}
                     </div>
-                    {isTurnTransOn(ti) && turn.translation && (
-                      <div className="text-[#a6a6a6] font-inter text-[15px] border-l border-[#404040] pl-3 mt-2">
-                        {turn.translation}
-                      </div>
-                    )}
+                    <AnimatePresence initial={false}>
+                      {isTurnTransOn(ti) && turn.translation && (
+                        <motion.div
+                          key={`turn-translation-${ti}`}
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.28, ease: "easeOut" }}
+                          style={{ overflow: "hidden" }}
+                          className="text-[#a6a6a6] font-inter text-[15px] border-l border-[#404040] pl-3 mt-2"
+                        >
+                          {turn.translation}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 ))}
                 {Array.isArray(dialogue.grammarNotes) &&
@@ -1821,11 +1934,13 @@ export default function LessonViewerPage() {
                 ref={notesPopupRef}
                 style={{
                   position: "absolute",
-                  left: notesPopup.x,
-                  top: notesPopup.y,
+                  left: notesPopupPos ? notesPopupPos.left : notesPopup.x,
+                  top: notesPopupPos ? notesPopupPos.top : notesPopup.y,
                   zIndex: 10,
-                  visibility: "visible",
-                  transform: "translate(-50%, calc(-100% - 8px))",
+                  visibility: notesPopupPos ? "visible" : "hidden",
+                  transform: notesPopupPos
+                    ? "none"
+                    : "translate(-50%, calc(-100% - 8px))",
                 }}
                 className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
               >
