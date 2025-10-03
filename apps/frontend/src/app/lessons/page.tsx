@@ -195,6 +195,8 @@ export default function LessonsPage() {
             es.close();
             await load();
             setProgressOpen(false);
+            genStore.setLessonId(null);
+            genStore.finish();
             router.push(`/lessons/${id}`);
           }
         } catch {}
@@ -231,7 +233,7 @@ export default function LessonsPage() {
           await load();
           setProgressOpen(false);
           if (id) {
-            genStore.setLessonId(id);
+            genStore.setLessonId(null);
             router.push(`/lessons/${id}`);
           }
         } catch {
@@ -389,6 +391,8 @@ export default function LessonsPage() {
             es.close();
             await load();
             setProgressOpen(false);
+            genStore.setLessonId(null);
+            genStore.finish();
             router.push(`/lessons/${id}`);
           }
         } catch {
@@ -429,7 +433,7 @@ export default function LessonsPage() {
           await load();
           setProgressOpen(false);
           if (id) {
-            genStore.setLessonId(id);
+            genStore.setLessonId(null);
             router.push(`/lessons/${id}`);
           }
         } catch {
@@ -509,14 +513,7 @@ export default function LessonsPage() {
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
     const reattach = async () => {
-      if (!genStore.inProgress) {
-        if (genStore.lessonId) {
-          const id = genStore.lessonId;
-          genStore.setLessonId(null);
-          router.push(`/lessons/${id}`);
-        }
-        return;
-      }
+      if (!genStore.inProgress) return;
       const params = genStore.params;
       const startedAt = genStore.startedAt || 0;
       if (!params || Date.now() - startedAt > 10 * 60 * 1000) {
@@ -526,6 +523,10 @@ export default function LessonsPage() {
       }
       setProgressOpen(true);
       const poll = async () => {
+        if (!genStore.inProgress) {
+          if (interval) clearInterval(interval);
+          return;
+        }
         try {
           const createdAfter = startedAt - 60_000;
           const type = params.readTimeMinutes === 10 ? "story" : "dialogue";
@@ -540,9 +541,13 @@ export default function LessonsPage() {
             );
           if (candidates.length > 0) {
             const id = candidates[0].id;
-            genStore.setLessonId(id);
+            genStore.setLessonId(null);
             genStore.finish();
             setProgressOpen(false);
+            if (interval) {
+              clearInterval(interval);
+              interval = null;
+            }
             router.push(`/lessons/${id}`);
           }
         } catch {}
@@ -597,7 +602,7 @@ export default function LessonsPage() {
               />
               <div className="relative flex items-center justify-between gap-3">
                 <div className="font-inter font-semibold">
-                  Generating dialogue lesson…
+                  Generating lesson…
                 </div>
                 <div className="text-xs text-white/70">
                   This can take up to several minutes
