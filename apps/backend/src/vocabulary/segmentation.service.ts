@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
-
 export interface SegmentResult {
   word: string;
   startIndex: number;
@@ -35,10 +34,6 @@ export class SegmentationService {
       void this.prisma;
       return;
     }
-
-    console.log(
-      '🔍 [SegmentationService] Initializing in-memory dictionary from DB...',
-    );
 
     // 1) Load vocabulary from DB
     const vocabularyItems = await this.prisma.vocabularyItem.findMany({
@@ -113,21 +108,8 @@ export class SegmentationService {
     // Cap max token length and finalize (DB-only)
     this.maxTokenLength = Math.min(this.maxTokenLength, 16);
 
-    // Quick debug sample
-    const testWords = ['仿佛'];
-    for (const word of testWords) {
-      const entry = this.dictionary.get(word);
-      if (entry) {
-        console.log(
-          `✓ Loaded "${word}": HSK ${entry.hskLevel || 'unknown'}, pinyin: ${entry.pinyin || 'none'}`,
-        );
-      }
-    }
-
     this.initialized = true;
     return;
-
-    
   }
 
   async segmentText(
@@ -197,27 +179,11 @@ export class SegmentationService {
         continue;
       }
 
-      // Debug logging for specific problematic words
-      const remainingText = text.substring(i, i + 4); // Look ahead 4 characters
-      const isDebugWord =
-        remainingText.includes('仿佛') || remainingText.includes('你好');
-
       for (let len = maxLen; len >= 1; len--) {
         const substring = text.substring(i, i + len);
         const dictEntry = localDict.get(substring);
 
-        if (isDebugWord && len >= 2) {
-          console.log(
-            `🔍 Checking "${substring}" (len=${len}): ${dictEntry ? '✓ FOUND' : '✗ not found'}`,
-          );
-        }
-
         if (dictEntry) {
-          if (isDebugWord) {
-            console.log(
-              `✅ Matched "${substring}" with HSK ${dictEntry.hskLevel}`,
-            );
-          }
           segments.push({
             word: substring,
             startIndex: i,
