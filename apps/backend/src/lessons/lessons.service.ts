@@ -933,6 +933,23 @@ export class LessonsService {
     return rows.map((r: { lessonId: number }) => r.lessonId);
   }
 
+  async getFinishedCountsByLevel(
+    userId: number,
+  ): Promise<Record<number, number>> {
+    // Fetch finished progresses with lesson level to aggregate in-memory.
+    const rows = await (this.prismaService as any).lessonProgress.findMany({
+      where: { userId, finishedAt: { not: null } },
+      select: { lesson: { select: { level: true } } },
+    });
+    const counts: Record<number, number> = {};
+    for (const r of rows) {
+      const lvl: number | undefined = r?.lesson?.level;
+      if (!lvl) continue;
+      counts[lvl] = (counts[lvl] || 0) + 1;
+    }
+    return counts;
+  }
+
   private async resolveUserLevel(userId: number): Promise<number> {
     const latest = await this.prismaService.assessment.findFirst({
       where: { userId },

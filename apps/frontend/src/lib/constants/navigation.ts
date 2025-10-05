@@ -67,7 +67,7 @@ export const NAVIGATION_DATA: NavigationData = [
         label: "Progress",
         href: "/progress",
         icon: "TrendingUp",
-        isComingSoon: true,
+        isComingSoon: false,
         description: "Track your learning journey",
       },
     ],

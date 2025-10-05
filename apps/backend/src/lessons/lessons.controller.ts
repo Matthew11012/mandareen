@@ -179,4 +179,14 @@ export class LessonsController {
     const ids = await this.lessonsService.getFinishedLessonIds(req.user.id);
     return { ids };
   }
+
+  @Get('progress/by-level')
+  async getFinishedByLevel(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ byLevel: Record<number, number> }> {
+    const byLevel = await this.lessonsService.getFinishedCountsByLevel(
+      req.user.id,
+    );
+    return { byLevel };
+  }
 }

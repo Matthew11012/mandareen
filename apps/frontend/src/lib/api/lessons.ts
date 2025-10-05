@@ -88,4 +88,10 @@ export const lessonsApi = {
     const res = await api.get<{ ids: number[] }>(`/lessons/progress/ids`);
     return res.data;
   },
+  async getProgressByLevel() {
+    const res = await api.get<{ byLevel: Record<number, number> }>(
+      `/lessons/progress/by-level`
+    );
+    return res.data;
+  },
 };
