@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -14,174 +8,191 @@ datasource db {
 }
 
 model User {
-  id               Int             @id @default(autoincrement())
-  email            String          @unique
-  password_hashed  String
-  googleId         String?         @unique
-  createdAt        DateTime        @default(now())
-  assessments      Assessment[]
-  flashcards       Flashcard[]
-  conversations    Conversation[]
+  id              Int            @id @default(autoincrement())
+  email           String         @unique
+  password_hashed String
+  createdAt       DateTime       @default(now())
+  googleId        String?        @unique
+  assessments     Assessment[]
+  conversations   Conversation[]
+  flashcards      Flashcard[]
+  lessonProgresses LessonProgress[]
 }
 
 model Assessment {
-  id           Int       @id @default(autoincrement())
-  user         User      @relation(fields: [userId], references: [id])
-  userId       Int
-  levelPlaced  Int
-  takenAt      DateTime  @default(now())
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  levelPlaced Int
+  takenAt     DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
 }
 
 model Lesson {
-  id         Int             @id @default(autoincrement())
-  level      Int
-  title      String?
-  createdBy  String?
-  createdAt  DateTime        @default(now())
-  sections   LessonSection[]
+  id        Int             @id @default(autoincrement())
+  level     Int
+  title     String?
+  createdBy String?
+  createdAt DateTime        @default(now())
+  sections  LessonSection[]
+  progress  LessonProgress[]
 }
 
 model LessonSection {
-  id           Int     @id @default(autoincrement())
-  lesson       Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  lessonId     Int
-  sectionType  String
-  content      Json
+  id            Int            @id @default(autoincrement())
+  lessonId      Int
+  sectionType   String
+  content       Json
+  lesson        Lesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   wordInstances WordInstance[]
 }
 
+model LessonProgress {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  lessonId   Int
+  finishedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@index([userId])
+  @@index([lessonId])
+}
+
 model VocabularyItem {
-  id          Int             @id @default(autoincrement())
-  hanzi       String          @unique
+  id          Int               @id @default(autoincrement())
+  hanzi       String            @unique
   pinyin      String
   definition  String
-  hskLevel    Int?            // HSK level (1-7), null for non-HSK words
-  isCustom    Boolean         @default(false)  // User-added words
-  frequency   Int?            // Word frequency ranking
-  traditional String?         // Traditional characters
-  source      String?         // Data source (HSK30, HSK20, CEDICT, etc.)
-  createdAt   DateTime        @default(now())
-  instances   WordInstance[]
+  createdAt   DateTime          @default(now())
+  frequency   Int?
+  hskLevel    Int?
+  isCustom    Boolean           @default(false)
+  source      String?
+  traditional String?
   flashcards  Flashcard[]
   senses      VocabularySense[]
-  
+  instances   WordInstance[]
+
   @@index([hanzi])
   @@index([hskLevel])
   @@index([source])
 }
 
 model WordInstance {
-  id          Int             @id @default(autoincrement())
-  section     LessonSection?  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  sectionId   Int?
-  message     Message?        @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  messageId   Int?
-  vocab       VocabularyItem  @relation(fields: [vocabId], references: [id], onDelete: Cascade)
-  vocabId     Int
-  startIndex  Int
-  endIndex    Int
-  context     String          // The surrounding text for context
-  createdAt   DateTime        @default(now())
-  flashcards  Flashcard[]
+  id         Int            @id @default(autoincrement())
+  sectionId  Int?
+  vocabId    Int
+  startIndex Int
+  endIndex   Int
+  context    String
+  createdAt  DateTime       @default(now())
+  messageId  Int?
+  flashcards Flashcard[]
+  message    Message?       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  section    LessonSection? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  vocab      VocabularyItem @relation(fields: [vocabId], references: [id], onDelete: Cascade)
 }
 
 model Flashcard {
-  id                Int             @id @default(autoincrement())
-  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId            Int
-  vocab             VocabularyItem  @relation(fields: [vocabId], references: [id], onDelete: Cascade)
-  vocabId           Int
-  sourceInstance    WordInstance?   @relation(fields: [sourceInstanceId], references: [id])
-  sourceInstanceId  Int?
-  nextReview        DateTime
-  intervalDays      Int
-  easiness          Float
-  reviews           Review[]
-  sentences         FlashcardSentence[]
+  id               Int                 @id @default(autoincrement())
+  userId           Int
+  vocabId          Int
+  sourceInstanceId Int?
+  nextReview       DateTime
+  intervalDays     Int
+  easiness         Float
+  sourceInstance   WordInstance?       @relation(fields: [sourceInstanceId], references: [id])
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vocab            VocabularyItem      @relation(fields: [vocabId], references: [id], onDelete: Cascade)
+  sentences        FlashcardSentence[]
+  reviews          Review[]
 }
 
 model Review {
-  id           Int       @id @default(autoincrement())
-  flashcard    Flashcard @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
-  flashcardId  Int
-  reviewedAt   DateTime  @default(now())
-  quality      Int
+  id          Int       @id @default(autoincrement())
+  flashcardId Int
+  reviewedAt  DateTime  @default(now())
+  quality     Int
+  flashcard   Flashcard @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
 }
 
 model FlashcardSentence {
-  id           Int        @id @default(autoincrement())
-  flashcard    Flashcard  @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
-  flashcardId  Int
-  hanzi        String
-  pinyin       String?
-  translation  String?
-  createdAt    DateTime   @default(now())
+  id          Int       @id @default(autoincrement())
+  flashcardId Int
+  hanzi       String
+  pinyin      String?
+  translation String?
+  createdAt   DateTime  @default(now())
+  flashcard   Flashcard @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
 }
 
 model Conversation {
-  id          Int       @id @default(autoincrement())
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      Int
-  startedAt   DateTime  @default(now())
-  messages    Message[]
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  startedAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
 }
 
 model Message {
-  id              Int           @id @default(autoincrement())
-  conversation    Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  conversationId  Int
-  role            String
-  hanzi           String
-  pinyin          String
-  translation     String
-  audioUrl        String?
-  notes           Json?
-  createdAt       DateTime      @default(now())
-  wordInstances   WordInstance[]
+  id             Int            @id @default(autoincrement())
+  conversationId Int
+  role           String
+  hanzi          String
+  pinyin         String
+  translation    String
+  audioUrl       String?
+  createdAt      DateTime       @default(now())
+  notes          Json?
+  conversation   Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  wordInstances  WordInstance[]
 }
 
 /// RAG: Knowledge sources and chunks for grounded generation
 model RagSource {
-  id          Int       @id @default(autoincrement())
-  title       String
-  sourceType  String    // pdf | md | txt | url
-  language    String?   // zh | en | bilingual
-  metadata    Json?
-  createdAt   DateTime  @default(now())
-  sections    RagSection[]
-  chunks      RagChunk[]
+  id         Int          @id @default(autoincrement())
+  title      String
+  sourceType String
+  language   String?
+  metadata   Json?
+  createdAt  DateTime     @default(now())
+  chunks     RagChunk[]
+  sections   RagSection[]
 }
 
 model RagSection {
-  id         Int       @id @default(autoincrement())
-  source     RagSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  sourceId   Int
-  heading    String?
-  slug       String?
-  tags       String[]
-  hskMin     Int?
-  hskMax     Int?
-  metadata   Json?
-  createdAt  DateTime  @default(now())
-  chunks     RagChunk[]
+  id        Int        @id @default(autoincrement())
+  sourceId  Int
+  heading   String?
+  slug      String?
+  tags      String[]
+  hskMin    Int?
+  hskMax    Int?
+  metadata  Json?
+  createdAt DateTime   @default(now())
+  chunks    RagChunk[]
+  source    RagSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 }
 
 model RagChunk {
-  id         Int        @id @default(autoincrement())
-  source     RagSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  sourceId   Int
-  section    RagSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  sectionId  Int
-  hanzi      String?
-  english    String?
-  tokens     Int?
-  tags       String[]
-  hskMin     Int?
-  hskMax     Int?
-  createdAt  DateTime   @default(now())
-  // Optional cached embeddings (JSON array for portability; switch to pgvector later)
-  embeddingZh Json?
-  embeddingEn Json?
+  id           Int            @id @default(autoincrement())
+  sourceId     Int
+  sectionId    Int
+  hanzi        String?
+  english      String?
+  tokens       Int?
+  tags         String[]
+  hskMin       Int?
+  hskMax       Int?
+  createdAt    DateTime       @default(now())
+  embeddingZh  Json?
+  embeddingEn  Json?
+  section      RagSection     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  source       RagSource      @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  RagEmbedding RagEmbedding[]
 
   @@index([sourceId])
   @@index([sectionId])
@@ -189,13 +200,25 @@ model RagChunk {
 }
 
 model VocabularySense {
-  id               Int             @id @default(autoincrement())
-  vocabularyItem   VocabularyItem  @relation(fields: [vocabularyItemId], references: [id], onDelete: Cascade)
+  id               Int            @id @default(autoincrement())
   vocabularyItemId Int
   pinyin           String?
   definition       String
-  createdAt        DateTime        @default(now())
+  createdAt        DateTime       @default(now())
+  vocabularyItem   VocabularyItem @relation(fields: [vocabularyItemId], references: [id], onDelete: Cascade)
 
   @@unique([vocabularyItemId, pinyin, definition])
   @@index([vocabularyItemId])
+}
+
+model RagEmbedding {
+  id        Int                    @id @default(autoincrement())
+  chunkId   Int
+  kind      String
+  dimension Int
+  vector    Unsupported("vector")?
+  RagChunk  RagChunk               @relation(fields: [chunkId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([chunkId, kind])
+  @@index([vector], map: "ragembedding_vector_hnsw")
 }

@@ -74,17 +74,21 @@ export default function LessonsPage() {
     "Visiting the doctor",
   ];
 
+  const [finishedIds, setFinishedIds] = useState<Set<number>>(new Set());
+
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [allData, mineData] = await Promise.all([
+      const [allData, mineData, finished] = await Promise.all([
         lessonsApi.list(),
         lessonsApi.listMine(),
+        lessonsApi.getFinishedIds().catch(() => ({ ids: [] })),
       ]);
       setMyItems(mineData);
       setAllStories(allData.filter((i) => i.lessonType === "story"));
       setAllDialogues(allData.filter((i) => i.lessonType === "dialogue"));
+      setFinishedIds(new Set((finished?.ids || []) as number[]));
     } catch {
       setError("Failed to load lessons");
     } finally {
@@ -654,7 +658,7 @@ export default function LessonsPage() {
               </ol>
             </motion.div>
           </div>
-         )} 
+        )}
         {/* Topic & Generation Options */}
         <div className="bg-[#2e323a] rounded-xl p-4 border border-[#404040] space-y-3">
           <div className="text-white font-inter font-semibold">
@@ -953,6 +957,17 @@ export default function LessonsPage() {
                                                           {l.title ||
                                                             `Lesson #${l.id}`}
                                                         </p>
+                                                        {finishedIds.has(
+                                                          l.id
+                                                        ) && (
+                                                          <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-inter">
+                                                            <span
+                                                              className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"
+                                                              aria-hidden="true"
+                                                            />
+                                                            Finished
+                                                          </span>
+                                                        )}
                                                         <span
                                                           className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
                                                         >
@@ -1174,6 +1189,17 @@ export default function LessonsPage() {
                                                           {l.title ||
                                                             `Dialogue #${l.id}`}
                                                         </p>
+                                                        {finishedIds.has(
+                                                          l.id
+                                                        ) && (
+                                                          <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-inter">
+                                                            <span
+                                                              className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"
+                                                              aria-hidden="true"
+                                                            />
+                                                            Finished
+                                                          </span>
+                                                        )}
                                                         <span
                                                           className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
                                                         >

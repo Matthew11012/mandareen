@@ -34,6 +34,7 @@ export interface LessonDetail {
   title: string | null;
   createdAt: string;
   sections: LessonSection[];
+  finished?: boolean;
 }
 
 export const lessonsApi = {
@@ -72,6 +73,19 @@ export const lessonsApi = {
   },
   async getById(id: number) {
     const res = await api.get<LessonDetail>(`/lessons/${id}`);
+    return res.data;
+  },
+  async finish(id: number) {
+    await api.post(`/lessons/${id}/finish`, {});
+  },
+  async getProgressCount() {
+    const res = await api.get<{ finishedCount: number }>(
+      `/lessons/progress/count`
+    );
+    return res.data;
+  },
+  async getFinishedIds() {
+    const res = await api.get<{ ids: number[] }>(`/lessons/progress/ids`);
     return res.data;
   },
 };

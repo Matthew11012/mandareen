@@ -894,11 +894,43 @@ export class LessonsService {
     });
   }
 
-  async getLessonById(id: number) {
-    return this.prismaService.lesson.findUniqueOrThrow({
+  async getLessonById(id: number, currentUserId?: number) {
+    const lesson = await this.prismaService.lesson.findUniqueOrThrow({
       where: { id },
       include: { sections: { orderBy: { id: 'asc' } } },
     });
+    if (!currentUserId) return lesson as any;
+    const progress = await (
+      this.prismaService as any
+    ).lessonProgress.findUnique({
+      where: { userId_lessonId: { userId: currentUserId, lessonId: id } },
+      select: { finishedAt: true },
+    });
+    return { ...lesson, finished: Boolean(progress?.finishedAt) } as any;
+  }
+
+  async markLessonFinished(userId: number, lessonId: number) {
+    // Idempotent: upsert by unique (userId, lessonId)
+    await (this.prismaService as any).lessonProgress.upsert({
+      where: { userId_lessonId: { userId, lessonId } },
+      update: { finishedAt: new Date() },
+      create: { userId, lessonId, finishedAt: new Date() },
+    });
+    return { ok: true } as const;
+  }
+
+  async countFinishedLessons(userId: number): Promise<number> {
+    return (this.prismaService as any).lessonProgress.count({
+      where: { userId, finishedAt: { not: null } },
+    });
+  }
+
+  async getFinishedLessonIds(userId: number): Promise<number[]> {
+    const rows = await (this.prismaService as any).lessonProgress.findMany({
+      where: { userId, finishedAt: { not: null } },
+      select: { lessonId: true },
+    });
+    return rows.map((r: { lessonId: number }) => r.lessonId);
   }
 
   private async resolveUserLevel(userId: number): Promise<number> {

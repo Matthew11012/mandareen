@@ -53,6 +53,7 @@ export default function LessonViewerPage() {
       { text: string; pinyin?: string; paraIndex?: number; tokenIndex?: number }
     >
   >({});
+  const [finishLoading, setFinishLoading] = useState(false);
 
   const load = async () => {
     if (!id) return;
@@ -1735,6 +1736,61 @@ export default function LessonViewerPage() {
                   </ul>
                 </div>
               )}
+
+            {/* Finish lesson action at the bottom, after Tips */}
+            <div className="mt-8 flex justify-center">
+              <button
+                aria-label={
+                  data?.finished ? "Lesson finished" : "Mark lesson as finished"
+                }
+                disabled={finishLoading || Boolean(data?.finished)}
+                className={
+                  `w-full sm:w-auto px-4 py-2 text-sm rounded-lg font-medium transition-all duration-200 active:scale-[0.98]  disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831] ` +
+                  (data?.finished
+                    ? `bg-green-600 text-white border border-green-500 hover:bg-green-500`
+                    : `bg-[#222831] text-white border border-[#404060] hover:border-[#4040f2] shadow-sm`)
+                }
+                onClick={async () => {
+                  try {
+                    setFinishLoading(true);
+                    await lessonsApi.finish(id);
+                    setData((prev) =>
+                      prev ? { ...prev, finished: true } : prev
+                    );
+                    toast.success("Marked as finished");
+                  } catch {
+                    toast.error("Failed to mark as finished");
+                  } finally {
+                    setFinishLoading(false);
+                  }
+                }}
+              >
+                {!data?.finished && finishLoading ? (
+                  <svg
+                    className="mr-2 inline h-4 w-4 animate-spin text-[#cbd5e1]"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                    ></path>
+                  </svg>
+                ) : null}
+                {data?.finished ? "Finished ✓" : "Mark lesson as finished"}
+              </button>
+            </div>
 
             {popup.open && (
               <div

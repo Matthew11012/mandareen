@@ -37,7 +37,7 @@ export default function DashboardPage() {
   >([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [lessonsCount, setLessonsCount] = useState(0);
+  const [finishedLessonsCount, setFinishedLessonsCount] = useState(0);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(5);
 
   useEffect(() => {
@@ -56,9 +56,9 @@ export default function DashboardPage() {
     };
     fetchHistory();
     lessonsApi
-      .list()
-      .then((items) => setLessonsCount(items.length || 0))
-      .catch(() => setLessonsCount(0));
+      .getProgressCount()
+      .then((r) => setFinishedLessonsCount(r.finishedCount || 0))
+      .catch(() => setFinishedLessonsCount(0));
     return () => {
       isMounted = false;
     };
@@ -221,10 +221,18 @@ export default function DashboardPage() {
                     Personalized learning content
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                  <span className="text-xs text-green-400 font-inter">
-                    Available
+                <div
+                  className="inline-flex items-center gap-2"
+                  aria-live="polite"
+                >
+                  <span className="text-[#a6a6a6] font-inter text-xs whitespace-nowrap leading-none">
+                    Finished lessons:
+                  </span>
+                  <span
+                    className="text-green-400 font-inter font-semibold leading-none text-sm"
+                    style={{ fontVariantNumeric: "tabular-nums" }}
+                  >
+                    {finishedLessonsCount}
                   </span>
                 </div>
               </div>
@@ -317,21 +325,22 @@ export default function DashboardPage() {
               </p>
             </div>
             <div
-              className={`flex items-center gap-3 ${lessonsCount > 0 ? "" : "opacity-60"}`}
+              className={`flex items-center gap-3 ${finishedLessonsCount > 0 ? "" : "opacity-60"}`}
             >
               <div
-                className={`w-6 h-6 rounded-full flex items-center justify-center ${lessonsCount > 0 ? "bg-green-500" : "bg-[#404040]"}`}
+                className={`w-6 h-6 rounded-full flex items-center justify-center ${finishedLessonsCount > 0 ? "bg-green-500" : "bg-[#404040]"}`}
               >
                 <span
-                  className={`text-xs font-bold ${lessonsCount > 0 ? "text-white" : "text-[#999999]"}`}
+                  className={`text-xs font-bold ${finishedLessonsCount > 0 ? "text-white" : "text-[#999999]"}`}
                 >
                   3
                 </span>
               </div>
               <p
-                className={`${lessonsCount > 0 ? "text-white" : "text-[#999999]"} font-inter`}
+                className={`${finishedLessonsCount > 0 ? "text-white" : "text-[#999999]"} font-inter`}
               >
-                Practice with flashcards and conversation AI
+                Mark lessons as finished, then practice with flashcards and
+                conversation AI
               </p>
             </div>
           </div>

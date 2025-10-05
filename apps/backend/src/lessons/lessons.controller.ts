@@ -124,14 +124,21 @@ export class LessonsController {
   }
 
   @Get(':id')
-  async getLessonById(@Param('id') id: string): Promise<{
+  async getLessonById(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ): Promise<{
     id: number;
     level: number;
     title: string | null;
     createdAt: string;
     sections: Array<{ id: number; sectionType: string; content: any }>;
+    finished?: boolean;
   }> {
-    const lesson = await this.lessonsService.getLessonById(parseInt(id, 10));
+    const lesson = await this.lessonsService.getLessonById(
+      parseInt(id, 10),
+      req.user?.id,
+    );
     return {
       id: lesson.id,
       level: lesson.level,
@@ -142,6 +149,34 @@ export class LessonsController {
         sectionType: s.sectionType,
         content: s.content,
       })),
+      finished: (lesson as any).finished,
     };
+  }
+
+  @Post(':id/finish')
+  async markFinished(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ): Promise<{ ok: true }> {
+    await this.lessonsService.markLessonFinished(req.user.id, parseInt(id, 10));
+    return { ok: true } as const;
+  }
+
+  @Get('progress/count')
+  async getFinishedCount(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ finishedCount: number }> {
+    const finishedCount = await this.lessonsService.countFinishedLessons(
+      req.user.id,
+    );
+    return { finishedCount };
+  }
+
+  @Get('progress/ids')
+  async getFinishedIds(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ ids: number[] }> {
+    const ids = await this.lessonsService.getFinishedLessonIds(req.user.id);
+    return { ids };
   }
 }
