@@ -214,4 +214,12 @@ export class LessonsController {
     );
     return { learnedCount };
   }
+
+  @Get('progress/words-by-hsk')
+  async getWordsLearnedByHsk(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ byHsk: Record<string, number> }> {
+    const byHsk = await this.lessonsService.getWordsLearnedByHsk(req.user.id);
+    return { byHsk };
+  }
 }

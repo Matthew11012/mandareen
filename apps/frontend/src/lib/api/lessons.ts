@@ -109,4 +109,10 @@ export const lessonsApi = {
     );
     return res.data;
   },
+  async getWordsLearnedByHsk() {
+    const res = await api.get<{ byHsk: Record<string, number> }>(
+      `/lessons/progress/words-by-hsk`
+    );
+    return res.data;
+  },
 };

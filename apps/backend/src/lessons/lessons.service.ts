@@ -1017,6 +1017,100 @@ export class LessonsService {
     return uniqueWords.size;
   }
 
+  async getWordsLearnedByHsk(userId: number): Promise<Record<string, number>> {
+    const finishedLessonIds = await this.getFinishedLessonIds(userId);
+    if (!finishedLessonIds || finishedLessonIds.length === 0) return {};
+
+    // Prefer relational path via WordInstance -> VocabularyItem.hskLevel
+    try {
+      const viaInstances: Array<{ hskLevel: number | null }> = await (
+        this.prismaService as any
+      ).wordInstance.findMany({
+        where: { section: { lessonId: { in: finishedLessonIds } } },
+        select: { vocab: { select: { hskLevel: true } } },
+        distinct: ['vocabId'],
+      });
+      if (Array.isArray(viaInstances) && viaInstances.length > 0) {
+        const counts: Record<string, number> = {};
+        for (const row of viaInstances as any[]) {
+          const lvl = row?.vocab?.hskLevel ?? null;
+          const key = lvl ? String(lvl) : 'unknown';
+          counts[key] = (counts[key] || 0) + 1;
+        }
+        return counts;
+      }
+    } catch {
+      this.logger.warn('Error getting words learned by HSK via WordInstance');
+    }
+
+    // Fallback: from sections.segments text -> VocabularyItem by hanzi.hanzi
+    const lessons = await (this.prismaService as any).lesson.findMany({
+      where: { id: { in: finishedLessonIds } },
+      select: { sections: { select: { sectionType: true, content: true } } },
+    });
+    const uniqueTokens = new Set<string>();
+    for (const lesson of lessons as Array<{
+      sections: Array<{ sectionType: string; content: any }>;
+    }>) {
+      for (const section of lesson.sections) {
+        const type = (section.sectionType || '').toLowerCase();
+        const content: any = section.content || {};
+        if (type === 'dialogue') {
+          const turns: any[] = Array.isArray(content.turns)
+            ? content.turns
+            : [];
+          for (const t of turns) {
+            const segs: any[] = Array.isArray(t?.segments) ? t.segments : [];
+            for (const s of segs) {
+              if (
+                s &&
+                s.isWord &&
+                typeof s.text === 'string' &&
+                s.text.trim().length > 0
+              ) {
+                uniqueTokens.add(s.text.trim());
+              }
+            }
+          }
+        } else {
+          const segs: any[] = Array.isArray(content.segments)
+            ? content.segments
+            : [];
+          for (const s of segs) {
+            if (
+              s &&
+              s.isWord &&
+              typeof s.text === 'string' &&
+              s.text.trim().length > 0
+            ) {
+              uniqueTokens.add(s.text.trim());
+            }
+          }
+        }
+      }
+    }
+    if (uniqueTokens.size === 0) return {};
+
+    // Fetch hskLevel for those tokens from VocabularyItem.hanzi
+    const tokenArray = Array.from(uniqueTokens);
+    const vocabRows: Array<{ hanzi: string; hskLevel: number | null }> = await (
+      this.prismaService as any
+    ).vocabularyItem.findMany({
+      where: { hanzi: { in: tokenArray } },
+      select: { hanzi: true, hskLevel: true },
+    });
+    const hanziToLevel = new Map<string, number | null>();
+    for (const v of vocabRows) hanziToLevel.set(v.hanzi, v.hskLevel ?? null);
+
+    const counts: Record<string, number> = {};
+    for (const token of tokenArray) {
+      const lvl = hanziToLevel.get(token) ?? null;
+      const key = lvl ? String(lvl) : 'unknown';
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return counts;
+  }
+
   async getStudyStreakDays(userId: number, offsetMinutes = 0): Promise<number> {
     // Fetch finishedAt timestamps for the user, newest first
     const progresses: Array<{ finishedAt: Date | null }> = await (
