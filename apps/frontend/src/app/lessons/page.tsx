@@ -1034,6 +1034,11 @@ export default function LessonsPage() {
                                                 >
                                                   <div className="flex-1 min-w-0">
                                                     <div className="flex items-center justify-between gap-2">
+                                                      <span
+                                                        className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                                      >
+                                                        HSK {l.level}
+                                                      </span>
                                                       {finishedIds.has(l.id) ? (
                                                         <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
                                                           <svg
@@ -1053,24 +1058,15 @@ export default function LessonsPage() {
                                                       ) : (
                                                         <span />
                                                       )}
-                                                      <span
-                                                        className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                      >
-                                                        HSK {l.level}
-                                                      </span>
                                                     </div>
-                                                    <p className="text-white font-inter font-semibold truncate mt-1">
-                                                      {l.title ||
+                                                    <p className="text-white font-inter font-semibold truncate mt-2 text-sm">
+                                                      {l.titleTranslation ||
+                                                        l.title ||
                                                         `Lesson #${l.id}`}
                                                     </p>
-                                                    {l.titlePinyin && (
-                                                      <p className="text-[#9aa6ff] font-inter text-xs truncate hidden sm:block">
-                                                        {l.titlePinyin}
-                                                      </p>
-                                                    )}
-                                                    {l.titleTranslation && (
-                                                      <p className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1">
-                                                        {l.titleTranslation}
+                                                    {l.title && (
+                                                      <p className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1">
+                                                        {l.title}
                                                       </p>
                                                     )}
                                                     <div className="mt-2 pt-2 border-t border-[#404040] flex items-center justify-between text-[11px] text-[#8b949e]">
@@ -1318,6 +1314,11 @@ export default function LessonsPage() {
                                                 >
                                                   <div className="flex-1 min-w-0">
                                                     <div className="flex items-center justify-between gap-2">
+                                                      <span
+                                                        className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                                      >
+                                                        HSK {l.level}
+                                                      </span>
                                                       {finishedIds.has(l.id) ? (
                                                         <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
                                                           <svg
@@ -1337,25 +1338,15 @@ export default function LessonsPage() {
                                                       ) : (
                                                         <span />
                                                       )}
-
-                                                      <span
-                                                        className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                      >
-                                                        HSK {l.level}
-                                                      </span>
                                                     </div>
-                                                    <p className="text-white font-inter font-semibold truncate mt-1">
-                                                      {l.title ||
+                                                    <p className="text-white font-inter font-semibold truncate mt-2 text-sm">
+                                                      {l.titleTranslation ||
+                                                        l.title ||
                                                         `Dialogue #${l.id}`}
                                                     </p>
-                                                    {l.titlePinyin && (
-                                                      <p className="text-[#9aa6ff] font-inter text-xs truncate hidden sm:block">
-                                                        {l.titlePinyin}
-                                                      </p>
-                                                    )}
-                                                    {l.titleTranslation && (
-                                                      <p className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1">
-                                                        {l.titleTranslation}
+                                                    {l.title && (
+                                                      <p className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1">
+                                                        {l.title}
                                                       </p>
                                                     )}
                                                     <div className="mt-2 pt-2 border-t border-[#404040] flex items-center justify-between text-[11px] text-[#8b949e]">
@@ -1639,6 +1630,11 @@ export default function LessonsPage() {
                                           >
                                             <div className="flex-1 min-w-0">
                                               <div className="flex items-center justify-between gap-2">
+                                                <span
+                                                  className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                                >
+                                                  HSK {l.level}
+                                                </span>
                                                 {finishedIds.has(l.id) ? (
                                                   <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
                                                     <svg
@@ -1658,23 +1654,15 @@ export default function LessonsPage() {
                                                 ) : (
                                                   <span />
                                                 )}
-                                                <span
-                                                  className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                >
-                                                  HSK {l.level}
-                                                </span>
                                               </div>
-                                              <p className="text-white font-inter font-semibold truncate mt-1">
-                                                {l.title || `Lesson #${l.id}`}
+                                              <p className="text-white font-inter font-semibold truncate mt-2 text-sm">
+                                                {l.titleTranslation ||
+                                                  l.title ||
+                                                  `Lesson #${l.id}`}
                                               </p>
-                                              {l.titlePinyin && (
-                                                <p className="text-[#9aa6ff] font-inter text-xs truncate hidden sm:block">
-                                                  {l.titlePinyin}
-                                                </p>
-                                              )}
-                                              {l.titleTranslation && (
-                                                <p className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1">
-                                                  {l.titleTranslation}
+                                              {l.title && (
+                                                <p className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1">
+                                                  {l.title}
                                                 </p>
                                               )}
                                               <div className="mt-2 pt-2 border-t border-[#404040] flex items-center justify-between text-[11px] text-[#8b949e]">
@@ -1948,6 +1936,11 @@ export default function LessonsPage() {
                                         >
                                           <div className="flex-1 min-w-0">
                                             <div className="flex items-center justify-between gap-2">
+                                              <span
+                                                className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                              >
+                                                HSK {l.level}
+                                              </span>
                                               {finishedIds.has(l.id) ? (
                                                 <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
                                                   <svg
@@ -1967,23 +1960,15 @@ export default function LessonsPage() {
                                               ) : (
                                                 <span />
                                               )}
-                                              <span
-                                                className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                              >
-                                                HSK {l.level}
-                                              </span>
                                             </div>
-                                            <p className="text-white font-inter font-semibold truncate mt-1">
-                                              {l.title || `Dialogue #${l.id}`}
+                                            <p className="text-white font-inter font-semibold truncate mt-1 text-sm">
+                                              {l.titleTranslation ||
+                                                l.title ||
+                                                `Dialogue #${l.id}`}
                                             </p>
-                                            {l.titlePinyin && (
-                                              <p className="text-[#9aa6ff] font-inter text-xs truncate hidden sm:block">
-                                                {l.titlePinyin}
-                                              </p>
-                                            )}
-                                            {l.titleTranslation && (
-                                              <p className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1">
-                                                {l.titleTranslation}
+                                            {l.title && (
+                                              <p className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1">
+                                                {l.title}
                                               </p>
                                             )}
                                             <div className="mt-2 pt-2 border-t border-[#404040] flex items-center justify-between text-[11px] text-[#8b949e]">
