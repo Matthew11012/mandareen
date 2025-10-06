@@ -43,7 +43,7 @@ export default function ProgressPage() {
         const [finished, allLessons, wordsByHskRes] = await Promise.all([
           lessonsApi.getProgressByLevel(),
           lessonsApi.list(),
-          lessonsApi.getWordsLearnedByHsk(),
+          lessonsApi.getWordsReadByHsk(),
         ]);
         if (!mounted) return;
         setByLevel(finished.byLevel || {});
@@ -399,11 +399,11 @@ export default function ProgressPage() {
             )}
           </section>
 
-          {/* Words Learned by HSK */}
+          {/* Words Read by HSK */}
           <section className="bg-[#2e323a] rounded-xl border border-[#404040] p-4">
             <div className="flex items-center justify-between gap-2 mb-3">
               <h2 className="text-white font-inter font-medium">
-                Words Learned (by HSK)
+                Words Read (by HSK)
               </h2>
               <div
                 className="inline-flex rounded-lg border border-[#404040] overflow-hidden"
@@ -525,7 +525,7 @@ export default function ProgressPage() {
                       <Legend formatter={legendFormatter} wrapperStyle={{}} />
                       <Bar
                         dataKey="count"
-                        name="Words Learned"
+                        name="Words Read"
                         fill="#ffffff"
                         radius={[4, 4, 0, 0]}
                       >

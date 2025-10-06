@@ -205,21 +205,19 @@ export class LessonsController {
     return { streakDays };
   }
 
-  @Get('progress/words')
-  async getWordsLearned(
+  @Get('progress/words-read')
+  async getWordsRead(
     @Req() req: AuthenticatedRequest,
-  ): Promise<{ learnedCount: number }> {
-    const learnedCount = await this.lessonsService.getWordsLearnedCount(
-      req.user.id,
-    );
-    return { learnedCount };
+  ): Promise<{ readCount: number }> {
+    const readCount = await this.lessonsService.getWordsReadCount(req.user.id);
+    return { readCount };
   }
 
-  @Get('progress/words-by-hsk')
-  async getWordsLearnedByHsk(
+  @Get('progress/words-read-by-hsk')
+  async getWordsReadByHsk(
     @Req() req: AuthenticatedRequest,
   ): Promise<{ byHsk: Record<string, number> }> {
-    const byHsk = await this.lessonsService.getWordsLearnedByHsk(req.user.id);
+    const byHsk = await this.lessonsService.getWordsReadByHsk(req.user.id);
     return { byHsk };
   }
 }

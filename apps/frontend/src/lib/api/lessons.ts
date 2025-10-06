@@ -103,15 +103,15 @@ export const lessonsApi = {
     );
     return res.data;
   },
-  async getWordsLearned() {
-    const res = await api.get<{ learnedCount: number }>(
-      `/lessons/progress/words`
+  async getWordsRead() {
+    const res = await api.get<{ readCount: number }>(
+      `/lessons/progress/words-read`
     );
     return res.data;
   },
-  async getWordsLearnedByHsk() {
+  async getWordsReadByHsk() {
     const res = await api.get<{ byHsk: Record<string, number> }>(
-      `/lessons/progress/words-by-hsk`
+      `/lessons/progress/words-read-by-hsk`
     );
     return res.data;
   },

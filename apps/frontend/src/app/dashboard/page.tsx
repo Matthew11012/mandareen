@@ -66,8 +66,8 @@ export default function DashboardPage() {
       .then((r) => setStudyStreakDays(r.streakDays || 0))
       .catch(() => setStudyStreakDays(0));
     lessonsApi
-      .getWordsLearned()
-      .then((r) => setWordsLearned(r.learnedCount || 0))
+      .getWordsRead()
+      .then((r) => setWordsLearned(r.readCount || 0))
       .catch(() => setWordsLearned(0));
     return () => {
       isMounted = false;
@@ -157,9 +157,7 @@ export default function DashboardPage() {
                 <TrendingUp className="w-5 h-5 text-green-400" />
               </div>
               <div>
-                <p className="text-[#a6a6a6] text-sm font-inter">
-                  Words Learned
-                </p>
+                <p className="text-[#a6a6a6] text-sm font-inter">Words Read</p>
                 <p
                   className="text-white text-xl font-inter font-semibold"
                   aria-live="polite"

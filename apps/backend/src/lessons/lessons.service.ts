@@ -950,7 +950,7 @@ export class LessonsService {
     return counts;
   }
 
-  async getWordsLearnedCount(userId: number): Promise<number> {
+  async getWordsReadCount(userId: number): Promise<number> {
     const finishedLessonIds = await this.getFinishedLessonIds(userId);
     if (!finishedLessonIds || finishedLessonIds.length === 0) return 0;
 
@@ -964,7 +964,7 @@ export class LessonsService {
       if (Array.isArray(distinct) && distinct.length > 0)
         return distinct.length;
     } catch {
-      this.logger.warn('Error getting words learned count via WordInstance');
+      this.logger.warn('Error getting words read count via WordInstance');
     }
 
     // Fallback: derive unique words from lesson section content (segments) for finished lessons
@@ -1017,7 +1017,7 @@ export class LessonsService {
     return uniqueWords.size;
   }
 
-  async getWordsLearnedByHsk(userId: number): Promise<Record<string, number>> {
+  async getWordsReadByHsk(userId: number): Promise<Record<string, number>> {
     const finishedLessonIds = await this.getFinishedLessonIds(userId);
     if (!finishedLessonIds || finishedLessonIds.length === 0) return {};
 
@@ -1040,7 +1040,7 @@ export class LessonsService {
         return counts;
       }
     } catch {
-      this.logger.warn('Error getting words learned by HSK via WordInstance');
+      this.logger.warn('Error getting words read by HSK via WordInstance');
     }
 
     // Fallback: from sections.segments text -> VocabularyItem by hanzi.hanzi
