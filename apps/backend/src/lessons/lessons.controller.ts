@@ -204,4 +204,14 @@ export class LessonsController {
     );
     return { streakDays };
   }
+
+  @Get('progress/words')
+  async getWordsLearned(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ learnedCount: number }> {
+    const learnedCount = await this.lessonsService.getWordsLearnedCount(
+      req.user.id,
+    );
+    return { learnedCount };
+  }
 }

@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [finishedLessonsCount, setFinishedLessonsCount] = useState(0);
   const [studyStreakDays, setStudyStreakDays] = useState(0);
+  const [wordsLearned, setWordsLearned] = useState(0);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(5);
 
   useEffect(() => {
@@ -64,6 +65,10 @@ export default function DashboardPage() {
       .getStudyStreak()
       .then((r) => setStudyStreakDays(r.streakDays || 0))
       .catch(() => setStudyStreakDays(0));
+    lessonsApi
+      .getWordsLearned()
+      .then((r) => setWordsLearned(r.learnedCount || 0))
+      .catch(() => setWordsLearned(0));
     return () => {
       isMounted = false;
     };
@@ -155,7 +160,12 @@ export default function DashboardPage() {
                 <p className="text-[#a6a6a6] text-sm font-inter">
                   Words Learned
                 </p>
-                <p className="text-white text-xl font-inter font-semibold">0</p>
+                <p
+                  className="text-white text-xl font-inter font-semibold"
+                  aria-live="polite"
+                >
+                  {wordsLearned}
+                </p>
               </div>
             </div>
           </div>

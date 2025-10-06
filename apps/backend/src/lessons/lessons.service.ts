@@ -950,6 +950,73 @@ export class LessonsService {
     return counts;
   }
 
+  async getWordsLearnedCount(userId: number): Promise<number> {
+    const finishedLessonIds = await this.getFinishedLessonIds(userId);
+    if (!finishedLessonIds || finishedLessonIds.length === 0) return 0;
+
+    // Try fast path via WordInstance if present in DB
+    try {
+      const distinct = await (this.prismaService as any).wordInstance.findMany({
+        where: { section: { lessonId: { in: finishedLessonIds } } },
+        select: { vocabId: true },
+        distinct: ['vocabId'],
+      });
+      if (Array.isArray(distinct) && distinct.length > 0)
+        return distinct.length;
+    } catch {
+      this.logger.warn('Error getting words learned count via WordInstance');
+    }
+
+    // Fallback: derive unique words from lesson section content (segments) for finished lessons
+    const lessons = await (this.prismaService as any).lesson.findMany({
+      where: { id: { in: finishedLessonIds } },
+      select: { sections: { select: { sectionType: true, content: true } } },
+    });
+
+    const uniqueWords = new Set<string>();
+    for (const lesson of lessons as Array<{
+      sections: Array<{ sectionType: string; content: any }>;
+    }>) {
+      for (const section of lesson.sections) {
+        const type = (section.sectionType || '').toLowerCase();
+        const content: any = section.content || {};
+        if (type === 'dialogue') {
+          const turns: any[] = Array.isArray(content.turns)
+            ? content.turns
+            : [];
+          for (const t of turns) {
+            const segs: any[] = Array.isArray(t?.segments) ? t.segments : [];
+            for (const s of segs) {
+              if (
+                s &&
+                s.isWord &&
+                typeof s.text === 'string' &&
+                s.text.trim().length > 0
+              ) {
+                uniqueWords.add(s.text.trim());
+              }
+            }
+          }
+        } else {
+          const segs: any[] = Array.isArray(content.segments)
+            ? content.segments
+            : [];
+          for (const s of segs) {
+            if (
+              s &&
+              s.isWord &&
+              typeof s.text === 'string' &&
+              s.text.trim().length > 0
+            ) {
+              uniqueWords.add(s.text.trim());
+            }
+          }
+        }
+      }
+    }
+    return uniqueWords.size;
+  }
+
   async getStudyStreakDays(userId: number, offsetMinutes = 0): Promise<number> {
     // Fetch finishedAt timestamps for the user, newest first
     const progresses: Array<{ finishedAt: Date | null }> = await (

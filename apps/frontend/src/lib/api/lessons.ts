@@ -103,4 +103,10 @@ export const lessonsApi = {
     );
     return res.data;
   },
+  async getWordsLearned() {
+    const res = await api.get<{ learnedCount: number }>(
+      `/lessons/progress/words`
+    );
+    return res.data;
+  },
 };
