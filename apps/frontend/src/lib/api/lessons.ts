@@ -94,4 +94,13 @@ export const lessonsApi = {
     );
     return res.data;
   },
+  async getStudyStreak() {
+    const offsetMinutes =
+      typeof window !== "undefined" ? -new Date().getTimezoneOffset() : 0;
+    const res = await api.get<{ streakDays: number }>(
+      `/lessons/progress/streak`,
+      { params: { offsetMinutes } }
+    );
+    return res.data;
+  },
 };

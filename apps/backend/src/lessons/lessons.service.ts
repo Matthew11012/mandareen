@@ -950,6 +950,57 @@ export class LessonsService {
     return counts;
   }
 
+  async getStudyStreakDays(userId: number, offsetMinutes = 0): Promise<number> {
+    // Fetch finishedAt timestamps for the user, newest first
+    const progresses: Array<{ finishedAt: Date | null }> = await (
+      this.prismaService as any
+    ).lessonProgress.findMany({
+      where: { userId, finishedAt: { not: null } },
+      select: { finishedAt: true },
+      orderBy: { finishedAt: 'desc' },
+    });
+
+    if (!progresses || progresses.length === 0) return 0;
+
+    // Build a set of LOCAL date keys (YYYY-MM-DD) for fast lookup; multiple finishes per day count once
+    const finishedDays = new Set<string>();
+    for (const p of progresses) {
+      if (!p.finishedAt) continue;
+      const shifted = new Date(p.finishedAt.getTime() + offsetMinutes * 60_000);
+      const key = `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`;
+      finishedDays.add(key);
+    }
+
+    // Helper to format a shifted date's LOCAL key
+    const formatKey = (date: Date) =>
+      `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+
+    // Compute "today" in LOCAL time using offsetMinutes
+    const now = new Date();
+    const nowShifted = new Date(now.getTime() + offsetMinutes * 60_000);
+    const todayLocal = new Date(
+      Date.UTC(
+        nowShifted.getUTCFullYear(),
+        nowShifted.getUTCMonth(),
+        nowShifted.getUTCDate(),
+      ),
+    );
+    // Streak only counts if there is at least one finished lesson today
+    if (!finishedDays.has(formatKey(todayLocal))) return 0;
+
+    let streak = 1; // today is counted
+    for (let i = 1; i < 10000; i++) {
+      const d = new Date(todayLocal);
+      d.setUTCDate(d.getUTCDate() - i);
+      if (finishedDays.has(formatKey(d))) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
   private async resolveUserLevel(userId: number): Promise<number> {
     const latest = await this.prismaService.assessment.findFirst({
       where: { userId },

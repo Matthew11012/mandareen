@@ -38,6 +38,7 @@ export default function DashboardPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [finishedLessonsCount, setFinishedLessonsCount] = useState(0);
+  const [studyStreakDays, setStudyStreakDays] = useState(0);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(5);
 
   useEffect(() => {
@@ -59,6 +60,10 @@ export default function DashboardPage() {
       .getProgressCount()
       .then((r) => setFinishedLessonsCount(r.finishedCount || 0))
       .catch(() => setFinishedLessonsCount(0));
+    lessonsApi
+      .getStudyStreak()
+      .then((r) => setStudyStreakDays(r.streakDays || 0))
+      .catch(() => setStudyStreakDays(0));
     return () => {
       isMounted = false;
     };
@@ -164,8 +169,11 @@ export default function DashboardPage() {
                 <p className="text-[#a6a6a6] text-sm font-inter">
                   Study Streak
                 </p>
-                <p className="text-white text-xl font-inter font-semibold">
-                  0 days
+                <p
+                  className="text-white text-xl font-inter font-semibold"
+                  aria-live="polite"
+                >
+                  {studyStreakDays} {studyStreakDays === 1 ? "day" : "days"}
                 </p>
               </div>
             </div>

@@ -189,4 +189,19 @@ export class LessonsController {
     );
     return { byLevel };
   }
+
+  @Get('progress/streak')
+  async getStudyStreak(
+    @Req() req: AuthenticatedRequest,
+    @Query('offsetMinutes') offsetMinutes?: string,
+  ): Promise<{ streakDays: number }> {
+    const parsed =
+      typeof offsetMinutes === 'string' ? parseInt(offsetMinutes, 10) : 0;
+    const safeOffset = Number.isFinite(parsed) ? parsed : 0;
+    const streakDays = await this.lessonsService.getStudyStreakDays(
+      req.user.id,
+      safeOffset,
+    );
+    return { streakDays };
+  }
 }
