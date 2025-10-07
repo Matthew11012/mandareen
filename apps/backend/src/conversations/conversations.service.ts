@@ -18,6 +18,7 @@ export class ConversationsService {
     void prisma;
     void openai;
     void segmentationService;
+    void rag;
   }
 
   async startConversation(userId: number) {
@@ -203,7 +204,7 @@ export class ConversationsService {
               {
                 role: 'system',
                 content:
-                  'You are a native Mandarin speaker. Make the conversation reply as natural as possible, just like a daily conversation between two friends. Add humour or fun facts when appropriate or other conversation details as needed. While streaming, output ONLY Simplified Chinese characters (no JSON, pinyin, or translation). If the user uses Traditional characters, convert to Simplified in your reply. Keep it concise. After streaming ends, we will run a separate non-stream call to obtain JSON with hanzi, pinyin, and translation for persistence.',
+                  'You are a native Mandarin speaker. Make the conversation reply as natural as possible, just like a daily conversation between two friends. Add humour or fun facts when appropriate or other conversation details as needed. While streaming, output ONLY Simplified Chinese characters (no JSON, pinyin, or translation). If the user uses Traditional characters, convert to Simplified in your reply. Keep it concise and short. After streaming ends, we will run a separate non-stream call to obtain JSON with hanzi, pinyin, and translation for persistence.',
               },
               ...history,
             ],
@@ -311,28 +312,30 @@ export class ConversationsService {
             this.logger.warn('User enrichment failed', err as any);
           }
 
-          // After stream ends, get final structured fields using our non-stream api with context
-          const ai = await (this.openai as any).chatChineseReplyWithContext(
-            history.concat({ role: 'assistant', content: fullText }).concat({
-              role: 'user',
-              content:
-                'Convert the previous assistant message into STRICT JSON with keys hanzi, pinyin, translation.\nRules:\n- hanzi MUST be EXACTLY the assistant Chinese text above (no paraphrase, no extra text).\n- pinyin MUST be pinyin for that hanzi (tone marks or numbers are fine).\n- translation MUST be natural English, with no Chinese characters.\nReturn JSON only.',
-            }),
-          );
-          // Compute per-character pinyin using segmentation for accurate alignment
-          const finalHanzi = ai.hanzi || fullText;
+          // After stream ends, use streamed hanzi as-is; compute pinyin locally and request only translation
+          const finalHanzi = fullText;
           const pinyinPerChar =
             await this.computeSentencePinyinPerCharacter(finalHanzi);
           // Build per-character array aligned to hanzi for segment pinyin filling
           const charPinyinArray =
             await this.computeSentencePinyinArray(finalHanzi);
+          // Request only translation for assistant message to reduce latency
+          let assistantTranslation = '';
+          try {
+            const analyzedAssistant = await (
+              this.openai as any
+            ).analyzeChineseSentence(finalHanzi);
+            assistantTranslation = analyzedAssistant?.translation || '';
+          } catch {
+            assistantTranslation = '';
+          }
           let aiMsg = await this.prisma.message.create({
             data: {
               conversationId,
               role: 'ai',
               hanzi: finalHanzi,
               pinyin: pinyinPerChar || '',
-              translation: ai.translation || '',
+              translation: assistantTranslation,
             },
           });
           // Generate grounded grammar notes if enabled
@@ -387,7 +390,7 @@ export class ConversationsService {
           }> = [];
           try {
             vocabExtras = await (this.openai as any).annotateChinese(
-              ai.hanzi || fullText,
+              finalHanzi,
             );
           } catch {
             // ignore annotate error and continue with base segmentation
@@ -399,7 +402,7 @@ export class ConversationsService {
           const segments = segs.map((s) => {
             let segPinyin = (s.pinyin || '').toLowerCase();
             if (!segPinyin || segPinyin.trim().length === 0) {
-              const hann = (ai.hanzi || fullText) as string;
+              const hann = finalHanzi as string;
               const slice = charPinyinArray
                 .slice(s.startIndex, s.endIndex)
                 .filter((_, idx) =>
