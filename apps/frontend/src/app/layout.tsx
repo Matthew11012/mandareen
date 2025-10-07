@@ -1,14 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
-
-// Import Inter font matching Figma design
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "Mandareen - AI-Powered Mandarin Learning",
@@ -42,7 +34,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en">
       <body className="font-inter antialiased">
         <link rel="icon" href="/favicon.ico" />
         <link rel="icon" href="/icons/icon-192x192.png" sizes="192x192" />
