@@ -61,7 +61,13 @@ export class VocabularyController {
   }
 
   @Get('search/:query')
-  async searchVocabulary(@Param('query') query: string): Promise<any> {
-    return this.vocabularyService.searchVocabulary(query);
+  async searchVocabulary(
+    @Param('query') query: string,
+    @Req() req: any,
+  ): Promise<any> {
+    const limitNum = parseInt((req?.query?.limit as string) || '20', 10);
+    const limit = Math.min(Math.max(isNaN(limitNum) ? 20 : limitNum, 1), 100);
+    const cursor = (req?.query?.cursor as string) || undefined;
+    return this.vocabularyService.searchVocabulary(query, limit, cursor);
   }
 }

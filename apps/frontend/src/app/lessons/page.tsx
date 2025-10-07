@@ -1059,13 +1059,26 @@ export default function LessonsPage() {
                                                         <span />
                                                       )}
                                                     </div>
-                                                    <p className="text-white font-inter font-semibold truncate mt-2 text-sm">
+                                                    <p
+                                                      className="text-white font-inter font-semibold mt-2 truncate text-sm"
+                                                      title={
+                                                        (l.titleTranslation ||
+                                                          l.title ||
+                                                          `Lesson #${l.id}`) as string
+                                                      }
+                                                    >
                                                       {l.titleTranslation ||
                                                         l.title ||
                                                         `Lesson #${l.id}`}
                                                     </p>
                                                     {l.title && (
-                                                      <p className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1">
+                                                      <p
+                                                        className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1"
+                                                        title={
+                                                          (l.title as string) ||
+                                                          undefined
+                                                        }
+                                                      >
                                                         {l.title}
                                                       </p>
                                                     )}
@@ -1339,13 +1352,26 @@ export default function LessonsPage() {
                                                         <span />
                                                       )}
                                                     </div>
-                                                    <p className="text-white font-inter font-semibold truncate mt-2 text-sm">
+                                                    <p
+                                                      className="text-white font-inter font-semibold mt-2 truncate text-sm"
+                                                      title={
+                                                        (l.titleTranslation ||
+                                                          l.title ||
+                                                          `Dialogue #${l.id}`) as string
+                                                      }
+                                                    >
                                                       {l.titleTranslation ||
                                                         l.title ||
                                                         `Dialogue #${l.id}`}
                                                     </p>
                                                     {l.title && (
-                                                      <p className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1">
+                                                      <p
+                                                        className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1"
+                                                        title={
+                                                          (l.title as string) ||
+                                                          undefined
+                                                        }
+                                                      >
                                                         {l.title}
                                                       </p>
                                                     )}
@@ -1655,13 +1681,26 @@ export default function LessonsPage() {
                                                   <span />
                                                 )}
                                               </div>
-                                              <p className="text-white font-inter font-semibold truncate mt-2 text-sm">
+                                              <p
+                                                className="text-white font-inter font-semibold mt-2 truncate text-sm"
+                                                title={
+                                                  (l.titleTranslation ||
+                                                    l.title ||
+                                                    `Lesson #${l.id}`) as string
+                                                }
+                                              >
                                                 {l.titleTranslation ||
                                                   l.title ||
                                                   `Lesson #${l.id}`}
                                               </p>
                                               {l.title && (
-                                                <p className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1">
+                                                <p
+                                                  className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1"
+                                                  title={
+                                                    (l.title as string) ||
+                                                    undefined
+                                                  }
+                                                >
                                                   {l.title}
                                                 </p>
                                               )}
@@ -1961,13 +2000,26 @@ export default function LessonsPage() {
                                                 <span />
                                               )}
                                             </div>
-                                            <p className="text-white font-inter font-semibold truncate mt-1 text-sm">
+                                            <p
+                                              className="text-white font-inter font-semibold mt-1 truncate text-sm"
+                                              title={
+                                                (l.titleTranslation ||
+                                                  l.title ||
+                                                  `Dialogue #${l.id}`) as string
+                                              }
+                                            >
                                               {l.titleTranslation ||
                                                 l.title ||
                                                 `Dialogue #${l.id}`}
                                             </p>
                                             {l.title && (
-                                              <p className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1">
+                                              <p
+                                                className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1"
+                                                title={
+                                                  (l.title as string) ||
+                                                  undefined
+                                                }
+                                              >
                                                 {l.title}
                                               </p>
                                             )}

@@ -59,7 +59,7 @@ export const NAVIGATION_DATA: NavigationData = [
         label: "Dictionary",
         href: "/dictionary",
         icon: "Search",
-        isComingSoon: true,
+        isComingSoon: false,
         description: "Look up Chinese words and characters",
       },
       {
