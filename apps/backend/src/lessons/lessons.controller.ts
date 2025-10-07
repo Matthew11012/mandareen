@@ -124,14 +124,21 @@ export class LessonsController {
   }
 
   @Get(':id')
-  async getLessonById(@Param('id') id: string): Promise<{
+  async getLessonById(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ): Promise<{
     id: number;
     level: number;
     title: string | null;
     createdAt: string;
     sections: Array<{ id: number; sectionType: string; content: any }>;
+    finished?: boolean;
   }> {
-    const lesson = await this.lessonsService.getLessonById(parseInt(id, 10));
+    const lesson = await this.lessonsService.getLessonById(
+      parseInt(id, 10),
+      req.user?.id,
+    );
     return {
       id: lesson.id,
       level: lesson.level,
@@ -142,6 +149,75 @@ export class LessonsController {
         sectionType: s.sectionType,
         content: s.content,
       })),
+      finished: (lesson as any).finished,
     };
+  }
+
+  @Post(':id/finish')
+  async markFinished(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ): Promise<{ ok: true }> {
+    await this.lessonsService.markLessonFinished(req.user.id, parseInt(id, 10));
+    return { ok: true } as const;
+  }
+
+  @Get('progress/count')
+  async getFinishedCount(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ finishedCount: number }> {
+    const finishedCount = await this.lessonsService.countFinishedLessons(
+      req.user.id,
+    );
+    return { finishedCount };
+  }
+
+  @Get('progress/ids')
+  async getFinishedIds(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ ids: number[] }> {
+    const ids = await this.lessonsService.getFinishedLessonIds(req.user.id);
+    return { ids };
+  }
+
+  @Get('progress/by-level')
+  async getFinishedByLevel(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ byLevel: Record<number, number> }> {
+    const byLevel = await this.lessonsService.getFinishedCountsByLevel(
+      req.user.id,
+    );
+    return { byLevel };
+  }
+
+  @Get('progress/streak')
+  async getStudyStreak(
+    @Req() req: AuthenticatedRequest,
+    @Query('offsetMinutes') offsetMinutes?: string,
+  ): Promise<{ streakDays: number }> {
+    const parsed =
+      typeof offsetMinutes === 'string' ? parseInt(offsetMinutes, 10) : 0;
+    const safeOffset = Number.isFinite(parsed) ? parsed : 0;
+    const streakDays = await this.lessonsService.getStudyStreakDays(
+      req.user.id,
+      safeOffset,
+    );
+    return { streakDays };
+  }
+
+  @Get('progress/words-read')
+  async getWordsRead(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ readCount: number }> {
+    const readCount = await this.lessonsService.getWordsReadCount(req.user.id);
+    return { readCount };
+  }
+
+  @Get('progress/words-read-by-hsk')
+  async getWordsReadByHsk(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ byHsk: Record<string, number> }> {
+    const byHsk = await this.lessonsService.getWordsReadByHsk(req.user.id);
+    return { byHsk };
   }
 }

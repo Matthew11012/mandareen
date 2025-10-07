@@ -40,14 +40,14 @@ export class OpenAIService {
   async analyzeChineseSentence(
     text: string,
   ): Promise<{ pinyin: string; translation: string }> {
-    const model = process.env.OPENAI_MODEL_TRANSLATE || 'gpt-4o-mini';
+    const model = 'gpt-4o-mini';
     const completion = await this.openai.chat.completions.create({
       model,
       messages: [
         {
           role: 'system',
           content:
-            'You are a Mandarin assistant. For the given text (which may or may not be Chinese), if it is Chinese, return STRICT JSON with keys pinyin and translation for the exact input. If it is not Chinese, return {"pinyin":"","translation":""}. No commentary.',
+            'You are an English to Mandarin translator. For the given text from the user (which may or may not be Chinese), if it is Chinese, return STRICT JSON with keys translation for the exact input; {"translation":"<english translation of the user given text>"}. Preserve original sentence boundaries and punctuation: translate sentence-by-sentence without merging or reflowing, and keep the same order and number of sentences as the source. If it is not Chinese, return {"translation":""}. No commentary.',
         },
         { role: 'user', content: text },
       ],

@@ -34,6 +34,7 @@ export interface LessonDetail {
   title: string | null;
   createdAt: string;
   sections: LessonSection[];
+  finished?: boolean;
 }
 
 export const lessonsApi = {
@@ -72,6 +73,46 @@ export const lessonsApi = {
   },
   async getById(id: number) {
     const res = await api.get<LessonDetail>(`/lessons/${id}`);
+    return res.data;
+  },
+  async finish(id: number) {
+    await api.post(`/lessons/${id}/finish`, {});
+  },
+  async getProgressCount() {
+    const res = await api.get<{ finishedCount: number }>(
+      `/lessons/progress/count`
+    );
+    return res.data;
+  },
+  async getFinishedIds() {
+    const res = await api.get<{ ids: number[] }>(`/lessons/progress/ids`);
+    return res.data;
+  },
+  async getProgressByLevel() {
+    const res = await api.get<{ byLevel: Record<number, number> }>(
+      `/lessons/progress/by-level`
+    );
+    return res.data;
+  },
+  async getStudyStreak() {
+    const offsetMinutes =
+      typeof window !== "undefined" ? -new Date().getTimezoneOffset() : 0;
+    const res = await api.get<{ streakDays: number }>(
+      `/lessons/progress/streak`,
+      { params: { offsetMinutes } }
+    );
+    return res.data;
+  },
+  async getWordsRead() {
+    const res = await api.get<{ readCount: number }>(
+      `/lessons/progress/words-read`
+    );
+    return res.data;
+  },
+  async getWordsReadByHsk() {
+    const res = await api.get<{ byHsk: Record<string, number> }>(
+      `/lessons/progress/words-read-by-hsk`
+    );
     return res.data;
   },
 };

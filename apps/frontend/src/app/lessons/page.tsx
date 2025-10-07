@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { DashboardLayout } from "@/components/layout";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { lessonsApi, type LessonListItem } from "@/lib/api/lessons";
-import { Plus, RefreshCw, BookOpen, MessageSquare } from "lucide-react";
+import { Plus, RefreshCw, MessageSquare } from "lucide-react";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { useRouter } from "next/navigation";
 import {
@@ -74,17 +74,29 @@ export default function LessonsPage() {
     "Visiting the doctor",
   ];
 
+  const [finishedIds, setFinishedIds] = useState<Set<number>>(new Set());
+
+  // Per-section finished status filters
+  type StatusFilter = "all" | "finished" | "unfinished";
+  const [myStoriesStatus, setMyStoriesStatus] = useState<StatusFilter>("all");
+  const [myDialoguesStatus, setMyDialoguesStatus] =
+    useState<StatusFilter>("all");
+  const [storiesStatus, setStoriesStatus] = useState<StatusFilter>("all");
+  const [dialoguesStatus, setDialoguesStatus] = useState<StatusFilter>("all");
+
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [allData, mineData] = await Promise.all([
+      const [allData, mineData, finished] = await Promise.all([
         lessonsApi.list(),
         lessonsApi.listMine(),
+        lessonsApi.getFinishedIds().catch(() => ({ ids: [] })),
       ]);
       setMyItems(mineData);
       setAllStories(allData.filter((i) => i.lessonType === "story"));
       setAllDialogues(allData.filter((i) => i.lessonType === "dialogue"));
+      setFinishedIds(new Set((finished?.ids || []) as number[]));
     } catch {
       setError("Failed to load lessons");
     } finally {
@@ -103,14 +115,47 @@ export default function LessonsPage() {
   const myIdSet = new Set(myItems.map((m) => m.id));
   const myStoriesFiltered = myItems
     .filter((i) => i.lessonType === "story")
-    .filter((i) => (myLevels.length > 0 ? myLevels.includes(i.level) : true));
+    .filter((i) => (myLevels.length > 0 ? myLevels.includes(i.level) : true))
+    .filter((i) =>
+      myStoriesStatus === "all"
+        ? true
+        : myStoriesStatus === "finished"
+          ? finishedIds.has(i.id)
+          : !finishedIds.has(i.id)
+    );
   const myDialoguesFiltered = myItems
     .filter((i) => i.lessonType === "dialogue")
-    .filter((i) => (myLevels.length > 0 ? myLevels.includes(i.level) : true));
+    .filter((i) => (myLevels.length > 0 ? myLevels.includes(i.level) : true))
+    .filter((i) =>
+      myDialoguesStatus === "all"
+        ? true
+        : myDialoguesStatus === "finished"
+          ? finishedIds.has(i.id)
+          : !finishedIds.has(i.id)
+    );
   const storiesFiltered = allStories
     .filter((i) => !myIdSet.has(i.id))
     .filter((i) =>
       storyLevels.length > 0 ? storyLevels.includes(i.level) : true
+    )
+    .filter((i) =>
+      storiesStatus === "all"
+        ? true
+        : storiesStatus === "finished"
+          ? finishedIds.has(i.id)
+          : !finishedIds.has(i.id)
+    );
+  const dialoguesFiltered = allDialogues
+    .filter((i) => !myIdSet.has(i.id))
+    .filter((i) =>
+      dialogueLevels.length > 0 ? dialogueLevels.includes(i.level) : true
+    )
+    .filter((i) =>
+      dialoguesStatus === "all"
+        ? true
+        : dialoguesStatus === "finished"
+          ? finishedIds.has(i.id)
+          : !finishedIds.has(i.id)
     );
 
   const handleGenerate = async () => {
@@ -654,7 +699,7 @@ export default function LessonsPage() {
               </ol>
             </motion.div>
           </div>
-         )} 
+        )}
         {/* Topic & Generation Options */}
         <div className="bg-[#2e323a] rounded-xl p-4 border border-[#404040] space-y-3">
           <div className="text-white font-inter font-semibold">
@@ -844,9 +889,53 @@ export default function LessonsPage() {
                 <>
                   {/* My Stories */}
                   <div className="space-y-2">
-                    <h4 className="text-white font-inter font-medium">
-                      My Stories
-                    </h4>
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-white font-inter font-medium">
+                        My Stories
+                      </h4>
+                      <div
+                        className="inline-flex rounded-lg border border-[#404040] overflow-hidden"
+                        role="group"
+                        aria-label="Filter My Stories by status"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setMyStoriesStatus("all")}
+                          className={`px-2 py-1 text-xs font-inter cursor-pointer ${
+                            myStoriesStatus === "all"
+                              ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                              : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                          }`}
+                          aria-pressed={myStoriesStatus === "all"}
+                        >
+                          All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMyStoriesStatus("finished")}
+                          className={`px-2 py-1 text-xs font-inter border-l border-[#404040] cursor-pointer ${
+                            myStoriesStatus === "finished"
+                              ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                              : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                          }`}
+                          aria-pressed={myStoriesStatus === "finished"}
+                        >
+                          Finished
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMyStoriesStatus("unfinished")}
+                          className={`px-2 py-1 text-xs font-inter border-l border-[#404040] cursor-pointer ${
+                            myStoriesStatus === "unfinished"
+                              ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                              : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                          }`}
+                          aria-pressed={myStoriesStatus === "unfinished"}
+                        >
+                          Unfinished
+                        </button>
+                      </div>
+                    </div>
                     {myStoriesFiltered.length === 0 ? (
                       <p className="text-[#a6a6a6] font-inter text-sm">
                         No My Stories match selected HSK filters.
@@ -943,37 +1032,65 @@ export default function LessonsPage() {
                                                   }}
                                                   whileTap={{ scale: 0.98 }}
                                                 >
-                                                  <div className="flex items-start gap-3">
-                                                    <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
-                                                      <BookOpen className="w-5 h-5 text-orange-400" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                      <div className="flex items-center justify-between gap-2">
-                                                        <p className="text-white font-inter font-semibold truncate">
-                                                          {l.title ||
-                                                            `Lesson #${l.id}`}
-                                                        </p>
-                                                        <span
-                                                          className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                        >
-                                                          HSK {l.level}
+                                                  <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                      <span
+                                                        className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                                      >
+                                                        HSK {l.level}
+                                                      </span>
+                                                      {finishedIds.has(l.id) ? (
+                                                        <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                                                          <svg
+                                                            className="w-3 h-3"
+                                                            viewBox="0 0 20 20"
+                                                            fill="currentColor"
+                                                            aria-hidden="true"
+                                                          >
+                                                            <path
+                                                              fillRule="evenodd"
+                                                              d="M16.707 5.293a1 1 0 010 1.414l-7.071 7.071a1 1 0 01-1.414 0L3.293 9.85a1 1 0 111.414-1.414l3.182 3.182 6.364-6.364a1 1 0 011.414 0z"
+                                                              clipRule="evenodd"
+                                                            />
+                                                          </svg>
+                                                          Finished
                                                         </span>
-                                                      </div>
-                                                      {l.titlePinyin && (
-                                                        <p className="text-[#9aa6ff] font-inter text-xs truncate">
-                                                          {l.titlePinyin}
-                                                        </p>
+                                                      ) : (
+                                                        <span />
                                                       )}
-                                                      {l.titleTranslation && (
-                                                        <p className="text-[#a6a6a6] font-inter text-xs truncate">
-                                                          {l.titleTranslation}
-                                                        </p>
-                                                      )}
-                                                      <p className="text-[#a6a6a6] font-inter text-xs mt-1">
-                                                        {new Date(
-                                                          l.createdAt
-                                                        ).toLocaleString()}
+                                                    </div>
+                                                    <p
+                                                      className="text-white font-inter font-semibold mt-2 truncate text-sm"
+                                                      title={
+                                                        (l.titleTranslation ||
+                                                          l.title ||
+                                                          `Lesson #${l.id}`) as string
+                                                      }
+                                                    >
+                                                      {l.titleTranslation ||
+                                                        l.title ||
+                                                        `Lesson #${l.id}`}
+                                                    </p>
+                                                    {l.title && (
+                                                      <p
+                                                        className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1"
+                                                        title={
+                                                          (l.title as string) ||
+                                                          undefined
+                                                        }
+                                                      >
+                                                        {l.title}
                                                       </p>
+                                                    )}
+                                                    <div className="mt-2 pt-2 border-t border-[#404040] flex items-center justify-between text-[11px] text-[#8b949e]">
+                                                      <span>
+                                                        {new Date(l.createdAt)
+                                                          .toISOString()
+                                                          .slice(0, 10)}
+                                                      </span>
+                                                      <span className="text-[#a6a6a6]">
+                                                        My Story
+                                                      </span>
                                                     </div>
                                                   </div>
                                                 </motion.div>
@@ -1064,9 +1181,53 @@ export default function LessonsPage() {
 
                   {/* My Dialogues */}
                   <div className="space-y-2">
-                    <h4 className="text-white font-inter font-medium">
-                      My Dialogues
-                    </h4>
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-white font-inter font-medium">
+                        My Dialogues
+                      </h4>
+                      <div
+                        className="inline-flex rounded-lg border border-[#404040] overflow-hidden"
+                        role="group"
+                        aria-label="Filter My Dialogues by status"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setMyDialoguesStatus("all")}
+                          className={`px-2 py-1 text-xs font-inter cursor-pointer ${
+                            myDialoguesStatus === "all"
+                              ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                              : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                          }`}
+                          aria-pressed={myDialoguesStatus === "all"}
+                        >
+                          All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMyDialoguesStatus("finished")}
+                          className={`px-2 py-1 text-xs font-inter border-l border-[#404040] cursor-pointer ${
+                            myDialoguesStatus === "finished"
+                              ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                              : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                          }`}
+                          aria-pressed={myDialoguesStatus === "finished"}
+                        >
+                          Finished
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMyDialoguesStatus("unfinished")}
+                          className={`px-2 py-1 text-xs font-inter border-l border-[#404040] cursor-pointer ${
+                            myDialoguesStatus === "unfinished"
+                              ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                              : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                          }`}
+                          aria-pressed={myDialoguesStatus === "unfinished"}
+                        >
+                          Unfinished
+                        </button>
+                      </div>
+                    </div>
                     {myDialoguesFiltered.length === 0 ? (
                       <p className="text-[#a6a6a6] font-inter text-sm">
                         No My Dialogues match selected HSK filters.
@@ -1164,37 +1325,65 @@ export default function LessonsPage() {
                                                   }}
                                                   whileTap={{ scale: 0.98 }}
                                                 >
-                                                  <div className="flex items-start gap-3">
-                                                    <div className="w-10 h-10 bg-purple-600/20 rounded-lg flex items-center justify-center">
-                                                      <MessageSquare className="w-5 h-5 text-purple-500" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                      <div className="flex items-center justify-between gap-2">
-                                                        <p className="text-white font-inter font-semibold truncate">
-                                                          {l.title ||
-                                                            `Dialogue #${l.id}`}
-                                                        </p>
-                                                        <span
-                                                          className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                        >
-                                                          HSK {l.level}
+                                                  <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                      <span
+                                                        className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                                      >
+                                                        HSK {l.level}
+                                                      </span>
+                                                      {finishedIds.has(l.id) ? (
+                                                        <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                                                          <svg
+                                                            className="w-3 h-3"
+                                                            viewBox="0 0 20 20"
+                                                            fill="currentColor"
+                                                            aria-hidden="true"
+                                                          >
+                                                            <path
+                                                              fillRule="evenodd"
+                                                              d="M16.707 5.293a1 1 0 010 1.414l-7.071 7.071a1 1 0 01-1.414 0L3.293 9.85a1 1 0 111.414-1.414l3.182 3.182 6.364-6.364a1 1 0 011.414 0z"
+                                                              clipRule="evenodd"
+                                                            />
+                                                          </svg>
+                                                          Finished
                                                         </span>
-                                                      </div>
-                                                      {l.titlePinyin && (
-                                                        <p className="text-[#9aa6ff] font-inter text-xs truncate">
-                                                          {l.titlePinyin}
-                                                        </p>
+                                                      ) : (
+                                                        <span />
                                                       )}
-                                                      {l.titleTranslation && (
-                                                        <p className="text-[#a6a6a6] font-inter text-xs truncate">
-                                                          {l.titleTranslation}
-                                                        </p>
-                                                      )}
-                                                      <p className="text-[#a6a6a6] font-inter text-xs mt-1">
-                                                        {new Date(
-                                                          l.createdAt
-                                                        ).toLocaleString()}
+                                                    </div>
+                                                    <p
+                                                      className="text-white font-inter font-semibold mt-2 truncate text-sm"
+                                                      title={
+                                                        (l.titleTranslation ||
+                                                          l.title ||
+                                                          `Dialogue #${l.id}`) as string
+                                                      }
+                                                    >
+                                                      {l.titleTranslation ||
+                                                        l.title ||
+                                                        `Dialogue #${l.id}`}
+                                                    </p>
+                                                    {l.title && (
+                                                      <p
+                                                        className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1"
+                                                        title={
+                                                          (l.title as string) ||
+                                                          undefined
+                                                        }
+                                                      >
+                                                        {l.title}
                                                       </p>
+                                                    )}
+                                                    <div className="mt-2 pt-2 border-t border-[#404040] flex items-center justify-between text-[11px] text-[#8b949e]">
+                                                      <span>
+                                                        {new Date(l.createdAt)
+                                                          .toISOString()
+                                                          .slice(0, 10)}
+                                                      </span>
+                                                      <span className="text-[#a6a6a6]">
+                                                        My Dialogue
+                                                      </span>
                                                     </div>
                                                   </div>
                                                 </motion.div>
@@ -1294,41 +1483,85 @@ export default function LessonsPage() {
 
             {/* Stories Section */}
             <div className="space-y-3">
-              <div className="flex gap-2 flex-col md:flex-row md:items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <h3 className="text-white font-inter font-semibold">Stories</h3>
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <span className="text-xs text-[#a6a6a6] mr-1 hidden sm:inline">
-                    Filter by HSK:
-                  </span>
-                  <span className="text-xs text-[#a6a6a6] mr-1 sm:hidden">
-                    HSK:
-                  </span>
-                  {Array.from({ length: 7 }).map((_, idx) => {
-                    const lvl = idx + 1;
-                    const on = storyLevels.includes(lvl);
-                    return (
-                      <button
-                        key={lvl}
-                        onClick={() =>
-                          toggleLevel(storyLevels, setStoryLevels, lvl)
-                        }
-                        className={`px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border cursor-pointer transition-colors duration-200 ${
-                          on
-                            ? "border-[#4040f2] text-[#9aa6ff] bg-[#4040f2]/10"
-                            : "border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10"
-                        }`}
-                        title={`HSK ${lvl}`}
-                      >
-                        {lvl}
-                      </button>
-                    );
-                  })}
-                  <button
-                    onClick={() => setStoryLevels([])}
-                    className="px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10 transition-colors duration-200"
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 w-full sm:w-auto">
+                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+                    <span className="text-xs text-[#a6a6a6] mr-1 hidden sm:inline">
+                      Filter by HSK:
+                    </span>
+                    <span className="text-xs text-[#a6a6a6] mr-1 sm:hidden">
+                      HSK:
+                    </span>
+                    {Array.from({ length: 7 }).map((_, idx) => {
+                      const lvl = idx + 1;
+                      const on = storyLevels.includes(lvl);
+                      return (
+                        <button
+                          key={lvl}
+                          onClick={() =>
+                            toggleLevel(storyLevels, setStoryLevels, lvl)
+                          }
+                          className={`px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border cursor-pointer transition-colors duration-200 ${
+                            on
+                              ? "border-[#4040f2] text-[#9aa6ff] bg-[#4040f2]/10"
+                              : "border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10"
+                          }`}
+                          title={`HSK ${lvl}`}
+                        >
+                          {lvl}
+                        </button>
+                      );
+                    })}
+                    <button
+                      onClick={() => setStoryLevels([])}
+                      className="px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10 transition-colors duration-200"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div
+                    className="sm:ml-2 inline-flex rounded-lg border border-[#404040] overflow-hidden self-start sm:self-auto"
+                    role="group"
+                    aria-label="Filter Stories by status"
                   >
-                    Clear
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setStoriesStatus("all")}
+                      className={`px-2 py-1 text-xs font-inter cursor-pointer ${
+                        storiesStatus === "all"
+                          ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                          : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                      }`}
+                      aria-pressed={storiesStatus === "all"}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStoriesStatus("finished")}
+                      className={`px-2 py-1 text-xs font-inter border-l border-[#404040] cursor-pointer ${
+                        storiesStatus === "finished"
+                          ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                          : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                      }`}
+                      aria-pressed={storiesStatus === "finished"}
+                    >
+                      Finished
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStoriesStatus("unfinished")}
+                      className={`px-2 py-1 text-xs font-inter border-l border-[#404040] cursor-pointer ${
+                        storiesStatus === "unfinished"
+                          ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                          : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                      }`}
+                      aria-pressed={storiesStatus === "unfinished"}
+                    >
+                      Unfinished
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="overflow-hidden py-2">
@@ -1421,37 +1654,65 @@ export default function LessonsPage() {
                                             }}
                                             whileTap={{ scale: 0.98 }}
                                           >
-                                            <div className="flex items-start gap-3">
-                                              <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
-                                                <BookOpen className="w-5 h-5 text-orange-400" />
-                                              </div>
-                                              <div className="flex-1 min-w-0">
-                                                <div className="flex items-center justify-between gap-2">
-                                                  <p className="text-white font-inter font-semibold truncate">
-                                                    {l.title ||
-                                                      `Lesson #${l.id}`}
-                                                  </p>
-                                                  <span
-                                                    className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                  >
-                                                    HSK {l.level}
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center justify-between gap-2">
+                                                <span
+                                                  className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                                >
+                                                  HSK {l.level}
+                                                </span>
+                                                {finishedIds.has(l.id) ? (
+                                                  <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                                                    <svg
+                                                      className="w-3 h-3"
+                                                      viewBox="0 0 20 20"
+                                                      fill="currentColor"
+                                                      aria-hidden="true"
+                                                    >
+                                                      <path
+                                                        fillRule="evenodd"
+                                                        d="M16.707 5.293a1 1 0 010 1.414l-7.071 7.071a1 1 0 01-1.414 0L3.293 9.85a1 1 0 111.414-1.414l3.182 3.182 6.364-6.364a1 1 0 011.414 0z"
+                                                        clipRule="evenodd"
+                                                      />
+                                                    </svg>
+                                                    Finished
                                                   </span>
-                                                </div>
-                                                {l.titlePinyin && (
-                                                  <p className="text-[#9aa6ff] font-inter text-xs truncate">
-                                                    {l.titlePinyin}
-                                                  </p>
+                                                ) : (
+                                                  <span />
                                                 )}
-                                                {l.titleTranslation && (
-                                                  <p className="text-[#a6a6a6] font-inter text-xs truncate">
-                                                    {l.titleTranslation}
-                                                  </p>
-                                                )}
-                                                <p className="text-[#a6a6a6] font-inter text-xs mt-1">
-                                                  {new Date(
-                                                    l.createdAt
-                                                  ).toLocaleString()}
+                                              </div>
+                                              <p
+                                                className="text-white font-inter font-semibold mt-2 truncate text-sm"
+                                                title={
+                                                  (l.titleTranslation ||
+                                                    l.title ||
+                                                    `Lesson #${l.id}`) as string
+                                                }
+                                              >
+                                                {l.titleTranslation ||
+                                                  l.title ||
+                                                  `Lesson #${l.id}`}
+                                              </p>
+                                              {l.title && (
+                                                <p
+                                                  className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1"
+                                                  title={
+                                                    (l.title as string) ||
+                                                    undefined
+                                                  }
+                                                >
+                                                  {l.title}
                                                 </p>
+                                              )}
+                                              <div className="mt-2 pt-2 border-t border-[#404040] flex items-center justify-between text-[11px] text-[#8b949e]">
+                                                <span>
+                                                  {new Date(l.createdAt)
+                                                    .toISOString()
+                                                    .slice(0, 10)}
+                                                </span>
+                                                <span className="text-[#a6a6a6]">
+                                                  Story
+                                                </span>
                                               </div>
                                             </div>
                                           </motion.div>
@@ -1542,43 +1803,87 @@ export default function LessonsPage() {
 
             {/* Dialogues Section */}
             <div className="space-y-3">
-              <div className="flex gap-2 flex-col md:flex-row md:items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <h3 className="text-white font-inter font-semibold">
                   Dialogues
                 </h3>
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <span className="text-xs text-[#a6a6a6] mr-1 hidden sm:inline">
-                    Filter by HSK:
-                  </span>
-                  <span className="text-xs text-[#a6a6a6] mr-1 sm:hidden">
-                    HSK:
-                  </span>
-                  {Array.from({ length: 7 }).map((_, idx) => {
-                    const lvl = idx + 1;
-                    const on = dialogueLevels.includes(lvl);
-                    return (
-                      <button
-                        key={lvl}
-                        onClick={() =>
-                          toggleLevel(dialogueLevels, setDialogueLevels, lvl)
-                        }
-                        className={`px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border cursor-pointer transition-colors duration-200 ${
-                          on
-                            ? "border-[#4040f2] text-[#9aa6ff] bg-[#4040f2]/10"
-                            : "border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10"
-                        }`}
-                        title={`HSK ${lvl}`}
-                      >
-                        {lvl}
-                      </button>
-                    );
-                  })}
-                  <button
-                    onClick={() => setDialogueLevels([])}
-                    className="px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10 transition-colors duration-200"
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 w-full sm:w-auto">
+                  <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+                    <span className="text-xs text-[#a6a6a6] mr-1 hidden sm:inline">
+                      Filter by HSK:
+                    </span>
+                    <span className="text-xs text-[#a6a6a6] mr-1 sm:hidden">
+                      HSK:
+                    </span>
+                    {Array.from({ length: 7 }).map((_, idx) => {
+                      const lvl = idx + 1;
+                      const on = dialogueLevels.includes(lvl);
+                      return (
+                        <button
+                          key={lvl}
+                          onClick={() =>
+                            toggleLevel(dialogueLevels, setDialogueLevels, lvl)
+                          }
+                          className={`px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border cursor-pointer transition-colors duration-200 ${
+                            on
+                              ? "border-[#4040f2] text-[#9aa6ff] bg-[#4040f2]/10"
+                              : "border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10"
+                          }`}
+                          title={`HSK ${lvl}`}
+                        >
+                          {lvl}
+                        </button>
+                      );
+                    })}
+                    <button
+                      onClick={() => setDialogueLevels([])}
+                      className="px-1.5 py-0.5 sm:px-2 rounded text-xs font-inter border border-[#404040] text-[#a6a6a6]  hover:bg-[#4040f2]/10 transition-colors duration-200"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div
+                    className="sm:ml-2 inline-flex rounded-lg border border-[#404040] overflow-hidden self-start sm:self-auto"
+                    role="group"
+                    aria-label="Filter Dialogues by status"
                   >
-                    Clear
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setDialoguesStatus("all")}
+                      className={`px-2 py-1 text-xs font-inter cursor-pointer ${
+                        dialoguesStatus === "all"
+                          ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                          : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                      }`}
+                      aria-pressed={dialoguesStatus === "all"}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDialoguesStatus("finished")}
+                      className={`px-2 py-1 text-xs font-inter border-l border-[#404040] cursor-pointer ${
+                        dialoguesStatus === "finished"
+                          ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                          : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                      }`}
+                      aria-pressed={dialoguesStatus === "finished"}
+                    >
+                      Finished
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDialoguesStatus("unfinished")}
+                      className={`px-2 py-1 text-xs font-inter border-l border-[#404040] cursor-pointer ${
+                        dialoguesStatus === "unfinished"
+                          ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                          : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                      }`}
+                      aria-pressed={dialoguesStatus === "unfinished"}
+                    >
+                      Unfinished
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="overflow-hidden py-2">
@@ -1594,22 +1899,16 @@ export default function LessonsPage() {
                     className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide"
                   >
                     <AnimatePresence mode="popLayout">
-                      {allDialogues
-                        .filter(
-                          (i) => !new Set(myItems.map((m) => m.id)).has(i.id)
-                        )
-                        .filter((i) =>
-                          dialogueLevels.length > 0
-                            ? dialogueLevels.includes(i.level)
-                            : true
-                        )
+                      {dialoguesFiltered
                         .reduce(
                           (
                             pages: LessonListItem[][],
                             item: LessonListItem,
                             idx: number
                           ) => {
-                            const pageIdx = Math.floor(idx / 9);
+                            const pageIdx = Math.floor(
+                              idx / (isMobile ? 4 : 9)
+                            );
                             if (!pages[pageIdx]) pages[pageIdx] = [];
                             pages[pageIdx].push(item);
                             return pages;
@@ -1617,7 +1916,10 @@ export default function LessonsPage() {
                           []
                         )
                         .map((page, i) => {
-                          const padCount = Math.max(0, 9 - page.length);
+                          const padCount = Math.max(
+                            0,
+                            (isMobile ? 4 : 9) - page.length
+                          );
                           const padded = [
                             ...page,
                             ...Array(padCount).fill(null),
@@ -1671,37 +1973,65 @@ export default function LessonsPage() {
                                           }}
                                           whileTap={{ scale: 0.98 }}
                                         >
-                                          <div className="flex items-start gap-3">
-                                            <div className="w-10 h-10 bg-purple-600/20 rounded-lg flex items-center justify-center">
-                                              <MessageSquare className="w-5 h-5 text-purple-500" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                              <div className="flex items-center justify-between gap-2">
-                                                <p className="text-white font-inter font-semibold truncate">
-                                                  {l.title ||
-                                                    `Dialogue #${l.id}`}
-                                                </p>
-                                                <span
-                                                  className={`ml-2 px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                >
-                                                  HSK {l.level}
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between gap-2">
+                                              <span
+                                                className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
+                                              >
+                                                HSK {l.level}
+                                              </span>
+                                              {finishedIds.has(l.id) ? (
+                                                <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                                                  <svg
+                                                    className="w-3 h-3"
+                                                    viewBox="0 0 20 20"
+                                                    fill="currentColor"
+                                                    aria-hidden="true"
+                                                  >
+                                                    <path
+                                                      fillRule="evenodd"
+                                                      d="M16.707 5.293a1 1 0 010 1.414l-7.071 7.071a1 1 0 01-1.414 0L3.293 9.85a1 1 0 111.414-1.414l3.182 3.182 6.364-6.364a1 1 0 011.414 0z"
+                                                      clipRule="evenodd"
+                                                    />
+                                                  </svg>
+                                                  Finished
                                                 </span>
-                                              </div>
-                                              {l.titlePinyin && (
-                                                <p className="text-[#9aa6ff] font-inter text-xs truncate">
-                                                  {l.titlePinyin}
-                                                </p>
+                                              ) : (
+                                                <span />
                                               )}
-                                              {l.titleTranslation && (
-                                                <p className="text-[#a6a6a6] font-inter text-xs truncate">
-                                                  {l.titleTranslation}
-                                                </p>
-                                              )}
-                                              <p className="text-[#a6a6a6] font-inter text-xs mt-1">
-                                                {new Date(
-                                                  l.createdAt
-                                                ).toLocaleString()}
+                                            </div>
+                                            <p
+                                              className="text-white font-inter font-semibold mt-1 truncate text-sm"
+                                              title={
+                                                (l.titleTranslation ||
+                                                  l.title ||
+                                                  `Dialogue #${l.id}`) as string
+                                              }
+                                            >
+                                              {l.titleTranslation ||
+                                                l.title ||
+                                                `Dialogue #${l.id}`}
+                                            </p>
+                                            {l.title && (
+                                              <p
+                                                className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1"
+                                                title={
+                                                  (l.title as string) ||
+                                                  undefined
+                                                }
+                                              >
+                                                {l.title}
                                               </p>
+                                            )}
+                                            <div className="mt-2 pt-2 border-t border-[#404040] flex items-center justify-between text-[11px] text-[#8b949e]">
+                                              <span>
+                                                {new Date(l.createdAt)
+                                                  .toISOString()
+                                                  .slice(0, 10)}
+                                              </span>
+                                              <span className="text-[#a6a6a6]">
+                                                Dialogue
+                                              </span>
                                             </div>
                                           </div>
                                         </motion.div>
@@ -1720,24 +2050,10 @@ export default function LessonsPage() {
                     </AnimatePresence>
                   </div>
                 </LayoutGroup>
-                {allDialogues
-                  .filter((i) => !new Set(myItems.map((m) => m.id)).has(i.id))
-                  .filter((i) =>
-                    dialogueLevels.length > 0
-                      ? dialogueLevels.includes(i.level)
-                      : true
-                  ).length > 0 && (
+                {dialoguesFiltered.length > 0 && (
                   <div className="mt-2 flex items-center justify-center gap-2">
                     {(() => {
-                      const totalLen = allDialogues
-                        .filter(
-                          (i) => !new Set(myItems.map((m) => m.id)).has(i.id)
-                        )
-                        .filter((i) =>
-                          dialogueLevels.length > 0
-                            ? dialogueLevels.includes(i.level)
-                            : true
-                        ).length;
+                      const totalLen = dialoguesFiltered.length;
                       const total = Math.max(
                         1,
                         Math.ceil(totalLen / (isMobile ? 4 : 9))

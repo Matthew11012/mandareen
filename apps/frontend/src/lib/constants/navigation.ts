@@ -59,7 +59,7 @@ export const NAVIGATION_DATA: NavigationData = [
         label: "Dictionary",
         href: "/dictionary",
         icon: "Search",
-        isComingSoon: true,
+        isComingSoon: false,
         description: "Look up Chinese words and characters",
       },
       {
@@ -67,7 +67,7 @@ export const NAVIGATION_DATA: NavigationData = [
         label: "Progress",
         href: "/progress",
         icon: "TrendingUp",
-        isComingSoon: true,
+        isComingSoon: false,
         description: "Track your learning journey",
       },
     ],

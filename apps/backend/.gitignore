@@ -60,3 +60,4 @@ RAG_IMPLEMENTATION.md
 ModernMandarinChineseGrammar.md
 src/test-gemini.ts
 src/rag-test.ts
+mandareen_data.dump
