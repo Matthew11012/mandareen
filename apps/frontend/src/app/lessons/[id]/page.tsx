@@ -23,6 +23,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 // import { flashcardsApi } from "@/lib/api/flashcards";
 import { AnimatePresence, motion } from "framer-motion";
+import { getHSKPillClasses } from "@/lib/constants/hsk";
 
 export default function LessonViewerPage() {
   const router = useRouter();
@@ -219,6 +220,7 @@ export default function LessonViewerPage() {
     definitions?: string[];
     paraIndex?: number;
     tokenIndex?: number;
+    hskLevel?: number;
   }>({ open: false, x: 0, y: 0, word: "" });
   const popupRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -561,6 +563,27 @@ export default function LessonViewerPage() {
     return result;
   }, [story, storyParagraphs]);
 
+  // Derive underline color from HSK pill classes while using a fixed set of Tailwind classes
+  const hskUnderlineClass = (level?: number) => {
+    if (!level) return "";
+    const pill = getHSKPillClasses(level);
+    if (pill.includes("text-green-300"))
+      return "underline decoration-green-300/80 decoration-2 underline-offset-[3px]";
+    if (pill.includes("text-emerald-300"))
+      return "underline decoration-emerald-300/80 decoration-2 underline-offset-[3px]";
+    if (pill.includes("text-blue-300"))
+      return "underline decoration-blue-300/80 decoration-2 underline-offset-[3px]";
+    if (pill.includes("text-indigo-300"))
+      return "underline decoration-indigo-300/80 decoration-2 underline-offset-[3px]";
+    if (pill.includes("text-purple-300"))
+      return "underline decoration-purple-300/80 decoration-2 underline-offset-[3px]";
+    if (pill.includes("text-pink-300"))
+      return "underline decoration-pink-300/80 decoration-2 underline-offset-[3px]";
+    if (pill.includes("text-orange-300"))
+      return "underline decoration-orange-300/80 decoration-2 underline-offset-[3px]";
+    return "";
+  };
+
   // Helpers for pinyin alignment from story-level pinyin
   const isChineseChar = (ch: string) => /[\u3400-\u9FFF]/.test(ch);
   const buildStoryCharPinyin = (fullHanzi: string, fullPinyin?: string) => {
@@ -590,6 +613,7 @@ export default function LessonViewerPage() {
     pinyin?: string;
     definition?: string;
     definitions?: string[];
+    hskLevel?: number;
   }>({ open: false, x: 0, y: 0, word: "" });
 
   useEffect(() => {
@@ -1115,6 +1139,7 @@ export default function LessonViewerPage() {
                                   definitions: seg.definitions,
                                   paraIndex: ci,
                                   tokenIndex: idx,
+                                  hskLevel: seg.hskLevel as number | undefined,
                                 });
                               }}
                             >
@@ -1123,7 +1148,9 @@ export default function LessonViewerPage() {
                                   multiSelect &&
                                   selectedWords[`${ci}-${idx}-${seg.text}`]
                                     ? "underline decoration-[#4040f2] decoration-2"
-                                    : undefined
+                                    : isWord && typeof seg.hskLevel === "number"
+                                      ? hskUnderlineClass(seg.hskLevel)
+                                      : undefined
                                 }
                               >
                                 {seg.text}
@@ -1277,6 +1304,9 @@ export default function LessonViewerPage() {
                                   pinyin: seg.pinyin,
                                   definition: seg.definition,
                                   definitions: seg.definitions,
+                                  hskLevel: (
+                                    seg as unknown as { hskLevel?: number }
+                                  ).hskLevel,
                                 });
                               }}
                             >
@@ -1285,7 +1315,9 @@ export default function LessonViewerPage() {
                                   multiSelect &&
                                   selectedWords[`${ti}-${idx}-${seg.text}`]
                                     ? "underline decoration-[#4040f2] decoration-2"
-                                    : undefined
+                                    : isWord && typeof seg.hskLevel === "number"
+                                      ? hskUnderlineClass(seg.hskLevel)
+                                      : undefined
                                 }
                               >
                                 {seg.text}
@@ -1807,8 +1839,20 @@ export default function LessonViewerPage() {
                 }}
                 className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
               >
-                <div className="font-bold text-white text-lg truncate">
-                  {popup.word}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-bold text-white text-lg truncate">
+                    {popup.word}
+                  </div>
+                  {typeof popup.hskLevel === "number" && (
+                    <span
+                      className={`text-[10px] leading-none px-2 py-[2px] rounded ${getHSKPillClasses(
+                        popup.hskLevel
+                      )}`}
+                      aria-label={`HSK level ${popup.hskLevel}`}
+                    >
+                      HSK {popup.hskLevel}
+                    </span>
+                  )}
                 </div>
                 {popup.pinyin && (
                   <div className="text-[#c6ceff] text-sm font-medium truncate">
@@ -2000,8 +2044,20 @@ export default function LessonViewerPage() {
                 }}
                 className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
               >
-                <div className="font-bold text-white text-lg truncate">
-                  {notesPopup.word}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-bold text-white text-lg truncate">
+                    {notesPopup.word}
+                  </div>
+                  {typeof notesPopup.hskLevel === "number" && (
+                    <span
+                      className={`text-[10px] leading-none px-2 py-[2px] rounded ${getHSKPillClasses(
+                        notesPopup.hskLevel
+                      )}`}
+                      aria-label={`HSK level ${notesPopup.hskLevel}`}
+                    >
+                      HSK {notesPopup.hskLevel}
+                    </span>
+                  )}
                 </div>
                 {notesPopup.pinyin && (
                   <div className="text-[#c6ceff] text-sm font-medium truncate">
