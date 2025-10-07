@@ -779,6 +779,8 @@ export default function LessonViewerPage() {
                     pinyin: seg.pinyin,
                     definition: seg.definition,
                     definitions: seg.definitions,
+                    hskLevel: (seg as unknown as { hskLevel?: number })
+                      .hskLevel,
                   });
                 }}
               >
@@ -1845,7 +1847,7 @@ export default function LessonViewerPage() {
                   </div>
                   {typeof popup.hskLevel === "number" && (
                     <span
-                      className={`text-[10px] leading-none px-2 py-[2px] rounded ${getHSKPillClasses(
+                      className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
                         popup.hskLevel
                       )}`}
                       aria-label={`HSK level ${popup.hskLevel}`}
@@ -2050,7 +2052,7 @@ export default function LessonViewerPage() {
                   </div>
                   {typeof notesPopup.hskLevel === "number" && (
                     <span
-                      className={`text-[10px] leading-none px-2 py-[2px] rounded ${getHSKPillClasses(
+                      className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
                         notesPopup.hskLevel
                       )}`}
                       aria-label={`HSK level ${notesPopup.hskLevel}`}
