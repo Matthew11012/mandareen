@@ -11,6 +11,14 @@ export interface MarkdownChunk {
   tokens: number;
   tags: string[];
   contentHash: string;
+  // New hierarchical fields
+  partTitle?: string;
+  chapterTitle?: string;
+  subchapterTitle?: string;
+  subsubchapterTitle?: string;
+  chapterNumber?: string;
+  subchapterNumber?: string;
+  subsubchapterNumber?: string;
 }
 
 export interface IngestionResult {
@@ -40,6 +48,7 @@ export class MarkdownIngestionService {
     filePath: string,
     sourceTitle: string,
     batchSize: number = 50,
+    generateEmbeddings: boolean = false,
   ): Promise<IngestionResult> {
     this.logger.log(`Starting ingestion of ${filePath}`);
 
@@ -57,7 +66,11 @@ export class MarkdownIngestionService {
 
     for (let i = 0; i < chunks.length; i += batchSize) {
       const batch = chunks.slice(i, i + batchSize);
-      const result = await this.processBatch(batch, source.id);
+      const result = await this.processBatch(
+        batch,
+        source.id,
+        generateEmbeddings,
+      );
 
       sectionsCreated += result.sectionsCreated;
       chunksCreated += result.chunksCreated;
@@ -81,40 +94,175 @@ export class MarkdownIngestionService {
   }
 
   /**
-   * Parse Markdown content into chunks based on "#" headings
+   * Parse Markdown content into chunks based on hierarchical headings
+   * Supports: # Part, ## Chapter, ### Subchapter, #### Sub-subchapter, ##### Leaf
    */
   private parseMarkdownToChunks(content: string): MarkdownChunk[] {
     const lines = content.split('\n');
     const chunks: MarkdownChunk[] = [];
-    let currentTitle = '';
-    let currentContent: string[] = [];
+
+    // Track hierarchy context
+    let partTitle = '';
+    let chapterTitle = '';
+    let subchapterTitle = '';
+    let subsubchapterTitle = '';
+    let chapterNumber = '';
+    let subchapterNumber = '';
+    let subsubchapterNumber = '';
+    // Buffers for prose
+    let subchapterContent: string[] = [];
+    let subsubContent: string[] = [];
+    let sawChildSubsubForCurrentSubchapter = false;
 
     for (const line of lines) {
       const trimmedLine = line.trim();
 
       // Check if this is a heading
       if (trimmedLine.startsWith('#')) {
-        // Save previous chunk if exists
-        if (currentTitle && currentContent.length > 0) {
+        // Flush prose buffers before switching context
+        if (subsubContent.length > 0) {
           const chunk = this.createChunkFromContent(
-            currentTitle,
-            currentContent,
+            subsubchapterTitle || '',
+            subsubContent,
+            {
+              partTitle,
+              chapterTitle,
+              subchapterTitle,
+              subsubchapterTitle,
+              chapterNumber,
+              subchapterNumber,
+              subsubchapterNumber,
+            },
           );
           if (chunk) chunks.push(chunk);
+          subsubContent = [];
+        } else if (subchapterContent.length > 0) {
+          const chunk = this.createChunkFromContent(
+            subchapterTitle || '',
+            subchapterContent,
+            {
+              partTitle,
+              chapterTitle,
+              subchapterTitle,
+              subsubchapterTitle,
+              chapterNumber,
+              subchapterNumber,
+              subsubchapterNumber,
+            },
+          );
+          if (chunk) chunks.push(chunk);
+          subchapterContent = [];
         }
 
-        // Start new chunk
-        currentTitle = trimmedLine.substring(2).trim();
-        currentContent = [];
+        // Parse heading level and update context
+        const headingText = trimmedLine.replace(/^#+\s*/, '').trim();
+        const level = (trimmedLine.match(/^#+/) || [''])[0].length;
+
+        switch (level) {
+          case 1: // Part (A/B)
+            partTitle = headingText;
+            break;
+          case 2: // Chapter
+            chapterTitle = headingText;
+            chapterNumber = this.extractNumber(headingText);
+            // reset lower levels
+            subchapterTitle = '';
+            subsubchapterTitle = '';
+            subchapterNumber = '';
+            subsubchapterNumber = '';
+            subchapterContent = [];
+            subsubContent = [];
+            sawChildSubsubForCurrentSubchapter = false;
+            break;
+          case 3: // Subchapter
+            subchapterTitle = headingText;
+            subchapterNumber = this.extractNumber(headingText);
+            // reset sub-sub state
+            subsubchapterTitle = '';
+            subsubchapterNumber = '';
+            subchapterContent = [];
+            subsubContent = [];
+            sawChildSubsubForCurrentSubchapter = false;
+            break;
+          case 4: // Sub-subchapter
+            subsubchapterTitle = headingText;
+            subsubchapterNumber = this.extractNumber(headingText);
+            // if this is the first #### under this ### and no ### prose captured,
+            // ensure a minimal section exists for ### by emitting an empty marker chunk once
+            if (
+              !sawChildSubsubForCurrentSubchapter &&
+              subchapterTitle &&
+              subchapterContent.length === 0
+            ) {
+              const marker = this.createChunkFromContent(
+                subchapterTitle,
+                [`Subchapter: ${subchapterTitle}`],
+                {
+                  partTitle,
+                  chapterTitle,
+                  subchapterTitle,
+                  subsubchapterTitle,
+                  chapterNumber,
+                  subchapterNumber,
+                  subsubchapterNumber,
+                },
+              );
+              if (marker) chunks.push(marker);
+            }
+            sawChildSubsubForCurrentSubchapter = true;
+            // reset subsub prose buffer
+            subsubContent = [];
+            break;
+          case 5: // Leaf content (#####)
+            // Treat as content under current sub-subchapter
+            // do not push the heading line itself, prose lines to follow will be added below
+            break;
+        }
+
+        // Reset content for new sections (### or #### starts a new buffer)
+        if (level <= 4) {
+          // buffers already cleared above as needed
+        }
       } else if (trimmedLine) {
         // Add content to current chunk
-        currentContent.push(line);
+        if (subsubchapterTitle) {
+          subsubContent.push(line);
+        } else if (subchapterTitle) {
+          subchapterContent.push(line);
+        }
       }
     }
 
-    // Save the last chunk
-    if (currentTitle && currentContent.length > 0) {
-      const chunk = this.createChunkFromContent(currentTitle, currentContent);
+    // Save the last chunk (prefer #### when present, else ### prose)
+    if (subsubContent.length > 0) {
+      const chunk = this.createChunkFromContent(
+        subsubchapterTitle || '',
+        subsubContent,
+        {
+          partTitle,
+          chapterTitle,
+          subchapterTitle,
+          subsubchapterTitle,
+          chapterNumber,
+          subchapterNumber,
+          subsubchapterNumber,
+        },
+      );
+      if (chunk) chunks.push(chunk);
+    } else if (subchapterContent.length > 0) {
+      const chunk = this.createChunkFromContent(
+        subchapterTitle || '',
+        subchapterContent,
+        {
+          partTitle,
+          chapterTitle,
+          subchapterTitle,
+          subsubchapterTitle,
+          chapterNumber,
+          subchapterNumber,
+          subsubchapterNumber,
+        },
+      );
       if (chunk) chunks.push(chunk);
     }
 
@@ -127,6 +275,15 @@ export class MarkdownIngestionService {
   private createChunkFromContent(
     title: string,
     contentLines: string[],
+    hierarchy?: {
+      partTitle?: string;
+      chapterTitle?: string;
+      subchapterTitle?: string;
+      subsubchapterTitle?: string;
+      chapterNumber?: string;
+      subchapterNumber?: string;
+      subsubchapterNumber?: string;
+    },
   ): MarkdownChunk | null {
     // Filter out empty lines before processing
     const nonEmptyLines = contentLines
@@ -173,12 +330,24 @@ export class MarkdownIngestionService {
       tokens,
       tags,
       contentHash,
+      // Add hierarchy fields
+      partTitle: hierarchy?.partTitle,
+      chapterTitle: hierarchy?.chapterTitle,
+      subchapterTitle: hierarchy?.subchapterTitle,
+      subsubchapterTitle: hierarchy?.subsubchapterTitle,
+      chapterNumber: hierarchy?.chapterNumber,
+      subchapterNumber: hierarchy?.subchapterNumber,
+      subsubchapterNumber: hierarchy?.subsubchapterNumber,
     };
   }
 
   /**
-   * Separate Chinese and English content from mixed text
+   * Extract number from heading text (e.g., "1.1.1" from "1.1.1 Initials")
    */
+  private extractNumber(text: string): string {
+    const match = text.match(/^(\d+(?:\.\d+)*)/);
+    return match ? match[1] : '';
+  }
   private separateChineseAndEnglish(content: string): {
     zhText: string;
     enText: string;
@@ -333,6 +502,7 @@ export class MarkdownIngestionService {
   private async processBatch(
     chunks: MarkdownChunk[],
     sourceId: number,
+    generateEmbeddings: boolean,
   ): Promise<{
     sectionsCreated: number;
     chunksCreated: number;
@@ -344,11 +514,7 @@ export class MarkdownIngestionService {
 
     for (const chunk of chunks) {
       // Create or get section
-      const section = await this.upsertSection(
-        sourceId,
-        chunk.title,
-        chunk.tags,
-      );
+      const section = await this.upsertSection(sourceId, chunk);
       if (!section) continue;
 
       // Create chunk
@@ -357,8 +523,20 @@ export class MarkdownIngestionService {
 
       chunksCreated++;
 
-      // Skip embedding generation during ingestion - let rag.service.ts handle it
-      // This ensures consistent 1536-dimension embeddings
+      if (generateEmbeddings) {
+        // Generate embeddings for zh/en/title as available
+        try {
+          const count = await this.generateChunkEmbeddings(
+            createdChunk.id,
+            chunk,
+          );
+          embeddingsGenerated += count;
+        } catch (err) {
+          this.logger.warn(
+            `Embedding generation failed for chunk ${createdChunk.id}: ${(err as any)?.message}`,
+          );
+        }
+      }
     }
 
     return { sectionsCreated, chunksCreated, embeddingsGenerated };
@@ -397,9 +575,10 @@ export class MarkdownIngestionService {
    */
   private async upsertSection(
     sourceId: number,
-    heading: string,
-    tags: string[],
+    chunk: MarkdownChunk,
   ): Promise<{ id: number } | null> {
+    const heading = chunk.title;
+    const tags = chunk.tags;
     const slug = this.createSlug(heading);
 
     const existing = await this.prisma.ragSection.findFirst({
@@ -417,7 +596,16 @@ export class MarkdownIngestionService {
           heading,
           slug,
           tags,
-          metadata: { createdAt: new Date().toISOString() },
+          metadata: {
+            createdAt: new Date().toISOString(),
+            partTitle: chunk.partTitle,
+            chapterTitle: chunk.chapterTitle,
+            subchapterTitle: chunk.subchapterTitle,
+            subsubchapterTitle: chunk.subsubchapterTitle,
+            chapterNumber: chunk.chapterNumber,
+            subchapterNumber: chunk.subchapterNumber,
+            subsubchapterNumber: chunk.subsubchapterNumber,
+          },
         },
       });
 

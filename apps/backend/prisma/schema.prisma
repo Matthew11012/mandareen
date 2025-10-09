@@ -246,12 +246,13 @@ enum CurriculumActivityType {
 
 model CurriculumUnit {
   id             Int      @id @default(autoincrement())
-  ragSourceId    Int      @unique
+  ragSourceId    Int
   title          String
   description    String?
   order          Int      @default(0)
   targetLevelMin Int?     @default(0)
   targetLevelMax Int?     @default(7)
+  metadata       Json?
   createdAt      DateTime @default(now())
 
   lessons        CurriculumLesson[]
@@ -260,26 +261,30 @@ model CurriculumUnit {
 
   // FK to RAG
   ragSource RagSource @relation(fields: [ragSourceId], references: [id], onDelete: Cascade)
+
+  @@unique([ragSourceId, title])
 }
 
 model CurriculumLesson {
   id           Int      @id @default(autoincrement())
   unitId       Int
-  ragSectionId Int
+  ragSectionId Int?
   title        String
   description  String?
   order        Int      @default(0)
   objectives   Json?
   grammarKeys  String[]
+  metadata     Json?
   createdAt    DateTime @default(now())
 
   unit       CurriculumUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
-  ragSection RagSection     @relation(fields: [ragSectionId], references: [id], onDelete: Cascade)
+  ragSection RagSection?     @relation(fields: [ragSectionId], references: [id], onDelete: Cascade)
   activities CurriculumActivity[]
   progresses CurriculumProgress[]
   bookmarks  UserCurriculumBookmark[]
 
   @@unique([unitId, ragSectionId])
+  @@unique([unitId, title])
   @@index([unitId])
   @@index([ragSectionId])
 }
