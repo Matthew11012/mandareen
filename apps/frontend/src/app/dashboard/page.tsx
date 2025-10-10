@@ -3,10 +3,16 @@
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { DashboardLayout } from "@/components/layout";
 import { useCurrentLevel } from "@/lib/hooks/use-current-level";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { assessmentApi } from "@/lib/api/assessment";
 import { useRouter } from "next/navigation";
 import { lessonsApi } from "@/lib/api/lessons";
+import {
+  listUnits,
+  getUnit,
+  type CurriculumLesson,
+  type CurriculumUnit,
+} from "@/lib/api/curriculum";
 import {
   BookOpen,
   Brain,
@@ -15,6 +21,7 @@ import {
   Clock,
   Target,
   RefreshCw,
+  Compass,
 } from "lucide-react";
 
 /**
@@ -41,6 +48,12 @@ export default function DashboardPage() {
   const [studyStreakDays, setStudyStreakDays] = useState(0);
   const [wordsLearned, setWordsLearned] = useState(0);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(5);
+  const [guidedPathLoading, setGuidedPathLoading] = useState(false);
+  const [guidedPathError, setGuidedPathError] = useState<string | null>(null);
+  const [guidedUnit, setGuidedUnit] = useState<CurriculumUnit | null>(null);
+  const [guidedLesson, setGuidedLesson] = useState<CurriculumLesson | null>(
+    null
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -69,10 +82,58 @@ export default function DashboardPage() {
       .getWordsRead()
       .then((r) => setWordsLearned(r.readCount || 0))
       .catch(() => setWordsLearned(0));
+    const loadGuidedPath = async () => {
+      setGuidedPathLoading(true);
+      setGuidedPathError(null);
+      try {
+        const units = await listUnits();
+        if (!Array.isArray(units) || units.length === 0) {
+          if (isMounted) {
+            setGuidedUnit(null);
+            setGuidedLesson(null);
+          }
+          return;
+        }
+        const targetUnit =
+          units.find((u) => u.completedLessons < u.totalLessons) ?? units[0];
+        const unitDetail = await getUnit(targetUnit.id);
+        const nextLesson = unitDetail.lessons.find((l) => !l.completed);
+        if (isMounted) {
+          setGuidedUnit(targetUnit);
+          setGuidedLesson(nextLesson ?? unitDetail.lessons[0] ?? null);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setGuidedUnit(null);
+          setGuidedLesson(null);
+          setGuidedPathError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load guided path"
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setGuidedPathLoading(false);
+        }
+      }
+    };
+    void loadGuidedPath();
     return () => {
       isMounted = false;
     };
   }, []);
+
+  const curriculumProgress = useMemo(() => {
+    if (!guidedUnit) return null;
+    const completed = guidedUnit.completedLessons;
+    const total = guidedUnit.totalLessons || 1;
+    return {
+      completed,
+      total,
+      percent: Math.min(100, Math.round((completed / total) * 100)),
+    };
+  }, [guidedUnit]);
 
   if (isLoading) {
     return (
@@ -107,6 +168,100 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Guided Path Widget */}
+        <section className="bg-[#2e323a] rounded-2xl border border-[#404040] p-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-12 h-12 flex items-center justify-center rounded-lg bg-blue-500/20">
+                <Compass className="w-6 h-6 text-blue-300" />
+              </div>
+              <div>
+                <h3 className="text-lg font-inter font-semibold text-white">
+                  Guided Path
+                </h3>
+                <p className="text-sm text-[#a6a6a6] font-inter">
+                  Follow the structured curriculum sourced from Modern Mandarin
+                  Chinese Grammar.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => router.push("/curriculum")}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10 transition-colors duration-200"
+            >
+              View curriculum
+            </button>
+          </div>
+
+          <div className="mt-5">
+            {guidedPathLoading ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="h-16 bg-[#1f2229] border border-[#333842] rounded-xl animate-pulse" />
+                <div className="h-16 bg-[#1f2229] border border-[#333842] rounded-xl animate-pulse" />
+              </div>
+            ) : guidedPathError ? (
+              <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {guidedPathError}
+              </div>
+            ) : guidedUnit && guidedLesson ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-[#333842] bg-[#1f2229] p-4">
+                  <h4 className="text-sm font-inter text-[#a6a6a6]">Next up</h4>
+                  <p className="text-white font-inter font-semibold mt-1">
+                    {guidedUnit.title}
+                  </p>
+                  <p className="text-sm text-white/70 font-inter mt-0.5">
+                    {guidedLesson.title}
+                  </p>
+                  {guidedLesson.description && (
+                    <p className="text-xs text-[#a6a6a6] mt-2 line-clamp-2">
+                      {guidedLesson.description}
+                    </p>
+                  )}
+                </div>
+                <div className="rounded-xl border border-[#333842] bg-[#1f2229] p-4">
+                  <h4 className="text-sm font-inter text-[#a6a6a6]">
+                    Progress
+                  </h4>
+                  <div
+                    className="mt-3 h-2 rounded-full bg-[#2e323a] overflow-hidden"
+                    aria-label="Curriculum progress"
+                  >
+                    <div
+                      className="h-full bg-gradient-to-r from-[#4040f2] to-[#7c80ff]"
+                      style={{ width: `${curriculumProgress?.percent ?? 0}%` }}
+                    />
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs text-[#a6a6a6] font-inter">
+                    <span>
+                      {curriculumProgress?.completed ?? 0} /{" "}
+                      {curriculumProgress?.total ?? 0} lessons
+                    </span>
+                    <span>{curriculumProgress?.percent ?? 0}%</span>
+                  </div>
+                  <button
+                    onClick={() =>
+                      router.push(
+                        `/curriculum/${guidedUnit.id}/${guidedLesson.id}`
+                      )
+                    }
+                    className="mt-4 inline-flex items-center justify-center rounded-full px-4 py-2 border border-white/10 bg-white/10 text-white text-sm hover:bg-white/20 transition-colors duration-200"
+                  >
+                    Resume lesson
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-[#333842] bg-[#1f2229] p-4">
+                <p className="text-sm text-[#a6a6a6]">
+                  Curriculum coming soon. Check back after units are seeded.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
+  GraduationCap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAVIGATION_DATA } from "@/lib/constants/navigation";
@@ -27,6 +28,7 @@ const ICONS = {
   Home,
   ClipboardCheck,
   BookOpen,
+  GraduationCap,
   Brain,
   MessageCircle,
   Search,

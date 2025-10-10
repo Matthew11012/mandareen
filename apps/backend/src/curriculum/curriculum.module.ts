@@ -5,12 +5,14 @@ import { OpenAIModule } from '../openai/openai.module';
 import { RagModule } from '../rag/rag.module';
 import { CurriculumController } from './curriculum.controller';
 import { CurriculumService } from './curriculum.service';
+import { VocabularyModule } from '../vocabulary/vocabulary.module';
 
 @Module({
   imports: [
     PrismaModule,
     OpenAIModule,
     RagModule,
+    VocabularyModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: { expiresIn: '1d' },

@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OpenAIService } from '../openai/openai.service';
 import { RagService } from '../rag/rag.service';
+import { SegmentationService } from '../vocabulary/segmentation.service';
+import { toToneMarks } from '../utils/pinyin';
 
 @Injectable()
 export class CurriculumService {
@@ -11,10 +13,45 @@ export class CurriculumService {
     private readonly prisma: PrismaService,
     private readonly openai: OpenAIService,
     private readonly rag: RagService,
+    private readonly segmentationService: SegmentationService,
   ) {}
 
-  async listUnitsWithProgress(userId: number) {
+  async listSources() {
+    const sources = await this.prisma.ragSource.findMany({
+      orderBy: { id: 'asc' },
+      select: {
+        id: true,
+        title: true,
+        sourceType: true,
+        language: true,
+        metadata: true,
+      },
+    });
+    return sources.map((s) => ({
+      id: s.id,
+      key: (s as any)?.metadata?.slug || String(s.id),
+      title: s.title,
+      type: s.sourceType,
+      language: s.language || 'zh',
+    }));
+  }
+
+  async listUnitsWithProgress(
+    userId: number,
+    opts?: { sourceId?: number; sourceSlug?: string },
+  ) {
+    const where: any = {};
+    if (opts?.sourceId) where.ragSourceId = opts.sourceId;
+    // Only resolve slug when id is not provided
+    if (!opts?.sourceId && opts?.sourceSlug) {
+      const source = await this.prisma.ragSource.findFirst({
+        where: { metadata: { path: ['slug'], equals: opts.sourceSlug } as any },
+        select: { id: true },
+      });
+      where.ragSourceId = source ? source.id : -1; // no results when slug unknown
+    }
     const units = await this.prisma.curriculumUnit.findMany({
+      where,
       orderBy: { order: 'asc' },
       include: { lessons: { select: { id: true } } },
     });
@@ -45,6 +82,9 @@ export class CurriculumService {
   }
 
   async getUnitDetail(userId: number, unitId: number) {
+    if (!Number.isFinite(unitId)) {
+      throw new Error('Invalid unitId');
+    }
     const unit = await this.prisma.curriculumUnit.findUnique({
       where: { id: unitId },
       include: {
@@ -103,6 +143,9 @@ export class CurriculumService {
     });
     if (!lesson) throw new Error('Lesson not found');
 
+    // Preload descendant context for RAG (### + all ####/##### under it)
+    const lessonContext = await this.buildLessonRagContext(lesson.id);
+
     // Determine which activities missing
     const existing = await this.prisma.curriculumActivity.findMany({
       where: { lessonId },
@@ -113,42 +156,87 @@ export class CurriculumService {
 
     // Generate sequentially per lesson: READ -> GRAMMAR -> QUIZ
     if (force || !has('READ')) {
-      await this.generateRead(lessonId, levelBand, lesson);
+      await this.generateRead(lessonId, levelBand, lesson, lessonContext);
     }
+    const readContent = await this.getActivityContent(
+      lessonId,
+      'READ',
+      levelBand,
+    );
+
     if (force || !has('GRAMMAR')) {
-      await this.generateGrammar(lessonId, levelBand, lesson);
+      await this.generateGrammar(lessonId, levelBand, lesson, lessonContext);
     }
+    const grammarContent = await this.getActivityContent(
+      lessonId,
+      'GRAMMAR',
+      levelBand,
+    );
+
     if (force || !has('QUIZ')) {
-      await this.generateQuiz(lessonId, levelBand);
+      await this.generateQuiz(
+        lessonId,
+        levelBand,
+        lessonContext,
+        readContent,
+        grammarContent,
+      );
     }
 
     return this.getLessonWithActivities(args.userId, args.unitId, lessonId);
   }
 
-  private async generateRead(lessonId: number, levelBand: number, lesson: any) {
-    // Use RAG to get context from this section
-    const ctx = await this.rag.retrieveForLesson(0, {
-      topic: lesson.title || lesson.ragSection?.heading || undefined,
-      level: Math.max(1, levelBand || 1),
-    });
+  private async generateRead(
+    lessonId: number,
+    levelBand: number,
+    lesson: any,
+    ctx: { chunks: any[]; contextText: string },
+  ) {
     const passageTitle =
       lesson.title || lesson.ragSection?.heading || 'Reading';
-    // Reuse existing OpenAIService patterns to author a short passage; keep content schema stable
+    const citations = (ctx?.chunks || [])
+      .slice(0, 6)
+      .map((c: any, i: number) => ({
+        chunkId: c.id,
+        key: `[S${i + 1}]`,
+      }));
+    const read = await (this.openai as any).generateReadPassage({
+      title: passageTitle,
+      level: Math.max(1, levelBand || 1),
+      context: ctx?.contextText || '',
+      maxChars: 800,
+    });
+    // Enrich micro-passage with segments/pinyin/translation
+    let segments: any[] = [];
+    try {
+      const segs = await this.segmentationService.segmentText(
+        read?.passage?.hanzi || '',
+      );
+      segments = segs.map((s) => ({
+        text: s.word,
+        startIndex: s.startIndex,
+        endIndex: s.endIndex,
+        isWord: s.isWord,
+        hskLevel: s.hskLevel,
+        pinyin: toToneMarks((s.pinyin || '').toLowerCase()),
+        definition: s.definition,
+        definitions: s.definitions,
+      }));
+    } catch {
+      // leave segments empty on failure
+    }
     const content = {
       title: passageTitle,
       type: 'READ',
       levelBand,
       passage: {
-        hanzi: '',
-        pinyin: '',
-        translation: '',
+        hanzi: read?.passage?.hanzi || '',
+        pinyin: read?.passage?.pinyin || '',
+        translation: read?.passage?.translation || '',
       },
-      segments: [],
-      citations:
-        (ctx as any)?.chunks?.slice(0, 3)?.map((c: any, i: number) => ({
-          chunkId: c.id,
-          key: `[S${i + 1}]`,
-        })) || [],
+      segments,
+      questions: Array.isArray(read?.questions) ? read.questions : [],
+      citations,
     };
     await this.prisma.curriculumActivity.create({
       data: { lessonId, type: 'READ' as any, levelBand, content },
@@ -159,42 +247,189 @@ export class CurriculumService {
     lessonId: number,
     levelBand: number,
     lesson: any,
+    ctx: { chunks: any[]; contextText: string },
   ) {
-    // Ground to this section
-    const ctx = await this.rag.retrieveForLesson(0, {
-      topic: lesson.title || lesson.ragSection?.heading || undefined,
+    // Build outline from descendant sub-subchapters (if present in metadata of chunks' sections)
+    const outline = await this.buildSubsubOutlineForLesson(lessonId);
+    const sectionCount = Math.max(outline.length || 1, 1); // ensure at least 1
+    const explain = await (this.openai as any).generateCurriculumExplainLesson({
+      title: lesson.title || lesson.ragSection?.heading || 'Lesson',
       level: Math.max(1, levelBand || 1),
+      outline: outline.map((t: string) => ({ title: t })),
+      context: ctx?.contextText || '',
+      maxSections: sectionCount,
+      preferMicroPassageChars: (ctx?.chunks?.length || 0) > 12 ? 280 : 180,
     });
-    const notes = await (this.openai as any).generateGrammarNotes(
-      lesson.ragSection?.heading || lesson.title || '',
-      {
-        level: Math.max(1, levelBand || 1),
-        contextText: (ctx as any)?.contextText,
-      },
-    );
+    const fallbackCitations = (ctx?.chunks || [])
+      .slice(0, 6)
+      .map((c: any, i: number) => ({
+        chunkId: c.id,
+        key: `[S${i + 1}]`,
+      }));
+    // Optionally enrich the microPassage with segments too
+    let micro = explain?.microPassage || null;
+    if (
+      micro &&
+      typeof micro?.hanzi === 'string' &&
+      micro.hanzi.trim().length
+    ) {
+      try {
+        const segs = await this.segmentationService.segmentText(micro.hanzi);
+        (micro as any).segments = segs.map((s) => ({
+          text: s.word,
+          startIndex: s.startIndex,
+          endIndex: s.endIndex,
+          isWord: s.isWord,
+          hskLevel: s.hskLevel,
+          pinyin: toToneMarks((s.pinyin || '').toLowerCase()),
+          definition: s.definition,
+          definitions: s.definitions,
+        }));
+      } catch {
+        // ignore segmentation errors for micro passage
+      }
+    }
+
     const content = {
-      title: lesson.title || lesson.ragSection?.heading || 'Grammar',
+      title: lesson.title || lesson.ragSection?.heading || 'Explain',
       type: 'GRAMMAR',
-      notes: notes?.grammarNotes || [],
-      tips: notes?.tips || [],
-      citations: notes?.citations || [],
+      overview: explain?.overview || '',
+      sections: Array.isArray(explain?.sections) ? explain.sections : [],
+      microPassage: micro,
+      drills: [],
+      citations:
+        Array.isArray(explain?.citations) && explain.citations.length
+          ? explain.citations
+          : fallbackCitations,
     };
     await this.prisma.curriculumActivity.create({
       data: { lessonId, type: 'GRAMMAR' as any, levelBand, content },
     });
   }
 
-  private async generateQuiz(lessonId: number, levelBand: number) {
-    // Simple placeholder; real prompt would use READ + GRAMMAR content
+  private async generateQuiz(
+    lessonId: number,
+    levelBand: number,
+    ctx: { chunks: any[]; contextText: string },
+    readContent: any,
+    grammarContent: any,
+  ) {
+    const quiz = await (this.openai as any).generateQuizItems({
+      level: Math.max(1, levelBand || 1),
+      read: readContent || {},
+      grammar: grammarContent || {},
+      context: ctx?.contextText || '',
+      numItems: 5,
+    });
     const content = {
       title: 'Checkpoint Quiz',
       type: 'QUIZ',
-      items: [],
+      items: Array.isArray(quiz?.items) ? quiz.items : [],
       passingScore: 70,
+      citations: (ctx?.chunks || []).slice(0, 6).map((c: any, i: number) => ({
+        chunkId: c.id,
+        key: `[S${i + 1}]`,
+      })),
     };
     await this.prisma.curriculumActivity.create({
       data: { lessonId, type: 'QUIZ' as any, levelBand, content },
     });
+  }
+
+  private async buildSubsubOutlineForLesson(
+    lessonId: number,
+  ): Promise<string[]> {
+    const lesson = await this.prisma.curriculumLesson.findUnique({
+      where: { id: lessonId },
+      include: { unit: true },
+    });
+    if (!lesson) return [];
+    const subchapterNumber = (lesson as any).metadata?.subchapterNumber || '';
+    const unit = await this.prisma.curriculumUnit.findUnique({
+      where: { id: lesson.unitId },
+      include: { ragSource: true },
+    });
+    const sourceId = unit?.ragSourceId || (unit as any)?.ragSource?.id || null;
+    if (!sourceId || !subchapterNumber) return [];
+    const sections = await this.prisma.ragSection.findMany({
+      where: { sourceId },
+      select: { heading: true, metadata: true },
+    });
+    const titles: string[] = [];
+    for (const s of sections as any[]) {
+      const md = s.metadata || {};
+      const num = String(md.subsubchapterNumber || '');
+      if (num && num.startsWith(subchapterNumber + '.')) {
+        titles.push(s.heading || num);
+      }
+    }
+    // Deduplicate preserving order
+    const seen = new Set<string>();
+    return titles.filter((t) => (seen.has(t) ? false : (seen.add(t), true)));
+  }
+  // Build RAG context for a lesson: include ### section (if present) and all ####/##### descendants
+  private async buildLessonRagContext(
+    lessonId: number,
+  ): Promise<{ chunks: any[]; contextText: string }> {
+    const lesson = await this.prisma.curriculumLesson.findUnique({
+      where: { id: lessonId },
+      include: { unit: true, ragSection: { include: { chunks: true } } },
+    });
+    if (!lesson) return { chunks: [], contextText: '' };
+
+    // Collect candidate sections
+    const subchapterNumber = (lesson as any).metadata?.subchapterNumber || '';
+    const unit = await this.prisma.curriculumUnit.findUnique({
+      where: { id: lesson.unitId },
+      include: { ragSource: true },
+    });
+    const sourceId = unit?.ragSourceId || (unit as any)?.ragSource?.id || null;
+
+    let sections: { id: number }[] = [];
+    if (sourceId && subchapterNumber) {
+      const all = await this.prisma.ragSection.findMany({
+        where: { sourceId },
+        select: { id: true, metadata: true },
+      });
+      sections = all.filter((s: any) => {
+        const md = s.metadata || {};
+        if (md.subchapterNumber === subchapterNumber) return true;
+        const subsub = String(md.subsubchapterNumber || '');
+        return subsub.startsWith(subchapterNumber + '.');
+      });
+    }
+
+    const sectionIds = [
+      ...(lesson.ragSectionId ? [lesson.ragSectionId] : []),
+      ...sections.map((s) => s.id),
+    ];
+    const chunks = sectionIds.length
+      ? await this.prisma.ragChunk.findMany({
+          where: { sectionId: { in: sectionIds } },
+          select: { id: true, hanzi: true, english: true, sectionId: true },
+          orderBy: { id: 'asc' },
+        })
+      : [];
+    const contextText = chunks
+      .map(
+        (c: any) =>
+          `${c.hanzi || ''}`.trim() + (c.english ? `\n${c.english}` : ''),
+      )
+      .join('\n\n')
+      .slice(0, 12000);
+    return { chunks, contextText };
+  }
+
+  private async getActivityContent(
+    lessonId: number,
+    type: 'READ' | 'GRAMMAR' | 'QUIZ',
+    levelBand: number,
+  ): Promise<any | null> {
+    const act = await this.prisma.curriculumActivity.findFirst({
+      where: { lessonId, type: type as any, levelBand },
+      select: { content: true },
+    });
+    return (act as any)?.content || null;
   }
 
   async submitAttempt(args: {

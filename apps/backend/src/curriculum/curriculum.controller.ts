@@ -8,8 +8,10 @@ import {
   Req,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { BadRequestException } from '@nestjs/common';
 import { CurriculumService } from './curriculum.service';
 import { AuthenticatedRequest } from '../types/request.types';
+import { Query } from '@nestjs/common';
 
 @Controller('curriculum')
 @UseGuards(JwtAuthGuard)
@@ -17,13 +19,38 @@ export class CurriculumController {
   constructor(private readonly curriculum: CurriculumService) {}
 
   @Get('units')
-  listUnits(@Req() req: AuthenticatedRequest) {
-    return this.curriculum.listUnitsWithProgress(req.user.id);
+  listUnits(
+    @Req() req: AuthenticatedRequest,
+    @Query('sourceId') sourceIdRaw?: string,
+    @Query('source') sourceSlug?: string,
+  ) {
+    let sourceId = Number(sourceIdRaw);
+    // Fallback: if `source` is numeric, treat it as an id
+    if (!Number.isFinite(sourceId) && typeof sourceSlug === 'string') {
+      const maybeId = Number(sourceSlug);
+      if (Number.isFinite(maybeId)) {
+        sourceId = maybeId;
+        sourceSlug = undefined;
+      }
+    }
+    return this.curriculum.listUnitsWithProgress(req.user.id, {
+      sourceId: Number.isFinite(sourceId) ? sourceId : undefined,
+      sourceSlug: typeof sourceSlug === 'string' ? sourceSlug : undefined,
+    });
+  }
+
+  @Get('sources')
+  listSources() {
+    return this.curriculum.listSources();
   }
 
   @Get('units/:unitId')
   getUnit(@Req() req: AuthenticatedRequest, @Param('unitId') unitId: string) {
-    return this.curriculum.getUnitDetail(req.user.id, Number(unitId));
+    const id = Number(unitId);
+    if (!Number.isFinite(id)) {
+      throw new BadRequestException('Invalid unitId');
+    }
+    return this.curriculum.getUnitDetail(req.user.id, id);
   }
 
   @Get('units/:unitId/lessons/:lessonId')
@@ -32,11 +59,12 @@ export class CurriculumController {
     @Param('unitId') unitId: string,
     @Param('lessonId') lessonId: string,
   ) {
-    return this.curriculum.getLessonWithActivities(
-      req.user.id,
-      Number(unitId),
-      Number(lessonId),
-    );
+    const uid = Number(unitId);
+    const lid = Number(lessonId);
+    if (!Number.isFinite(uid) || !Number.isFinite(lid)) {
+      throw new BadRequestException('Invalid unitId or lessonId');
+    }
+    return this.curriculum.getLessonWithActivities(req.user.id, uid, lid);
   }
 
   @Post('units/:unitId/lessons/:lessonId/generate')
