@@ -444,6 +444,16 @@ export class CurriculumService {
     });
     // Update progress counters; mark completed if quiz passed
     if (typeof score === 'number') {
+      const act = await this.prisma.curriculumActivity.findUnique({
+        where: { id: activityId },
+        select: {
+          lessonId: true,
+          lesson: { select: { unitId: true } },
+        },
+      });
+      const lessonId = act?.lessonId || null;
+      const unitId = act?.lesson?.unitId || null;
+
       const existing = await this.prisma.curriculumProgress.findFirst({
         where: { userId, activityId },
       });
@@ -456,6 +466,9 @@ export class CurriculumService {
             status: newStatus,
             score,
             attempts: (existing.attempts || 0) + 1,
+            // Backfill unit/lesson if missing
+            unitId: existing.unitId ?? unitId,
+            lessonId: existing.lessonId ?? lessonId,
           },
         });
       } else {
@@ -463,6 +476,8 @@ export class CurriculumService {
           data: {
             userId,
             activityId,
+            unitId,
+            lessonId,
             status: newStatus,
             score,
             attempts: 1,

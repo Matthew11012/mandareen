@@ -574,7 +574,7 @@ export class OpenAIService {
     Return STRICT JSON with ${n} items (no commentary):
     {
       "items": [
-        { "question": "...", "options": ["A","B","C","D"], "answerIndex": 0, "rationale": "..." }
+        { "question": "...", "options": ["A","B","C","D"], "answerIndex": 0, "rationale": "<primarily english explanation>" }
       ]
     }`;
     const completion = await this.openai.chat.completions.create({

@@ -99,7 +99,7 @@ export default function UnitDetailPage({
       <Link
         key={lesson.id}
         href={`/curriculum/${unitId}/${lesson.id}`}
-        className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#16181d] p-4 transition-colors duration-200 hover:border-white/20"
+        className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#2e323a] p-4 transition-colors duration-200 hover:border-white/20 shadow-md"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">

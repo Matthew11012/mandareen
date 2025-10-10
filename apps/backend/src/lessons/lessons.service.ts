@@ -1112,7 +1112,7 @@ export class LessonsService {
   }
 
   async getStudyStreakDays(userId: number, offsetMinutes = 0): Promise<number> {
-    // Fetch finishedAt timestamps for the user, newest first
+    // Fetch finished legacy AI lessons
     const progresses: Array<{ finishedAt: Date | null }> = await (
       this.prismaService as any
     ).lessonProgress.findMany({
@@ -1120,14 +1120,31 @@ export class LessonsService {
       select: { finishedAt: true },
       orderBy: { finishedAt: 'desc' },
     });
+    // Fetch completed curriculum progress (use updatedAt as completion time)
+    const curriculum: Array<{ updatedAt: Date }> = await (
+      this.prismaService as any
+    ).curriculumProgress.findMany({
+      where: { userId, status: 'completed' },
+      select: { updatedAt: true },
+      orderBy: { updatedAt: 'desc' },
+    });
 
-    if (!progresses || progresses.length === 0) return 0;
+    if (
+      (!progresses || progresses.length === 0) &&
+      (!curriculum || curriculum.length === 0)
+    )
+      return 0;
 
-    // Build a set of LOCAL date keys (YYYY-MM-DD) for fast lookup; multiple finishes per day count once
+    // Build a set of LOCAL date keys (YYYY-MM-DD); multiple finishes per day count once
     const finishedDays = new Set<string>();
     for (const p of progresses) {
       if (!p.finishedAt) continue;
       const shifted = new Date(p.finishedAt.getTime() + offsetMinutes * 60_000);
+      const key = `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`;
+      finishedDays.add(key);
+    }
+    for (const cp of curriculum) {
+      const shifted = new Date(cp.updatedAt.getTime() + offsetMinutes * 60_000);
       const key = `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`;
       finishedDays.add(key);
     }

@@ -182,18 +182,13 @@ export default function CurriculumUnitsPage() {
       <Link
         key={unit.id}
         href={`/curriculum/${unit.id}`}
-        className="group relative flex flex-col rounded-2xl border border-white/10 bg-[#16181d] p-5 transition-colors duration-200 hover:border-white/20"
+        className="group relative flex flex-col rounded-2xl border border-white/10 bg-[#2e323a] p-5 transition-colors duration-200 hover:border-[#4040f2] shadow-md"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
             <h3 className="text-lg font-inter font-semibold text-white group-hover:text-white/90">
               {unit.title}
             </h3>
-            {unit.description && (
-              <p className="text-sm font-inter text-white/60 line-clamp-2">
-                {unit.description}
-              </p>
-            )}
           </div>
           <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5">
             <BookOpen className="h-5 w-5 text-white/70" />
