@@ -2,11 +2,33 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { ChevronDown, Sparkles, MessageSquare, BookOpen } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import { useState } from "react";
+import {
+  motion,
+  useScroll,
+  useTransform,
+  useReducedMotion,
+} from "framer-motion";
 
 export default function LandingPage() {
   const [open, setOpen] = useState<number | null>(0);
+  const [videoOk, setVideoOk] = useState(true);
+  const prefersReducedMotion = useReducedMotion();
+  const { scrollYProgress } = useScroll();
+  const depthScale = useTransform(scrollYProgress, [0, 1], [1, 1.12]);
+  const depthOpacity = useTransform(scrollYProgress, [0, 1], [0.2, 0.5]);
+  const gridOpacity = useTransform(scrollYProgress, [0, 1], [0.06, 0.16]);
+  const ease = [0.2, 0.8, 0.2, 1] as const;
+  const inViewProps = (delay = 0, duration = 0.6) =>
+    prefersReducedMotion
+      ? {}
+      : {
+          initial: { y: 12, opacity: 0 },
+          whileInView: { y: 0, opacity: 1 },
+          viewport: { once: true, amount: 0.6 },
+          transition: { duration, ease, delay },
+        };
   const screenshots: { src: string; alt: string; caption: string }[] = [
     { src: "/dashboard.png", alt: "Dashboard", caption: "Dashboard overview" },
     {
@@ -35,31 +57,14 @@ export default function LandingPage() {
       alt: "Conversations",
       caption: "AI conversation practice",
     },
-    
+
     {
       src: "/Popup_info_and_addtoflashcard.png",
       alt: "Popup info",
       caption: "Quick add to flashcards",
     },
   ];
-  const [heroSlide, setHeroSlide] = useState(0);
-  const goToSlide = (index: number) => {
-    const total = screenshots.length;
-    setHeroSlide(((index % total) + total) % total);
-  };
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight") {
-        setHeroSlide((prev) => (prev + 1) % screenshots.length);
-      } else if (e.key === "ArrowLeft") {
-        setHeroSlide(
-          (prev) => (prev - 1 + screenshots.length) % screenshots.length
-        );
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [screenshots.length]);
+  // Storytelling revamp: remove previous keyboard-driven hero carousel logic
   const faqs = [
     {
       q: "How does Mandareen help me learn?",
@@ -76,13 +81,47 @@ export default function LandingPage() {
   ];
 
   return (
-    <main className="min-h-screen bg-[var(--color-primary-bg)] text-[var(--color-text-primary)]">
+    <main className="min-h-screen bg-black text-[var(--color-text-primary)]">
+      {/* Background layers: vignette + grid + noise; deepen on scroll */}
+      <motion.div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 -z-10"
+        style={
+          prefersReducedMotion
+            ? undefined
+            : { scale: depthScale, opacity: depthOpacity }
+        }
+      >
+        {/* Radial vignette */}
+        <div className="absolute inset-0 bg-[radial-gradient(1200px_600px_at_50%_-10%,rgba(255,255,255,0.08),transparent_60%)]" />
+        {/* Soft grid */}
+        <motion.div
+          className="absolute inset-0 [background-image:linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:40px_40px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_60%)]"
+          style={prefersReducedMotion ? undefined : { opacity: gridOpacity }}
+        />
+        {/* Noise overlay */}
+        <div
+          className="absolute inset-0 opacity-20 [background-image:url('data:image/svg+xml;utf8,\
+          <svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'>\
+            <filter id=\'n\'>\
+              <feTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'2\' stitchTiles=\'stitch\'/>\
+              <feColorMatrix type=\'saturate\' values=\'0\'/>\
+            </filter>\
+            <rect width=\'100%\' height=\'100%\' filter=\'url(%23n)\' opacity=\'0.25\'/>\
+          </svg>')] [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]"
+        />
+      </motion.div>
       {/* Header */}
       <header className="sticky top-4 z-40">
         <div className="max-w-6xl mx-auto px-4">
-          <div className="flex items-center justify-between rounded-4xl bg-white/2.5 border border-white/50 backdrop-blur-sm before:absolute before:inset-0 before:rounded-full before:from-white/60 before:via-transparent before:to-transparent before:opacity-70 before:pointer-events-none transition antialiased pr-4 pl-8 py-3">
+          <motion.div
+            initial={{ y: -12, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }}
+            className="flex items-center justify-between rounded-4xl border border-white/10 bg-black/40 backdrop-blur-md shadow-[0_10px_30px_rgba(0,0,0,0.35)] pr-4 pl-8 py-3"
+          >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-[#4040f2] to-[#6366f1] rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-neutral-900 rounded-lg flex items-center justify-center border border-white/10">
                 <span className="text-white font-bold">普</span>
               </div>
               <span className="font-inter font-semibold">Mandareen</span>
@@ -114,448 +153,343 @@ export default function LandingPage() {
               </Link>
               <Link
                 href="/auth?mode=signup"
-                className="px-4 py-2 rounded-full bg-[var(--color-accent-blue)] hover:opacity-90 text-white font-inter"
+                className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white font-inter border border-white/10 backdrop-blur"
               >
-                Get Started
+                Sign up
               </Link>
             </nav>
-          </div>
+          </motion.div>
         </div>
       </header>
-
-      {/* Hero */}
-      <section className="max-w-6xl mx-auto px-4 py-16 md:py-24">
-        <div className="grid grid-cols-1 md:grid-cols-2 items-center">
-          <div>
-            <h1 className="font-inter font-extrabold text-4xl md:text-5xl leading-tight max-w-3xl">
-              Learn Mandarin with clarity — AI-guided, distraction-free
-            </h1>
-            <p className="text-[var(--color-text-secondary)] mt-4 max-w-2xl font-inter">
-              Short sessions that stick: lessons, conversations, and reviews in
-              one minimal workspace.
-            </p>
-            <div className="mt-8 flex items-center gap-3">
+      {/* Cinematic hero */}
+      <section className="relative h-[80vh] md:h-[88vh] w-full overflow-hidden">
+        {!prefersReducedMotion && videoOk ? (
+          <video
+            className="absolute inset-0 w-full h-full object-cover"
+            src="/hero-bg.mp4"
+            autoPlay
+            muted
+            loop
+            playsInline
+            onError={() => setVideoOk(false)}
+          />
+        ) : (
+          <Image
+            src="/lessons_viewer_story.png"
+            alt="Learning hero"
+            fill
+            className="object-cover"
+            priority
+          />
+        )}
+        <motion.div
+          aria-hidden
+          className="absolute inset-0"
+          style={prefersReducedMotion ? undefined : { opacity: depthOpacity }}
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(1200px_600px_at_50%_-10%,rgba(0,0,0,0),rgba(0,0,0,0.6)_60%)]" />
+          <div className="absolute inset-0 bg-black/55" />
+          <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 via-black/50 to-transparent" />
+        </motion.div>
+        <div className="relative z-10 h-full max-w-6xl mx-auto px-4 flex flex-col items-start justify-end pb-12">
+          <div className="rounded-2xl border border-white/10 bg-black/45 backdrop-blur-[2px] p-6 md:p-8 max-w-3xl md:bg-black/35">
+            <motion.h1
+              {...(prefersReducedMotion
+                ? {}
+                : {
+                    initial: { y: 24, opacity: 0 },
+                    animate: { y: 0, opacity: 1 },
+                    transition: { duration: 0.8, ease },
+                  })}
+              className="font-inter font-extrabold text-4xl md:text-6xl leading-tight tracking-tight"
+            >
+              Find your voice in Mandarin
+            </motion.h1>
+            <motion.p
+              {...(prefersReducedMotion
+                ? {}
+                : {
+                    initial: { y: 24, opacity: 0 },
+                    animate: { y: 0, opacity: 1 },
+                    transition: { duration: 0.9, ease, delay: 0.05 },
+                  })}
+              className="text-[var(--color-text-secondary)] mt-4 font-inter"
+            >
+              A focused path that blends AI‑guided lessons, real conversation,
+              and reviews that stick.
+            </motion.p>
+            <motion.div
+              {...(prefersReducedMotion
+                ? {}
+                : {
+                    initial: { y: 24, opacity: 0 },
+                    animate: { y: 0, opacity: 1 },
+                    transition: { duration: 1, ease, delay: 0.1 },
+                  })}
+              className="mt-8 flex items-center gap-3"
+            >
               <Link
                 href="/auth?mode=signup"
-                className="px-5 py-3 rounded-full bg-[var(--color-accent-blue)] hover:opacity-90 text-white font-inter"
+                className="px-5 py-3 rounded-full bg-white text-black hover:bg-white/90 font-inter border border-white/10"
               >
-                Get Started
+                Sign up
               </Link>
               <Link
-                href="/auth"
+                href="/assessment"
                 className="text-[var(--color-text-secondary)] hover:text-white font-inter"
               >
-                I already have an account
+                Take placement test
               </Link>
-            </div>
+            </motion.div>
           </div>
-          <div>
-            <div className="relative rounded-2xl border border-[var(--color-surface-2)] bg-[var(--color-surface-1)] overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
-              <div className="relative h-64 md:h-80">
-                <div
-                  className="flex h-full w-full transition-transform duration-500 ease-[var(--motion-ease)]"
-                  style={{ transform: `translateX(-${heroSlide * 100}%)` }}
-                  aria-live="polite"
-                >
-                  {screenshots.map((s, idx) => (
-                    <div
-                      key={idx}
-                      className="min-w-full h-full relative select-none"
-                    >
-                      <Image
-                        src={s.src}
-                        alt={s.alt}
-                        fill
-                        className="object-cover"
-                        sizes="(min-width: 768px) 50vw, 100vw"
-                        priority={idx === 0}
-                      />
-                      <div className="absolute inset-x-0 bottom-0 p-3">
-                        <span className="inline-flex items-center px-2 py-1 text-[10px] md:text-xs rounded-full text-white/90 bg-black/35 backdrop-blur-sm border border-white/10">
-                          {s.caption}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  aria-label="Previous screenshot"
-                  className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/40 hover:bg-black/60 text-white grid place-items-center border border-white/10 cursor-pointer"
-                  onClick={() => goToSlide(heroSlide - 1)}
-                >
-                  <span className="sr-only">Previous</span>‹  
-                </button>
-                <button
-                  aria-label="Next screenshot"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/40 hover:bg-black/60 text-white grid place-items-center border border-white/10 cursor-pointer"
-                  onClick={() => goToSlide(heroSlide + 1)}
-                >
-                  <span className="sr-only">Next</span>›
-                </button>
-              </div>
-              <div className="flex items-center justify-center gap-2 py-3">
-                {screenshots.map((_, i) => (
-                  <button
-                    key={i}
-                    aria-label={`Go to screenshot ${i + 1}`}
-                    className={`h-1.5 rounded-full transition-all ${
-                      heroSlide === i
-                        ? "w-6 bg-[var(--color-accent-blue)]"
-                        : "w-2 bg-white/30 hover:bg-white/50"
-                    }`}
-                    onClick={() => goToSlide(i)}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Feature summary */}
-      <section id="features" className="max-w-6xl mx-auto px-4 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:items-center">
-          <div className="group rounded-2xl border border-[var(--color-surface-2)] bg-[var(--color-surface-1)] p-6 transition-all duration-300 hover:border-[var(--color-accent-blue)]/60 hover:shadow-[0_10px_30px_rgba(64,64,242,0.15)] hover:-translate-y-0.5">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#4040f2] to-[#6366f1] flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <h3 className="mt-4 font-inter text-lg font-semibold text-white">
-              AI‑crafted lessons
-            </h3>
-            <p className="mt-1 text-[var(--color-text-secondary)]">
-              Short, adaptive sessions tailored to your level.
-            </p>
-          </div>
-
-          <div className="group rounded-2xl border border-[var(--color-surface-2)] bg-[var(--color-surface-1)] p-6 transition-all duration-300 hover:border-[var(--color-accent-blue)]/60 hover:shadow-[0_10px_30px_rgba(64,64,242,0.15)] hover:-translate-y-0.5">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#4040f2] to-[#6366f1] flex items-center justify-center">
-              <MessageSquare className="w-5 h-5 text-white" />
-            </div>
-            <h3 className="mt-4 font-inter text-lg font-semibold text-white">
-              Real conversation
-            </h3>
-            <p className="mt-1 text-[var(--color-text-secondary)]">
-              Practice speaking with instant, friendly feedback.
-            </p>
-          </div>
-
-          <div className="group rounded-2xl border border-[var(--color-surface-2)] bg-[var(--color-surface-1)] p-6 transition-all duration-300 hover:border-[var(--color-accent-blue)]/60 hover:shadow-[0_10px_30px_rgba(64,64,242,0.15)] hover:-translate-y-0.5">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#4040f2] to-[#6366f1] flex items-center justify-center">
-              <BookOpen className="w-5 h-5 text-white" />
-            </div>
-            <h3 className="mt-4 font-inter text-lg font-semibold text-white">
-              Review that sticks
-            </h3>
-            <p className="mt-1 text-[var(--color-text-secondary)]">
-              Built‑in spaced repetition to remember more.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Benefits strip */}
-      <section className="border-y border-[var(--color-surface-2)] bg-[var(--color-surface-1)]">
-        <div className="max-w-6xl mx-auto px-4 py-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-[var(--color-text-secondary)]">
-          <div>Fast setup — start in 60 seconds</div>
-          <div>Learn in short focused sessions</div>
-          <div>Accessible on any device</div>
         </div>
       </section>
 
       {/* Pricing */}
-      <section id="pricing" className="max-w-6xl mx-auto px-4 py-16">
-        <h2 className="font-inter text-3xl font-bold mb-6">Pricing</h2>
-        <p className="text-[var(--color-text-secondary)] mb-8">
-          Simple, transparent plans. Start free and upgrade anytime.
+      <section id="pricing" className="max-w-6xl mx-auto px-4 py-16 md:py-24">
+        <motion.h2
+          {...inViewProps(0, 0.6)}
+          className="font-inter text-3xl md:text-4xl font-bold mb-8"
+        >
+          Pricing
+        </motion.h2>
+        <p className="text-[var(--color-text-secondary)] mb-10 max-w-2xl">
+          Simple plans to get you speaking. Start free; upgrade anytime.
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:items-center">
-          <div className="w-full h-fit rounded-lg border shadow-sm overflow-hidden bg-[var(--color-surface-1)] border-[var(--color-surface-2)] shadow-black/5 ">
-            <div className="p-6 text-center border-b border-[var(--color-surface-2)]">
-              <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-[var(--color-secondary-bg)] text-white border border-[var(--color-secondary-bg)]">
-                Free Plan
-              </div>
-              <div className="mt-4">
-                <span className="text-4xl font-bold text-white">$0</span>
-                <span className="text-[var(--color-text-secondary)]">
-                  /month
-                </span>
-              </div>
-              <p className="text-[var(--color-text-secondary)] text-sm mt-2">
-                Get started
-              </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:items-stretch">
+          {/* Free */}
+          <motion.div
+            {...inViewProps(0, 0.5)}
+            className="rounded-2xl border border-white/10 bg-neutral-950 p-6 flex flex-col"
+          >
+            <div className="text-sm text-white/70">Free</div>
+            <div className="mt-2">
+              <span className="text-4xl font-bold text-white">$0</span>
+              <span className="text-[var(--color-text-secondary)]">/mo</span>
             </div>
-            <div className="p-6">
-              <ul className="space-y-4">
-                <li className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                  <span className="text-[var(--color-text-secondary)]">
-                    AI lessons (limited)
-                  </span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                  <span className="text-[var(--color-text-secondary)]">
-                    Basic conversation practice
-                  </span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                  <span className="text-[var(--color-text-secondary)]">
-                    Flashcards with SRS
-                  </span>
-                </li>
-              </ul>
-            </div>
-            <div className="p-6 pt-0">
+            <ul className="mt-4 space-y-2 text-[var(--color-text-secondary)]">
+              <li>AI lessons (limited)</li>
+              <li>Basic conversation practice</li>
+              <li>Flashcards with SRS</li>
+            </ul>
+            <div className="mt-6 pt-2">
               <Link
                 href="/auth?mode=signup"
-                className="w-full inline-flex items-center justify-center border align-middle select-none font-sans font-medium text-center duration-300 ease-in disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed focus:shadow-none text-sm py-2 px-4 shadow-sm hover:shadow-md bg-transparent border-[var(--color-surface-2)] text-white rounded-lg hover:bg-[var(--color-surface-2)]"
+                className="w-full inline-flex items-center justify-center px-4 py-2 rounded-full border border-white/10 text-white hover:bg-white/10"
               >
-                Get Started
+                Get started
               </Link>
             </div>
-          </div>
+          </motion.div>
 
-          {/* Pro Card (highlighted) */}
-          <div className="w-full rounded-lg border-2 shadow-sm overflow-visible bg-[var(--color-surface-1)] border-[var(--color-accent-blue)] shadow-[0_8px_24px_rgba(64,64,242,0.15)] relative md:min-h-[520px]">
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-medium bg-[var(--color-accent-blue)] text-white border border-[var(--color-accent-blue)] shadow-sm">
-              Most Popular
+          {/* Pro */}
+          <motion.div
+            {...inViewProps(0.03, 0.6)}
+            className="rounded-2xl border border-white/20 bg-black p-6 shadow-[0_8px_30px_rgba(0,0,0,0.35)] relative flex flex-col"
+          >
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-medium bg-white/10 text-white border border-white/20 backdrop-blur">
+              Most popular
             </div>
-            <div className="p-8 text-center border-b border-[var(--color-surface-2)]">
-              <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-[var(--color-accent-blue)] text-white border border-[var(--color-accent-blue)]">
-                Pro Plan
-              </div>
-              <div className="mt-4">
-                <span className="text-4xl font-bold text-white">$12</span>
-                <span className="text-[var(--color-text-secondary)]">
-                  /month
-                </span>
-              </div>
-              <p className="text-[var(--color-text-secondary)] text-sm mt-2">
-                Best for most
-              </p>
+            <div className="text-sm text-white">Pro</div>
+            <div className="mt-2">
+              <span className="text-4xl font-bold text-white">$12</span>
+              <span className="text-[var(--color-text-secondary)]">/mo</span>
             </div>
-            <div className="p-8">
-              <ul className="space-y-4">
-                <li className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                  <span className="text-[var(--color-text-secondary)]">
-                    Unlimited AI lessons
-                  </span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                  <span className="text-[var(--color-text-secondary)]">
-                    Advanced conversation coach
-                  </span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                  <span className="text-[var(--color-text-secondary)]">
-                    Custom vocab packs
-                  </span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                  <span className="text-[var(--color-text-secondary)]">
-                    Priority review scheduling
-                  </span>
-                </li>
-              </ul>
-            </div>
-            <div className="p-8 pt-0">
+            <ul className="mt-4 space-y-2 text-[var(--color-text-secondary)]">
+              <li>Unlimited AI lessons</li>
+              <li>Advanced conversation coach</li>
+              <li>Custom vocab packs</li>
+            </ul>
+            <div className="mt-6 pt-2">
               <Link
                 href="/auth?mode=signup"
-                className="w-full inline-flex items-center justify-center border align-middle select-none font-sans font-medium text-center duration-300 ease-in disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed focus:shadow-none text-sm py-2 px-4 shadow-sm hover:shadow-md bg-[var(--color-accent-blue)] text-white rounded-lg"
+                className="w-full inline-flex items-center justify-center px-4 py-2 rounded-full bg-white text-black hover:bg-white/90 border border-white/10"
               >
                 Start Pro
               </Link>
             </div>
-          </div>
+          </motion.div>
 
-          {/* Teams Card */}
-          <div className="w-full h-fit rounded-lg border shadow-sm overflow-hidden bg-[var(--color-surface-1)] border-[var(--color-surface-2)] shadow-black/5">
-            <div className="p-6 text-center border-b border-[var(--color-surface-2)]">
-              <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-[#15803d] text-white border border-[#15803d]">
-                Teams Plan
-              </div>
-              <div className="mt-4">
-                <span className="text-4xl font-bold text-white">$29</span>
-                <span className="text-[var(--color-text-secondary)]">
-                  /month
-                </span>
-              </div>
-              <p className="text-[var(--color-text-secondary)] text-sm mt-2">
-                For classrooms & orgs
-              </p>
+          {/* Teams */}
+          <motion.div
+            {...inViewProps(0.06, 0.7)}
+            className="rounded-2xl border border-white/10 bg-neutral-950 p-6 flex flex-col"
+          >
+            <div className="text-sm text-white/70">Teams</div>
+            <div className="mt-2">
+              <span className="text-4xl font-bold text-white">$29</span>
+              <span className="text-[var(--color-text-secondary)]">/mo</span>
             </div>
-            <div className="p-6">
-              <ul className="space-y-4">
-                <li className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                  <span className="text-[var(--color-text-secondary)]">
-                    All Pro features
-                  </span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                  <span className="text-[var(--color-text-secondary)]">
-                    Shared progress dashboard
-                  </span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                  <span className="text-[var(--color-text-secondary)]">
-                    Admin controls
-                  </span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-[var(--color-success)] mt-0.5 flex-shrink-0"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                  <span className="text-[var(--color-text-secondary)]">
-                    Priority support
-                  </span>
-                </li>
-              </ul>
-            </div>
-            <div className="p-6 pt-0">
+            <ul className="mt-4 space-y-2 text-[var(--color-text-secondary)]">
+              <li>All Pro features</li>
+              <li>Shared progress dashboard</li>
+              <li>Admin controls & priority support</li>
+            </ul>
+            <div className="mt-6 pt-2">
               <Link
                 href="/auth?mode=signup"
-                className="w-full inline-flex items-center justify-center border align-middle select-none font-sans font-medium text-center duration-300 ease-in disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed focus:shadow-none text-sm py-2 px-4 shadow-sm hover:shadow-md bg-[#15803d] border-[#15803d] text-white rounded-lg hover:bg-[#166534]"
+                className="w-full inline-flex items-center justify-center px-4 py-2 rounded-full border border-white/10 text-white hover:bg-white/10"
               >
-                Contact Sales
+                Contact sales
               </Link>
             </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Problem → Solution narrative */}
+      <section className="max-w-6xl mx-auto px-4 py-20 md:py-28">
+        <div className="grid grid-cols-1 md:grid-cols-2 items-start gap-10">
+          <motion.div {...inViewProps(0, 0.6)}>
+            <h2 className="font-inter text-3xl md:text-4xl font-bold">
+              The problem
+            </h2>
+            <p className="text-[var(--color-text-secondary)] mt-4 max-w-xl">
+              Learning Mandarin can feel overwhelming—too many paths, not enough
+              focus. Distraction breaks momentum.
+            </p>
+          </motion.div>
+          <motion.div {...inViewProps(0.05, 0.7)}>
+            <h2 className="font-inter text-3xl md:text-4xl font-bold">
+              Our approach
+            </h2>
+            <p className="text-[var(--color-text-secondary)] mt-4 max-w-xl">
+              Mandareen gives you a guided path: a quick placement, short
+              AI‑guided lessons, real conversations, and reviews that stick.
+            </p>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="max-w-6xl mx-auto px-4 py-16 md:py-24">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:items-start">
+          <motion.div
+            {...inViewProps(0, 0.5)}
+            className="group rounded-2xl border border-white/10 bg-neutral-950 p-6"
+          >
+            <div className="text-sm text-white/70">Step 1</div>
+            <h3 className="mt-1 font-inter text-lg font-semibold text-white">
+              Placement test
+            </h3>
+            <p className="mt-1 text-[var(--color-text-secondary)]">
+              Know your level in minutes and get a plan.
+            </p>
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/40 overflow-hidden">
+              <Image
+                src="/placement_test.png"
+                alt="Placement test"
+                width={560}
+                height={360}
+                className="w-full h-auto object-cover"
+              />
+            </div>
+          </motion.div>
+          <motion.div
+            {...inViewProps(0.03, 0.6)}
+            className="group rounded-2xl border border-white/10 bg-neutral-950 p-6"
+          >
+            <div className="text-sm text-white/70">Step 2</div>
+            <h3 className="mt-1 font-inter text-lg font-semibold text-white">
+              Daily lesson & conversation
+            </h3>
+            <p className="mt-1 text-[var(--color-text-secondary)]">
+              Short, AI‑guided sessions and real practice.
+            </p>
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/40 overflow-hidden">
+              <Image
+                src="/conversations.png"
+                alt="Conversations"
+                width={560}
+                height={360}
+                className="w-full h-auto object-cover"
+              />
+            </div>
+          </motion.div>
+          <motion.div
+            {...inViewProps(0.06, 0.7)}
+            className="group rounded-2xl border border-white/10 bg-neutral-950 p-6"
+          >
+            <div className="text-sm text-white/70">Step 3</div>
+            <h3 className="mt-1 font-inter text-lg font-semibold text-white">
+              Review with SRS
+            </h3>
+            <p className="mt-1 text-[var(--color-text-secondary)]">
+              Remember more with smart flashcards.
+            </p>
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/40 overflow-hidden">
+              <Image
+                src="/flashcards.png"
+                alt="Flashcards"
+                width={560}
+                height={360}
+                className="w-full h-auto object-cover"
+              />
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Proof ribbon + testimonial */}
+      <section className="max-w-6xl mx-auto px-4 py-10 md:py-14">
+        <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory scrollbar-hide py-4">
+          {screenshots.map((s) => (
+            <div
+              key={s.src}
+              className="snap-start shrink-0 w-[280px] h-[180px] rounded-xl border border-white/10 bg-neutral-950 overflow-hidden hover:border-white/20 transition-colors"
+            >
+              <Image
+                src={s.src}
+                alt={s.alt}
+                width={560}
+                height={360}
+                className="h-full w-full object-cover"
+              />
+            </div>
+          ))}
+        </div>
+        <motion.blockquote
+          {...(prefersReducedMotion
+            ? {}
+            : {
+                initial: { y: 16, opacity: 0 },
+                whileInView: { y: 0, opacity: 1 },
+                viewport: { once: true, amount: 0.5 },
+                transition: { duration: 0.6, ease },
+              })}
+          className="mt-10 border-l-2 border-white/20 pl-4 text-white/90 max-w-3xl"
+        >
+          “Mandareen made daily Mandarin finally stick. Ten minutes a day, real
+          progress.”
+          <footer className="mt-2 text-[var(--color-text-secondary)]">
+            — A happy learner
+          </footer>
+        </motion.blockquote>
+      </section>
+
+      {/* Final CTA band */}
+      <section className="border-y border-white/10 bg-neutral-980/40 backdrop-blur-sm">
+        <div className="max-w-6xl mx-auto px-4 py-10 grid grid-cols-1 md:grid-cols-3 gap-6 md:items-center">
+          <div className="md:col-span-2">
+            <h3 className="font-inter text-2xl md:text-3xl font-semibold text-white">
+              Start your Mandarin story today
+            </h3>
+            <p className="text-[var(--color-text-secondary)] mt-2">
+              Sign up free. Take a quick placement and begin your first lesson.
+            </p>
+          </div>
+          <div className="flex md:justify-end">
+            <Link
+              href="/auth?mode=signup"
+              className="px-5 py-3 rounded-full bg-white text-black hover:bg-white/90 font-inter border border-white/10"
+            >
+              Sign up
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* Social proof (minimal) */}
-      <section className="max-w-6xl mx-auto px-4 py-8">
-        <p className="text-[var(--color-text-secondary)]">
-          Trusted by learners worldwide — join today.
-        </p>
-      </section>
+      {/* Proof strip removed in favor of ribbon above */}
 
       {/* FAQ (compact accordion) */}
       <section id="faq" className="max-w-3xl mx-auto px-4 py-10">

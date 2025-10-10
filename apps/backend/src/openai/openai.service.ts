@@ -355,14 +355,69 @@ export class OpenAIService {
    * Returns JSON with grammarNotes[], tips[], citations[].
    * Note: We instruct the model to include pinyin/English directly to avoid extra API calls.
    */
+  // Back-compat signature: generateGrammarNotes(hanzi, { level, strugglingWords, contextText })
   async generateGrammarNotes(
-    hanzi: string,
-    opts: {
+    hanziOrArgs:
+      | string
+      | {
+          topic: string;
+          level?: number;
+          context?: string;
+          readPassage?: {
+            hanzi?: string;
+            pinyin?: string;
+            translation?: string;
+          };
+          maxPoints?: number;
+          includeDrills?: boolean;
+          themes?: string[];
+        },
+    legacyOpts?: {
       level?: number;
       strugglingWords?: string[];
-      contextText?: string; // enumerated [#S1] ... blocks
-    } = {},
+      contextText?: string;
+    },
   ): Promise<{
+    grammarNotes?: Array<{
+      point: string;
+      brief: string;
+      examples?: Array<{ zh: string; en?: string }>;
+      sources?: Array<{ key?: string; chunkId?: number }>;
+      pointPinyin?: string;
+      pointEn?: string;
+      briefPinyin?: string;
+      briefEn?: string;
+      examplesPinyin?: Array<{ zh: string; pinyin?: string; en?: string }>;
+    }>;
+    tips?: Array<{ zh: string; en?: string }>;
+    citations?: Array<{ key?: string; chunkId?: number }>;
+    drills?: Array<{ instruction: string; input: string; target?: string }>;
+  }> {
+    if (typeof hanziOrArgs === 'string') {
+      const hanzi = hanziOrArgs;
+      const normalized = {
+        topic: hanzi,
+        level: legacyOpts?.level,
+        context: legacyOpts?.contextText,
+        readPassage: undefined,
+        maxPoints: 3,
+        includeDrills: false,
+        themes: undefined as string[] | undefined,
+      };
+      return this.generateGrammarNotesInternal(normalized);
+    }
+    return this.generateGrammarNotesInternal(hanziOrArgs);
+  }
+
+  private async generateGrammarNotesInternal(args: {
+    topic: string;
+    level?: number;
+    context?: string; // concatenated context text
+    readPassage?: { hanzi?: string; pinyin?: string; translation?: string };
+    maxPoints?: number; // prefer 3–7
+    includeDrills?: boolean; // add 3 transformation drills
+    themes?: string[]; // optional categories to group points
+  }): Promise<{
     grammarNotes?: Array<{
       point: string;
       brief: string;
@@ -377,22 +432,23 @@ export class OpenAIService {
     }>;
     tips?: Array<{ zh: string; en?: string }>;
     citations?: Array<{ key?: string; chunkId?: number }>;
+    drills?: Array<{ instruction: string; input: string; target?: string }>;
   }> {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-    const sys = `You are a precise Mandarin tutor. Using ONLY the provided context snippets when present, explain grammar used in the student's/assistant's Chinese text.
-    Focus on 3 concise GRAMMAR points only. Avoid long lists. Prefer patterns/particles/word order.
-    For any Chinese you output, also include its pinyin and a short English gloss so the client doesn't have to make extra API calls.
-    Return STRICT JSON with keys grammarNotes (array), tips (array), citations (array). Avoid speculation.`;
+    const maxPts = Math.min(Math.max(args.maxPoints ?? 3, 3), 7);
+    const sys = `You are a precise Mandarin tutor. Using ONLY the provided context snippets and passage, explain grammar relevant to the topic. Prefer patterns/particles/word order; be concise.
+  For any Chinese you output, include pinyin and a brief English gloss. Avoid speculation. Return STRICT JSON.`;
     const userParts = [
-      opts?.contextText
-        ? `Grounding context with numbered sources:\n${opts.contextText}\n`
+      args?.context
+        ? `Grounding context (snippets):\n${args.context}\n`
         : undefined,
-      `User text (Chinese):\n${hanzi}\n`,
-      `Level: HSK-${opts.level ?? ''}\n`,
-      opts?.strugglingWords?.length
-        ? `User struggles: ${opts.strugglingWords.slice(0, 10).join(', ')}\n`
+      args?.readPassage
+        ? `Reading passage (for reference):\n${JSON.stringify(args.readPassage).slice(0, 2000)}\n`
         : undefined,
-      `Return JSON EXACTLY like (limit grammarNotes to at most 3):\n{
+      `Topic: ${args.topic}`,
+      `Level: HSK-${args.level ?? ''}`,
+      args?.themes?.length ? `Themes: ${args.themes.join(', ')}` : undefined,
+      `Return JSON EXACTLY like (limit grammarNotes to at most ${maxPts}):\n{
   "grammarNotes": [
     {
       "point": "把字句",
@@ -408,7 +464,10 @@ export class OpenAIService {
     }
   ],
   "tips": [{"zh":"注意受事宾语通常已知。","en":"Note that the object is usually known to both parties."}],
-  "citations": [{"key":"S1"}]
+  "citations": [{"key":"S1"}],
+  "drills": [
+    { "instruction": "Add 了 where appropriate", "input": "他___吃饭。" }
+  ]
 }`,
     ]
       .filter(Boolean)
@@ -437,5 +496,218 @@ export class OpenAIService {
       this.logger.warn('Error parsing grammar notes', err as any);
     }
     return {};
+  }
+
+  /**
+   * Generate a short READ passage (hanzi, pinyin, translation) grounded by provided context.
+   */
+  async generateReadPassage(args: {
+    title: string;
+    level: number;
+    context: string;
+    maxChars?: number;
+  }): Promise<{
+    passage?: { hanzi: string; pinyin?: string; translation?: string };
+    segments?: Array<{ zh: string; pinyin?: string; en?: string }>;
+    questions?: Array<{ type: 'tf' | 'short'; prompt: string }>;
+  }> {
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const sys = `You are a precise Mandarin tutor. Author a SHORT leveled passage in Mandarin Chinese. Keep it concise and aligned to the target HSK level. Include translation. Also add 3 micro comprehension questions (T/F or short).`;
+    const user = `Title: ${args.title}
+    Level: HSK-${args.level}
+    Max characters (Chinese): ${args.maxChars ?? 800}
+    Grounding context (snippets):\n${args.context?.slice(0, 8000) || ''}
+
+    Return STRICT JSON:
+    {
+      "passage": { "hanzi": "...", "translation": "..." },
+      "questions": [ { "type": "tf", "prompt": "..." } ]
+    }`;
+    const completion = await this.openai.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: user },
+      ],
+      response_format: { type: 'json_object' },
+    } as any);
+    const content = completion.choices?.[0]?.message?.content;
+    if (!content) return {};
+    try {
+      return JSON.parse(content);
+    } catch (err) {
+      this.logger.warn('Error parsing read passage JSON', err as any);
+      return {};
+    }
+  }
+
+  /**
+   * Generate 5 MCQ quiz items based on READ + GRAMMAR and optional RAG context.
+   */
+  async generateQuizItems(args: {
+    level: number;
+    read: any;
+    grammar: any;
+    context?: string;
+    numItems?: number;
+  }): Promise<{
+    items?: Array<{
+      question: string;
+      options: string[];
+      answerIndex: number;
+      rationale?: string;
+    }>;
+  }> {
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const n = Math.min(Math.max(args.numItems || 5, 3), 8);
+    const sys = `You are a precise Mandarin pedagogy expert. Create fair MCQs that directly test comprehension of the given READ and GRAMMAR. Include at least one error-recognition item (choose the incorrect sentence). Provide brief rationales.`;
+    const user = `Level: HSK-${args.level}
+    READ (Chinese/pinyin/translation):
+    ${JSON.stringify(args.read || {}).slice(0, 4000)}
+
+    GRAMMAR (notes/tips):
+    ${JSON.stringify(args.grammar || {}).slice(0, 4000)}
+
+    Optional grounding context:
+    ${(args.context || '').slice(0, 4000)}
+
+    Return STRICT JSON with ${n} items (no commentary):
+    {
+      "items": [
+        { "question": "...", "options": ["A","B","C","D"], "answerIndex": 0, "rationale": "..." }
+      ]
+    }`;
+    const completion = await this.openai.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: user },
+      ],
+      response_format: { type: 'json_object' },
+    } as any);
+    const content = completion.choices?.[0]?.message?.content;
+    if (!content) return {};
+    try {
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed?.items)) {
+        parsed.items = parsed.items.slice(0, n);
+      }
+      return parsed;
+    } catch (err) {
+      this.logger.warn('Error parsing quiz items JSON', err as any);
+      return {};
+    }
+  }
+
+  /**
+   * Curriculum: Explain-first generator grounded by outline and RAG context.
+   * Returns overview, sections (concept, examples, pitfalls, checks), microPassage, citations.
+   */
+  async generateCurriculumExplainLesson(args: {
+    title: string;
+    level: number;
+    outline: Array<{ title: string }>;
+    context: string;
+    maxSections?: number;
+    preferMicroPassageChars?: number;
+  }): Promise<{
+    overview?: string;
+    sections?: Array<{
+      title: string;
+      concept: string;
+      examples: Array<{ zh: string; pinyin?: string; en?: string }>;
+      pitfalls?: Array<{ bad: string; good: string; note?: string }>;
+      checks?: Array<{ type: 'tf' | 'fill'; prompt: string; answer?: string }>;
+    }>;
+    microPassage?: { hanzi: string; pinyin?: string; translation?: string };
+    citations?: Array<{ key?: string; chunkId?: number }>;
+  }> {
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const maxSections = Math.min(Math.max(args.maxSections ?? 7, 1), 20);
+    const microChars = Math.min(
+      Math.max(args.preferMicroPassageChars ?? 220, 120),
+      400,
+    );
+    const sys = `You are a senior Mandarin curriculum designer. Create an EXPLAIN-FIRST lesson in English with Chinese examples. Be concise, accurate, and grounded STRICTLY by the provided outline and context. If a claim is not supported by the context, omit it. Return STRICT JSON.`;
+    const user = `Title: ${args.title}
+    Level: HSK-${args.level}
+    Outline (order matters):\n${args.outline.map((o, i) => `${i + 1}. ${o.title}`).join('\n')}
+    Grounding context (snippets):\n${args.context.slice(0, 8000)}
+
+      Construct (STRICT):
+      1) "overview": 2-4 sentences (English) summarizing what learners will learn.
+      2) "sections": EXACTLY ${maxSections} items and in the SAME ORDER as the outline lines above, one per outline line. Each section MUST correspond to the respective outline title (use it as section.title verbatim unless minor normalization is needed). Each section must include:
+      - title (English or Chinese),
+      - concept (English),
+      - 2-3 examples with Chinese, pinyin, English,
+      - pitfalls (min 1 if applicable): {bad, good, note}, emphasize minimal pairs/contrasts and "say X, not Y" patterns when relevant,
+      - 2 short checks: type tf|fill with prompt and answer.
+      3) "microPassage": ${microChars} chars Chinese max, with translation (short), integrating 1-2 key points.
+    4) "citations": optional [{key, chunkId}] referencing context markers like [S1].
+
+      Return ONLY JSON with keys overview, sections, microPassage, citations.
+
+      EXAMPLE (shape only; keep content brief and grounded):
+      {
+        "overview": "This subchapter explains basic phrase order and common particles.",
+        "sections": [
+          {
+            "title": "1. Word order: SVO",
+            "concept": "In Mandarin, the default order is Subject–Verb–Object.",
+            "examples": [
+              { "zh": "我吃苹果。", "pinyin": "wǒ chī píngguǒ", "en": "I eat apples." },
+              { "zh": "他喝茶。", "pinyin": "tā hē chá", "en": "He drinks tea." }
+            ],
+            "pitfalls": [
+              { "bad": "我苹果吃。", "good": "我吃苹果。", "note": "Keep SVO order." }
+            ],
+            "checks": [
+              { "type": "tf", "prompt": "Mandarin defaults to SVO order.", "answer": "T" },
+              { "type": "fill", "prompt": "他__饭。 (eat)", "answer": "吃" }
+            ]
+          },
+          {
+            "title": "2. Particle 了 (le)",
+            "concept": "了 often marks a completed action.",
+            "examples": [
+              { "zh": "我吃了饭。", "pinyin": "wǒ chī le fàn", "en": "I ate (already)." }
+            ],
+            "pitfalls": [
+              { "bad": "我了吃饭。", "good": "我吃了饭。", "note": "了 follows the verb here." }
+            ],
+            "checks": [
+              { "type": "tf", "prompt": "了 always indicates past tense.", "answer": "F" },
+              { "type": "fill", "prompt": "他__了茶。 (drink)", "answer": "喝" }
+            ]
+          }
+        ],
+        "microPassage": {
+          "hanzi": "今天我吃了米饭，也喝了茶。",
+          "pinyin": "jīntiān wǒ chī le mǐfàn, yě hē le chá",
+          "translation": "Today I ate rice and also drank tea."
+        },
+        "citations": [{ "key": "S1" }]
+      }`;
+    const completion = await this.openai.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: user },
+      ],
+      response_format: { type: 'json_object' },
+    } as any);
+    const content = completion.choices?.[0]?.message?.content;
+    if (!content) return {};
+    try {
+      const parsed = JSON.parse(content);
+      // light shape guard
+      if (Array.isArray(parsed?.sections)) {
+        parsed.sections = parsed.sections.slice(0, maxSections);
+      }
+      return parsed;
+    } catch (err) {
+      this.logger.warn('Error parsing curriculum explain JSON', err as any);
+      return {};
+    }
   }
 }
