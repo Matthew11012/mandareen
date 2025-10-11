@@ -328,6 +328,36 @@ export class CurriculumService {
     } catch {
       // leave segments empty on failure
     }
+    // Process comprehension questions with segmentation
+    let processedQuestions: any[] = [];
+    if (Array.isArray(read?.questions)) {
+      for (const question of read.questions) {
+        let questionSegments: any[] = [];
+        try {
+          const segs = await this.segmentationService.segmentText(
+            question.prompt || '',
+          );
+          questionSegments = segs.map((s) => ({
+            text: s.word,
+            startIndex: s.startIndex,
+            endIndex: s.endIndex,
+            isWord: s.isWord,
+            hskLevel: s.hskLevel,
+            pinyin: toToneMarks((s.pinyin || '').toLowerCase()),
+            definition: s.definition,
+            definitions: s.definitions,
+          }));
+        } catch {
+          // leave segments empty on failure
+        }
+
+        processedQuestions.push({
+          ...question,
+          segments: questionSegments,
+        });
+      }
+    }
+
     const content = {
       title: passageTitle,
       type: 'READ',
@@ -338,7 +368,7 @@ export class CurriculumService {
         translation: read?.passage?.translation || '',
       },
       segments,
-      questions: Array.isArray(read?.questions) ? read.questions : [],
+      questions: processedQuestions,
       citations,
     };
     await this.prisma.curriculumActivity.create({

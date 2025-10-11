@@ -1149,22 +1149,395 @@ function ReadView({ content }: { content: ReadContent }) {
         )}
       </div>
       {Array.isArray(content?.questions) && content.questions.length > 0 && (
-        <div className="rounded-xl border border-white/10 p-3 sm:p-4">
-          <div className="text-white/80 text-xs sm:text-sm font-medium mb-2">
-            Comprehension
+        <ComprehensionView questions={content.questions} />
+      )}
+    </div>
+  );
+}
+
+function ComprehensionView({
+  questions,
+}: {
+  questions: Array<{
+    type: "tf" | "short";
+    prompt: string;
+    translation?: string;
+    answer?: boolean;
+    explanation?: string;
+    segments?: Array<{
+      text: string;
+      pinyin?: string;
+      definition?: string;
+      definitions?: string[];
+      hskLevel?: number;
+      isWord: boolean;
+    }>;
+  }>;
+}) {
+  const [selectedAnswers, setSelectedAnswers] = useState<
+    Record<number, boolean | null>
+  >({});
+  const [showAnswers, setShowAnswers] = useState(false);
+
+  const handleAnswerSelect = (questionIndex: number, answer: boolean) => {
+    setSelectedAnswers((prev) => ({ ...prev, [questionIndex]: answer }));
+  };
+
+  const handleSubmit = () => {
+    setShowAnswers(true);
+  };
+
+  const answeredCount = Object.keys(selectedAnswers).length;
+  const allAnswered = answeredCount === questions.length;
+
+  return (
+    <div className="rounded-xl border border-white/10 p-3 sm:p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-white/80 text-xs sm:text-sm font-medium">
+          Comprehension Check
+        </div>
+        {!showAnswers && (
+          <div className="text-white/60 text-xs">
+            {answeredCount} / {questions.length} answered
           </div>
-          <ul className="space-y-2 text-xs sm:text-sm">
-            {content.questions.map(
-              (q: { type: "tf" | "short"; prompt: string }, i: number) => (
-                <li
-                  key={i}
-                  className="rounded-lg bg-black/30 border border-white/10 p-2 sm:p-3"
-                >
-                  <div className="text-white/90">{q.prompt}</div>
-                </li>
-              )
+        )}
+      </div>
+
+      <div className="space-y-3">
+        {questions.map((question, i) => {
+          const selectedAnswer = selectedAnswers[i];
+          const showResult =
+            showAnswers && typeof question.answer === "boolean";
+          const isCorrect = showResult && selectedAnswer === question.answer;
+          const isIncorrect =
+            showResult &&
+            selectedAnswer !== null &&
+            selectedAnswer !== question.answer;
+
+          return (
+            <div
+              key={i}
+              className={`rounded-lg border p-3 sm:p-4 transition-all duration-200 ${
+                showResult
+                  ? isCorrect
+                    ? "border-green-500/30 bg-green-500/5"
+                    : isIncorrect
+                      ? "border-red-500/30 bg-red-500/5"
+                      : "border-white/10 bg-black/30"
+                  : "border-white/10 bg-black/30"
+              }`}
+            >
+              {/* Question Text */}
+              <div className="mb-3">
+                <QuestionText
+                  text={question.prompt}
+                  segments={question.segments}
+                />
+                {question.translation && (
+                  <div className="text-white/60 text-xs sm:text-sm mt-1 italic">
+                    {question.translation}
+                  </div>
+                )}
+              </div>
+
+              {/* Answer Options */}
+              {question.type === "tf" && (
+                <div className="flex gap-3 mb-3">
+                  <button
+                    onClick={() => handleAnswerSelect(i, true)}
+                    disabled={showAnswers}
+                    className={`px-4 py-2 rounded-lg border transition-all duration-200 ${
+                      selectedAnswer === true
+                        ? showResult
+                          ? isCorrect
+                            ? "border-green-500 bg-green-500/20 text-green-200"
+                            : "border-red-500 bg-red-500/20 text-red-200"
+                          : "border-blue-500 bg-blue-500/20 text-blue-200"
+                        : showResult && question.answer === true
+                          ? "border-green-500/30 bg-green-500/10 text-green-300"
+                          : "border-white/20 bg-white/5 text-white/80 hover:bg-white/10"
+                    } ${showAnswers ? "cursor-default" : "cursor-pointer"}`}
+                  >
+                    True
+                  </button>
+                  <button
+                    onClick={() => handleAnswerSelect(i, false)}
+                    disabled={showAnswers}
+                    className={`px-4 py-2 rounded-lg border transition-all duration-200 ${
+                      selectedAnswer === false
+                        ? showResult
+                          ? isCorrect
+                            ? "border-green-500 bg-green-500/20 text-green-200"
+                            : "border-red-500 bg-red-500/20 text-red-200"
+                          : "border-blue-500 bg-blue-500/20 text-blue-200"
+                        : showResult && question.answer === false
+                          ? "border-green-500/30 bg-green-500/10 text-green-300"
+                          : "border-white/20 bg-white/5 text-white/80 hover:bg-white/10"
+                    } ${showAnswers ? "cursor-default" : "cursor-pointer"}`}
+                  >
+                    False
+                  </button>
+                </div>
+              )}
+
+              {/* Explanation */}
+              {showResult && question.explanation && (
+                <div className="text-xs sm:text-sm text-white/70 bg-white/5 p-2 rounded border-l-2 border-blue-500/30">
+                  <strong>Explanation:</strong> {question.explanation}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Submit Button */}
+      {!showAnswers && (
+        <div className="flex justify-end pt-3">
+          <button
+            onClick={handleSubmit}
+            disabled={!allAnswered}
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm cursor-pointer"
+          >
+            Check Answers
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuestionText({
+  text,
+  segments,
+}: {
+  text: string;
+  segments?: Array<{
+    text: string;
+    pinyin?: string;
+    definition?: string;
+    definitions?: string[];
+    hskLevel?: number;
+    isWord: boolean;
+  }>;
+}) {
+  const [popup, setPopup] = useState<{
+    open: boolean;
+    x: number;
+    y: number;
+    anchorH?: number;
+    word: string;
+    pinyin?: string;
+    definition?: string;
+    definitions?: string[];
+    hskLevel?: number;
+  }>({ open: false, x: 0, y: 0, word: "" });
+  const popupRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [popupPos, setPopupPos] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        setPopup((p) => ({ ...p, open: false }));
+      }
+    };
+    if (popup.open) document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [popup.open]);
+
+  useEffect(() => {
+    if (!popup.open) {
+      setPopupPos(null);
+      return;
+    }
+    const modal = popupRef.current;
+    const container = contentRef.current;
+    if (!modal || !container) return;
+    const modalRect = modal.getBoundingClientRect();
+    const contRect = container.getBoundingClientRect();
+    const margin = 8;
+    const contW = contRect.width;
+    const contH = contRect.height;
+    const toolbar = document.querySelector(
+      '[role="toolbar"][aria-label="Lesson controls"]'
+    ) as HTMLElement | null;
+    const toolbarRect = toolbar?.getBoundingClientRect();
+    const toolbarBottom = toolbarRect ? toolbarRect.bottom : 0;
+    const visibleTopInContainer = Math.max(0, toolbarBottom - contRect.top);
+    const visibleBottomInContainer = Math.min(
+      contH,
+      Math.max(0, window.innerHeight - contRect.top)
+    );
+    let left = popup.x - modalRect.width / 2;
+    left = Math.max(margin, Math.min(left, contW - modalRect.width - margin));
+    const anchorH = popup.anchorH || 0;
+    const availableAbove = popup.y - visibleTopInContainer - margin;
+    const availableBelow =
+      visibleBottomInContainer - (popup.y + anchorH) - margin;
+    let top: number;
+    if (modalRect.height <= availableAbove || availableBelow < 0) {
+      top = Math.max(
+        visibleTopInContainer + margin,
+        popup.y - modalRect.height - margin
+      );
+    } else if (modalRect.height <= availableBelow || availableAbove < 0) {
+      top = Math.min(
+        visibleBottomInContainer - modalRect.height - margin,
+        popup.y + anchorH + margin
+      );
+    } else {
+      top = Math.min(
+        visibleBottomInContainer - modalRect.height - margin,
+        Math.max(visibleTopInContainer + margin, popup.y + anchorH + margin)
+      );
+    }
+    setPopupPos({ left, top });
+  }, [popup.open, popup.x, popup.y, popup.anchorH]);
+
+  if (!segments || segments.length === 0) {
+    return <div className="text-white/90 text-sm sm:text-base">{text}</div>;
+  }
+
+  return (
+    <div className="relative" ref={contentRef}>
+      <div className="text-white/90 text-sm sm:text-base leading-relaxed">
+        {segments.map((segment, i) => (
+          <span
+            key={i}
+            className={`cursor-pointer hover:bg-white/10 rounded px-1 transition-colors duration-200 ${
+              segment.isWord ? "hover:text-white" : ""
+            }`}
+            onClick={(e) => {
+              if (!segment.isWord) return;
+              const anchor = (
+                e.currentTarget as HTMLSpanElement
+              ).getBoundingClientRect();
+              const container = contentRef.current?.getBoundingClientRect();
+              const px = container
+                ? anchor.left - container.left + anchor.width / 2
+                : e.clientX;
+              const py = container ? anchor.top - container.top : e.clientY;
+              setPopup({
+                open: true,
+                x: px,
+                y: py,
+                anchorH: anchor.height,
+                word: segment.text,
+                pinyin: segment.pinyin,
+                definition: segment.definition,
+                definitions: segment.definitions,
+                hskLevel: segment.hskLevel,
+              });
+            }}
+          >
+            {segment.text}
+          </span>
+        ))}
+      </div>
+
+      {/* Popup */}
+      {popup.open && (
+        <div
+          ref={popupRef}
+          style={{
+            position: "absolute",
+            left: popupPos ? popupPos.left : popup.x,
+            top: popupPos ? popupPos.top : popup.y,
+            zIndex: 10,
+            visibility: popupPos ? "visible" : "hidden",
+            transform: popupPos ? "none" : "translate(-50%, calc(-100% - 8px))",
+          }}
+          className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="font-bold text-white text-lg truncate">
+              {popup.word}
+            </div>
+            {typeof popup.hskLevel === "number" && (
+              <span
+                className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                  popup.hskLevel
+                )}`}
+                aria-label={`HSK level ${popup.hskLevel}`}
+              >
+                HSK {popup.hskLevel}
+              </span>
             )}
-          </ul>
+          </div>
+          {popup.pinyin && (
+            <div className="text-[#c6ceff] text-sm font-medium truncate">
+              {popup.pinyin}
+            </div>
+          )}
+          {Array.isArray(popup.definitions) && popup.definitions.length > 0 ? (
+            <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
+              {popup.definitions.map((d, i) => (
+                <div key={i}>• {d}</div>
+              ))}
+            </div>
+          ) : popup.definition ? (
+            <div className="text-xs text-[#a6a6a6] mt-2">
+              {popup.definition}
+            </div>
+          ) : null}
+          <div className="mt-3 pt-3 border-t border-[#404040]">
+            <button
+              onClick={async () => {
+                try {
+                  const ctx = {
+                    hanzi: popup.word,
+                    pinyin: popup.pinyin,
+                    translation:
+                      popup.definition ||
+                      (Array.isArray(popup.definitions) &&
+                      popup.definitions.length > 0
+                        ? popup.definitions[0]
+                        : undefined),
+                  };
+                  await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"}/flashcards`,
+                    {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${
+                          typeof window !== "undefined"
+                            ? localStorage.getItem("auth-token")
+                            : ""
+                        }`,
+                      },
+                      body: JSON.stringify({
+                        hanzi: popup.word,
+                        sentenceHanzi: ctx.hanzi,
+                        sentencePinyin: ctx.pinyin,
+                        sentenceTranslation: ctx.translation,
+                        vocabPinyin: popup.pinyin,
+                        vocabDefinition:
+                          Array.isArray(popup.definitions) &&
+                          popup.definitions.length > 0
+                            ? popup.definitions[0]
+                            : popup.definition,
+                        vocabHskLevel: popup.hskLevel,
+                      }),
+                    }
+                  );
+                  toast.success("Added to flashcards");
+                } catch {
+                  toast.error("Failed to add to flashcards");
+                } finally {
+                  setPopup((p) => ({ ...p, open: false }));
+                }
+              }}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="text-sm font-inter">Add to Flashcards</span>
+            </button>
+          </div>
         </div>
       )}
     </div>
