@@ -113,6 +113,73 @@ export class CurriculumService {
     };
   }
 
+  async getLessonNavigation(
+    userId: number,
+    currentUnitId: number,
+    currentLessonId: number,
+    opts?: { sourceId?: number; sourceSlug?: string },
+  ) {
+    const where: any = {};
+    if (opts?.sourceId) where.ragSourceId = opts.sourceId;
+    if (!opts?.sourceId && opts?.sourceSlug) {
+      const source = await this.prisma.ragSource.findFirst({
+        where: { metadata: { path: ['slug'], equals: opts.sourceSlug } as any },
+        select: { id: true },
+      });
+      where.ragSourceId = source ? source.id : -1;
+    }
+
+    // Get all units with lessons in order
+    const units = await this.prisma.curriculumUnit.findMany({
+      where,
+      orderBy: { order: 'asc' },
+      include: {
+        lessons: {
+          orderBy: { order: 'asc' },
+          select: { id: true, title: true, order: true },
+        },
+      },
+    });
+
+    // Flatten all lessons with their unit info
+    const allLessons: Array<{
+      unitId: number;
+      unitTitle: string;
+      lessonId: number;
+      lessonTitle: string;
+      lessonOrder: number;
+    }> = [];
+
+    for (const unit of units) {
+      for (const lesson of unit.lessons) {
+        allLessons.push({
+          unitId: unit.id,
+          unitTitle: unit.title,
+          lessonId: lesson.id,
+          lessonTitle: lesson.title,
+          lessonOrder: lesson.order,
+        });
+      }
+    }
+
+    // Find current lesson index
+    const currentIndex = allLessons.findIndex(
+      (l) => l.unitId === currentUnitId && l.lessonId === currentLessonId,
+    );
+
+    if (currentIndex === -1) {
+      return { previous: null, next: null };
+    }
+
+    const previous = currentIndex > 0 ? allLessons[currentIndex - 1] : null;
+    const next =
+      currentIndex < allLessons.length - 1
+        ? allLessons[currentIndex + 1]
+        : null;
+
+    return { previous, next };
+  }
+
   async getLessonWithActivities(
     userId: number,
     unitId: number,
@@ -267,7 +334,7 @@ export class CurriculumService {
         key: `[S${i + 1}]`,
       }));
     // Optionally enrich the microPassage with segments too
-    let micro = explain?.microPassage || null;
+    const micro = explain?.microPassage || null;
     if (
       micro &&
       typeof micro?.hanzi === 'string' &&

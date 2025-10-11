@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { DashboardLayout } from "@/components/layout";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { lessonsApi, type LessonListItem } from "@/lib/api/lessons";
-import { Plus, RefreshCw, MessageSquare } from "lucide-react";
+import { Plus, RefreshCw, MessageSquare, Check } from "lucide-react";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { useRouter } from "next/navigation";
 import {
@@ -1041,18 +1041,7 @@ export default function LessonsPage() {
                                                       </span>
                                                       {finishedIds.has(l.id) ? (
                                                         <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                                                          <svg
-                                                            className="w-3 h-3"
-                                                            viewBox="0 0 20 20"
-                                                            fill="currentColor"
-                                                            aria-hidden="true"
-                                                          >
-                                                            <path
-                                                              fillRule="evenodd"
-                                                              d="M16.707 5.293a1 1 0 010 1.414l-7.071 7.071a1 1 0 01-1.414 0L3.293 9.85a1 1 0 111.414-1.414l3.182 3.182 6.364-6.364a1 1 0 011.414 0z"
-                                                              clipRule="evenodd"
-                                                            />
-                                                          </svg>
+                                                          <Check className="w-3 h-3 text-green-400 mx-auto"/>
                                                           Finished
                                                         </span>
                                                       ) : (
@@ -1334,18 +1323,7 @@ export default function LessonsPage() {
                                                       </span>
                                                       {finishedIds.has(l.id) ? (
                                                         <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                                                          <svg
-                                                            className="w-3 h-3"
-                                                            viewBox="0 0 20 20"
-                                                            fill="currentColor"
-                                                            aria-hidden="true"
-                                                          >
-                                                            <path
-                                                              fillRule="evenodd"
-                                                              d="M16.707 5.293a1 1 0 010 1.414l-7.071 7.071a1 1 0 01-1.414 0L3.293 9.85a1 1 0 111.414-1.414l3.182 3.182 6.364-6.364a1 1 0 011.414 0z"
-                                                              clipRule="evenodd"
-                                                            />
-                                                          </svg>
+                                                          <Check className="w-3 h-3 text-green-400 mx-auto"/>
                                                           Finished
                                                         </span>
                                                       ) : (
@@ -1663,18 +1641,7 @@ export default function LessonsPage() {
                                                 </span>
                                                 {finishedIds.has(l.id) ? (
                                                   <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                                                    <svg
-                                                      className="w-3 h-3"
-                                                      viewBox="0 0 20 20"
-                                                      fill="currentColor"
-                                                      aria-hidden="true"
-                                                    >
-                                                      <path
-                                                        fillRule="evenodd"
-                                                        d="M16.707 5.293a1 1 0 010 1.414l-7.071 7.071a1 1 0 01-1.414 0L3.293 9.85a1 1 0 111.414-1.414l3.182 3.182 6.364-6.364a1 1 0 011.414 0z"
-                                                        clipRule="evenodd"
-                                                      />
-                                                    </svg>
+                                                    <Check className="w-3 h-3 text-green-400 mx-auto"/>
                                                     Finished
                                                   </span>
                                                 ) : (
@@ -1982,18 +1949,7 @@ export default function LessonsPage() {
                                               </span>
                                               {finishedIds.has(l.id) ? (
                                                 <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                                                  <svg
-                                                    className="w-3 h-3"
-                                                    viewBox="0 0 20 20"
-                                                    fill="currentColor"
-                                                    aria-hidden="true"
-                                                  >
-                                                    <path
-                                                      fillRule="evenodd"
-                                                      d="M16.707 5.293a1 1 0 010 1.414l-7.071 7.071a1 1 0 01-1.414 0L3.293 9.85a1 1 0 111.414-1.414l3.182 3.182 6.364-6.364a1 1 0 011.414 0z"
-                                                      clipRule="evenodd"
-                                                    />
-                                                  </svg>
+                                                  <Check className="w-3 h-3 text-green-400 mx-auto"/>
                                                   Finished
                                                 </span>
                                               ) : (

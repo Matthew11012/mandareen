@@ -6,15 +6,22 @@ import {
   getLesson,
   generateLesson,
   submitAttempt,
+  getLessonNavigation,
   type CurriculumLesson,
 } from "@/lib/api/curriculum";
 import { DashboardLayout } from "@/components/layout";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { useRef } from "react";
 import * as React from "react";
 import { toast } from "sonner";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 type TokenLike = {
   text?: string;
@@ -101,12 +108,32 @@ export default function LessonRunnerPage({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState<boolean>(false);
+  const [navigation, setNavigation] = useState<{
+    previous: {
+      unitId: number;
+      unitTitle: string;
+      lessonId: number;
+      lessonTitle: string;
+      lessonOrder: number;
+    } | null;
+    next: {
+      unitId: number;
+      unitTitle: string;
+      lessonId: number;
+      lessonTitle: string;
+      lessonOrder: number;
+    } | null;
+  } | null>(null);
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getLesson(unitId, lessonId);
+      const [data, navData] = await Promise.all([
+        getLesson(unitId, lessonId),
+        getLessonNavigation(unitId, lessonId),
+      ]);
+
       // Type guard to narrow raw API activities without using any
       const isActivityLike = (
         x: unknown
@@ -136,6 +163,7 @@ export default function LessonRunnerPage({
           : undefined,
       };
       setLessonData(typed);
+      setNavigation(navData);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to load lesson";
       setError(msg);
@@ -322,6 +350,55 @@ export default function LessonRunnerPage({
             )}
           </div>
         )}
+
+        {/* Navigation */}
+        {navigation && (navigation.previous || navigation.next) && (
+          <div className="flex items-center justify-between pt-8 border-t border-white/10">
+            {navigation.previous ? (
+              <Link
+                href={`/curriculum/${navigation.previous.unitId}/${navigation.previous.lessonId}`}
+                className="inline-flex items-center gap-2 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <div className="text-left">
+                  <div className="text-xs text-white/60">Previous</div>
+                  <div className="text-sm font-medium truncate max-w-[200px]">
+                    {navigation.previous.lessonTitle}
+                  </div>
+                  {navigation.previous.unitTitle !== lessonData?.title && (
+                    <div className="text-xs text-white/50 truncate max-w-[200px]">
+                      {navigation.previous.unitTitle}
+                    </div>
+                  )}
+                </div>
+              </Link>
+            ) : (
+              <div></div>
+            )}
+
+            {navigation.next ? (
+              <Link
+                href={`/curriculum/${navigation.next.unitId}/${navigation.next.lessonId}`}
+                className="inline-flex items-center gap-2 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+              >
+                <div className="text-right">
+                  <div className="text-xs text-white/60">Next</div>
+                  <div className="text-sm font-medium truncate max-w-[200px]">
+                    {navigation.next.lessonTitle}
+                  </div>
+                  {navigation.next.unitTitle !== lessonData?.title && (
+                    <div className="text-xs text-white/50 truncate max-w-[200px]">
+                      {navigation.next.unitTitle}
+                    </div>
+                  )}
+                </div>
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+            ) : (
+              <div></div>
+            )}
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );
@@ -331,88 +408,142 @@ function ExplainView({ content }: { content: ExplainContent }) {
   return (
     <div className="space-y-6">
       {content?.overview && <p className="text-white/80">{content.overview}</p>}
-      {Array.isArray(content?.sections) &&
-        content.sections.map((s: ExplainSection, idx: number) => (
-          <article key={idx} className="rounded-xl border border-white/10 bg-[#2e323a] p-4">
-            <h3 className="font-medium text-white">{s.title}</h3>
-            {s.concept && <p className="text-white/80 mt-1">{s.concept}</p>}
-            {Array.isArray(s.examples) && s.examples.length > 0 && (
-              <div className="mt-2 space-y-1">
-                {s.examples.map(
-                  (
-                    ex: { zh: string; pinyin?: string; en?: string },
-                    i: number
-                  ) => (
-                    <div key={i} className="text-sm">
-                      <div className="text-white">{ex.zh}</div>
-                      {ex.pinyin && (
-                        <div className="text-white/70">{ex.pinyin}</div>
-                      )}
-                      {ex.en && <div className="text-white/70">{ex.en}</div>}
+      {Array.isArray(content?.sections) && content.sections.length > 0 && (
+        <Accordion
+          type="multiple"
+          className="w-full space-y-1"
+          defaultValue={content.sections.map((_, idx) => `section-${idx}`)}
+        >
+          {content.sections.map((s: ExplainSection, idx: number) => (
+            <AccordionItem
+              key={idx}
+              value={`section-${idx}`}
+              className="border-b border-white/20 last:border-b-0"
+            >
+              <AccordionTrigger className="px-2 py-2 text-white hover:no-underline transition-all duration-200 cursor-pointer rounded-lg">
+                <h3 className="font-semibold text-lg text-left">{s.title}</h3>
+              </AccordionTrigger>
+              <AccordionContent className="px-0 pb-6 text-white/80">
+                <div className="space-y-6">
+                  {s.concept && (
+                    <div className="border-l-2 border-white/20 pl-4">
+                      <p className="text-white/80 leading-relaxed">
+                        {s.concept}
+                      </p>
                     </div>
-                  )
-                )}
-              </div>
-            )}
-            {Array.isArray(s.pitfalls) && s.pitfalls.length > 0 && (
-              <div className="mt-3">
-                <div className="text-white/80 text-sm font-medium">
-                  Pitfalls
-                </div>
-                <ul className="mt-1 space-y-1 text-sm">
-                  {s.pitfalls.map(
-                    (
-                      p: { bad: string; good: string; note?: string },
-                      i: number
-                    ) => (
-                      <li
-                        key={i}
-                        className="rounded-lg bg-black/30 border border-white/10 p-2"
-                      >
-                        <div className="text-red-300">✕ {p.bad}</div>
-                        <div className="text-green-300">✓ {p.good}</div>
-                        {p.note && (
-                          <div className="text-white/70">{p.note}</div>
-                        )}
-                      </li>
-                    )
                   )}
-                </ul>
-              </div>
-            )}
-            {Array.isArray(s.checks) && s.checks.length > 0 && (
-              <div className="mt-3">
-                <div className="text-white/80 text-sm font-medium">
-                  Quick checks
-                </div>
-                <ul className="mt-1 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                  {s.checks.map(
-                    (
-                      c: {
-                        type: "tf" | "fill";
-                        prompt: string;
-                        answer?: string;
-                      },
-                      i: number
-                    ) => (
-                      <li
-                        key={i}
-                        className="rounded-lg bg-black/30 border border-white/10 p-2"
-                      >
-                        <div className="text-white/90">{c.prompt}</div>
-                        {typeof c.answer === "string" && (
-                          <div className="text-white/60 mt-1">
-                            Answer: {c.answer}
-                          </div>
+
+                  {Array.isArray(s.examples) && s.examples.length > 0 && (
+                    <div>
+                      <h4 className="text-white font-medium text-sm uppercase tracking-wide mb-3">
+                        Examples
+                      </h4>
+                      <div className="space-y-3">
+                        {s.examples.map(
+                          (
+                            ex: { zh: string; pinyin?: string; en?: string },
+                            i: number
+                          ) => (
+                            <div key={i} className="text-sm space-y-1">
+                              <div className="text-white font-medium">
+                                {ex.zh}
+                              </div>
+                              {ex.pinyin && (
+                                <div className="text-white/60 text-xs font-mono">
+                                  {ex.pinyin}
+                                </div>
+                              )}
+                              {ex.en && (
+                                <div className="text-white/70 italic">
+                                  {ex.en}
+                                </div>
+                              )}
+                            </div>
+                          )
                         )}
-                      </li>
-                    )
+                      </div>
+                    </div>
                   )}
-                </ul>
-              </div>
-            )}
-          </article>
-        ))}
+
+                  {Array.isArray(s.pitfalls) && s.pitfalls.length > 0 && (
+                    <div>
+                      <h4 className="text-white font-medium text-sm uppercase tracking-wide mb-3">
+                        Pitfalls
+                      </h4>
+                      <div className="space-y-3">
+                        {s.pitfalls.map(
+                          (
+                            p: { bad: string; good: string; note?: string },
+                            i: number
+                          ) => (
+                            <div key={i} className="space-y-2">
+                              <div className="flex items-start gap-3">
+                                <span className="text-red-400 font-bold text-lg leading-none">
+                                  ✕
+                                </span>
+                                <div className="text-red-300 text-sm">
+                                  {p.bad}
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                <span className="text-green-400 font-bold text-lg leading-none">
+                                  ✓
+                                </span>
+                                <div className="text-green-300 text-sm">
+                                  {p.good}
+                                </div>
+                              </div>
+                              {p.note && (
+                                <div className="text-white/60 text-sm ml-6 italic">
+                                  {p.note}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {Array.isArray(s.checks) && s.checks.length > 0 && (
+                    <div>
+                      <h4 className="text-white font-medium text-sm uppercase tracking-wide mb-3">
+                        Quick checks
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {s.checks.map(
+                          (
+                            c: {
+                              type: "tf" | "fill";
+                              prompt: string;
+                              answer?: string;
+                            },
+                            i: number
+                          ) => (
+                            <div
+                              key={i}
+                              className="border border-white/10 rounded-lg p-4"
+                            >
+                              <div className="text-white/90 text-sm mb-2">
+                                {c.prompt}
+                              </div>
+                              {typeof c.answer === "string" && (
+                                <div className="text-white/60 text-xs font-mono">
+                                  Answer: {c.answer}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      )}
     </div>
   );
 }

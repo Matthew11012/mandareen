@@ -117,3 +117,33 @@ export async function submitAttempt(
     body: JSON.stringify({ payload, score }),
   });
 }
+
+export async function getLessonNavigation(
+  unitId: number,
+  lessonId: number,
+  opts?: { sourceId?: number; source?: string }
+): Promise<{
+  previous: {
+    unitId: number;
+    unitTitle: string;
+    lessonId: number;
+    lessonTitle: string;
+    lessonOrder: number;
+  } | null;
+  next: {
+    unitId: number;
+    unitTitle: string;
+    lessonId: number;
+    lessonTitle: string;
+    lessonOrder: number;
+  } | null;
+}> {
+  const params = new URLSearchParams();
+  if (typeof opts?.sourceId === "number")
+    params.set("sourceId", String(opts.sourceId));
+  if (opts?.source) params.set("source", opts.source);
+  const qs = params.toString();
+  return apiFetch(
+    `curriculum/units/${unitId}/lessons/${lessonId}/navigation${qs ? `?${qs}` : ""}`
+  );
+}
