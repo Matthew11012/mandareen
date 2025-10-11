@@ -147,3 +147,26 @@ export async function getLessonNavigation(
     `curriculum/units/${unitId}/lessons/${lessonId}/navigation${qs ? `?${qs}` : ""}`
   );
 }
+
+export async function getUnitNavigation(
+  unitId: number,
+  opts?: { sourceId?: number; source?: string }
+): Promise<{
+  previous: {
+    id: number;
+    title: string;
+    order: number;
+  } | null;
+  next: {
+    id: number;
+    title: string;
+    order: number;
+  } | null;
+}> {
+  const params = new URLSearchParams();
+  if (typeof opts?.sourceId === "number")
+    params.set("sourceId", String(opts.sourceId));
+  if (opts?.source) params.set("source", opts.source);
+  const qs = params.toString();
+  return apiFetch(`curriculum/units/${unitId}/navigation${qs ? `?${qs}` : ""}`);
+}

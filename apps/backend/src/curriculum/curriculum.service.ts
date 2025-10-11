@@ -113,6 +113,42 @@ export class CurriculumService {
     };
   }
 
+  async getUnitNavigation(
+    userId: number,
+    currentUnitId: number,
+    opts?: { sourceId?: number; sourceSlug?: string },
+  ) {
+    const where: any = {};
+    if (opts?.sourceId) where.ragSourceId = opts.sourceId;
+    if (!opts?.sourceId && opts?.sourceSlug) {
+      const source = await this.prisma.ragSource.findFirst({
+        where: { metadata: { path: ['slug'], equals: opts.sourceSlug } as any },
+        select: { id: true },
+      });
+      where.ragSourceId = source ? source.id : -1;
+    }
+
+    // Get all units in order
+    const units = await this.prisma.curriculumUnit.findMany({
+      where,
+      orderBy: { order: 'asc' },
+      select: { id: true, title: true, order: true },
+    });
+
+    // Find current unit index
+    const currentIndex = units.findIndex((u) => u.id === currentUnitId);
+
+    if (currentIndex === -1) {
+      return { previous: null, next: null };
+    }
+
+    const previous = currentIndex > 0 ? units[currentIndex - 1] : null;
+    const next =
+      currentIndex < units.length - 1 ? units[currentIndex + 1] : null;
+
+    return { previous, next };
+  }
+
   async getLessonNavigation(
     userId: number,
     currentUnitId: number,

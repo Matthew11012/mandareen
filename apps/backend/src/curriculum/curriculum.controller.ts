@@ -53,6 +53,31 @@ export class CurriculumController {
     return this.curriculum.getUnitDetail(req.user.id, id);
   }
 
+  @Get('units/:unitId/navigation')
+  getUnitNavigation(
+    @Req() req: AuthenticatedRequest,
+    @Param('unitId') unitId: string,
+    @Query('sourceId') sourceIdRaw?: string,
+    @Query('source') sourceSlug?: string,
+  ) {
+    const id = Number(unitId);
+    if (!Number.isFinite(id)) {
+      throw new BadRequestException('Invalid unitId');
+    }
+    let sourceId = Number(sourceIdRaw);
+    if (!Number.isFinite(sourceId) && typeof sourceSlug === 'string') {
+      const maybeId = Number(sourceSlug);
+      if (Number.isFinite(maybeId)) {
+        sourceId = maybeId;
+        sourceSlug = undefined;
+      }
+    }
+    return this.curriculum.getUnitNavigation(req.user.id, id, {
+      sourceId: Number.isFinite(sourceId) ? sourceId : undefined,
+      sourceSlug: typeof sourceSlug === 'string' ? sourceSlug : undefined,
+    });
+  }
+
   @Get('units/:unitId/lessons/:lessonId')
   getLesson(
     @Req() req: AuthenticatedRequest,

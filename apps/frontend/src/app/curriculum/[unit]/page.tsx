@@ -2,10 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { getUnit, type CurriculumLesson } from "@/lib/api/curriculum";
+import {
+  getUnit,
+  getUnitNavigation,
+  type CurriculumLesson,
+} from "@/lib/api/curriculum";
 import { DashboardLayout } from "@/components/layout";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
-import { Loader2, BookMarked, CheckCircle2, Clock } from "lucide-react";
+import {
+  Loader2,
+  BookMarked,
+  CheckCircle2,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import * as React from "react";
 
 type UnitDetailResponse = Awaited<ReturnType<typeof getUnit>> | null;
@@ -30,6 +41,18 @@ export default function UnitDetailPage({
   const [unitData, setUnitData] = useState<UnitDetailResponse>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [navigation, setNavigation] = useState<{
+    previous: {
+      id: number;
+      title: string;
+      order: number;
+    } | null;
+    next: {
+      id: number;
+      title: string;
+      order: number;
+    } | null;
+  } | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -37,14 +60,19 @@ export default function UnitDetailPage({
       setLoading(true);
       setError(null);
       try {
-        const data = await getUnit(unitId);
+        const [data, navData] = await Promise.all([
+          getUnit(unitId),
+          getUnitNavigation(unitId),
+        ]);
         if (!mounted) return;
         setUnitData(data ?? null);
+        setNavigation(navData);
       } catch (e) {
         if (!mounted) return;
         const msg = e instanceof Error ? e.message : "Failed to load unit";
         setError(msg);
         setUnitData(null);
+        setNavigation(null);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -205,6 +233,45 @@ export default function UnitDetailPage({
             </div>
           )}
         </section>
+
+        {/* Unit Navigation */}
+        {navigation && (navigation.previous || navigation.next) && (
+          <div className="flex items-center justify-between pt-6 border-t border-white/10">
+            {navigation.previous ? (
+              <Link
+                href={`/curriculum/${navigation.previous.id}`}
+                className="inline-flex items-center gap-2 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <div className="text-left">
+                  <div className="text-xs text-white/60">Previous Unit</div>
+                  <div className="text-sm font-medium truncate max-w-[200px]">
+                    {navigation.previous.title}
+                  </div>
+                </div>
+              </Link>
+            ) : (
+              <div></div>
+            )}
+
+            {navigation.next ? (
+              <Link
+                href={`/curriculum/${navigation.next.id}`}
+                className="inline-flex items-center gap-2 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+              >
+                <div className="text-right">
+                  <div className="text-xs text-white/60">Next Unit</div>
+                  <div className="text-sm font-medium truncate max-w-[200px]">
+                    {navigation.next.title}
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+            ) : (
+              <div></div>
+            )}
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

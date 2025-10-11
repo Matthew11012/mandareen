@@ -11,7 +11,17 @@ import {
 } from "@/lib/api/curriculum";
 import { DashboardLayout } from "@/components/layout";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
-import { Loader2, Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Loader2,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  Volume2,
+  Check,
+  XCircle,
+  Trophy,
+  Target,
+} from "lucide-react";
 import { useRef } from "react";
 import * as React from "react";
 import { toast } from "sonner";
@@ -246,11 +256,13 @@ export default function LessonRunnerPage({
         </nav>
 
         <header className="space-y-2">
-          <h1 className="text-2xl font-inter font-semibold text-white">
+          <h1 className="text-xl sm:text-2xl font-inter font-semibold text-white">
             {lessonData?.title || "Lesson"}
           </h1>
           {lessonData?.description && (
-            <p className="text-white/60 font-inter">{lessonData.description}</p>
+            <p className="text-sm sm:text-base text-white/60 font-inter">
+              {lessonData.description}
+            </p>
           )}
           <hr />
         </header>
@@ -291,8 +303,10 @@ export default function LessonRunnerPage({
           <div className="space-y-8">
             {/* Explain-first (GRAMMAR) */}
             {hasExplain && (
-              <section className="rounded-xl p-5">
-                <h2 className="text-xl font-semibold mb-2">Explanation</h2>
+              <section className="rounded-xl p-4 sm:p-5">
+                <h2 className="text-lg sm:text-xl font-semibold mb-2">
+                  Explanation
+                </h2>
                 {activities
                   .filter(
                     (a): a is Extract<ActivityUnion, { type: "GRAMMAR" }> =>
@@ -317,8 +331,10 @@ export default function LessonRunnerPage({
 
             {/* Micro Passage (READ) */}
             {hasRead && (
-              <section className="rounded-xl p-5">
-                <h2 className="text-xl font-semibold mb-2">Micro passage</h2>
+              <section className="rounded-xl p-4 sm:p-5">
+                <h2 className="text-lg sm:text-xl font-semibold mb-2">
+                  Micro passage
+                </h2>
                 {activities
                   .filter(
                     (a): a is Extract<ActivityUnion, { type: "READ" }> =>
@@ -332,8 +348,8 @@ export default function LessonRunnerPage({
 
             {/* Quiz */}
             {hasQuiz && (
-              <section className="rounded-xl  p-5">
-                <h2 className="text-xl font-semibold mb-2">Quiz</h2>
+              <section className="rounded-xl p-4 sm:p-5">
+                <h2 className="text-lg sm:text-xl font-semibold mb-2">Quiz</h2>
                 {activities
                   .filter(
                     (a): a is Extract<ActivityUnion, { type: "QUIZ" }> =>
@@ -406,58 +422,89 @@ export default function LessonRunnerPage({
 
 function ExplainView({ content }: { content: ExplainContent }) {
   return (
-    <div className="space-y-6">
-      {content?.overview && <p className="text-white/80">{content.overview}</p>}
+    <div className="space-y-8">
+      {content?.overview && (
+        <div className="relative">
+          <div className="absolute left-0 top-0 w-1 h-full bg-blue-500/40 rounded-full"></div>
+          <div className="pl-6">
+            <h3 className="text-white font-semibold text-base sm:text-lg mb-3">
+              Overview
+            </h3>
+            <p className="text-white/80 leading-relaxed text-sm sm:text-base">
+              {content.overview}
+            </p>
+          </div>
+        </div>
+      )}
+
       {Array.isArray(content?.sections) && content.sections.length > 0 && (
         <Accordion
           type="multiple"
-          className="w-full space-y-1"
+          className="w-full space-y-2"
           defaultValue={content.sections.map((_, idx) => `section-${idx}`)}
         >
           {content.sections.map((s: ExplainSection, idx: number) => (
             <AccordionItem
               key={idx}
               value={`section-${idx}`}
-              className="border-b border-white/20 last:border-b-0"
+              className="border border-white/10 rounded-lg overflow-hidden hover:border-white/20 transition-all duration-200"
             >
-              <AccordionTrigger className="px-2 py-2 text-white hover:no-underline transition-all duration-200 cursor-pointer rounded-lg">
-                <h3 className="font-semibold text-lg text-left">{s.title}</h3>
+              <AccordionTrigger className="px-4 sm:px-6 py-3 sm:py-4 text-white hover:no-underline hover:bg-white/5 transition-all duration-200 cursor-pointer">
+                <h3 className="font-semibold text-base sm:text-lg text-left">
+                  {s.title}
+                </h3>
               </AccordionTrigger>
-              <AccordionContent className="px-0 pb-6 text-white/80">
-                <div className="space-y-6">
+              <AccordionContent className="px-4 sm:px-6 pb-4 sm:pb-6 text-white/80">
+                <div className="space-y-4 sm:space-y-6">
                   {s.concept && (
-                    <div className="border-l-2 border-white/20 pl-4">
-                      <p className="text-white/80 leading-relaxed">
-                        {s.concept}
-                      </p>
+                    <div className="relative">
+                      <div className="absolute left-0 top-0 w-1 h-full bg-blue-500/30 rounded-full"></div>
+                      <div className="pl-4 sm:pl-6">
+                        <h4 className="text-white font-medium text-sm sm:text-base mb-2 sm:mb-3">
+                          Key Concept
+                        </h4>
+                        <p className="text-white/80 leading-relaxed text-sm sm:text-base">
+                          {s.concept}
+                        </p>
+                      </div>
                     </div>
                   )}
 
                   {Array.isArray(s.examples) && s.examples.length > 0 && (
-                    <div>
-                      <h4 className="text-white font-medium text-sm uppercase tracking-wide mb-3">
+                    <div className="space-y-3 sm:space-y-4">
+                      <h4 className="text-white font-medium text-sm sm:text-base">
                         Examples
                       </h4>
-                      <div className="space-y-3">
+                      <div className="space-y-2 sm:space-y-3">
                         {s.examples.map(
                           (
                             ex: { zh: string; pinyin?: string; en?: string },
                             i: number
                           ) => (
-                            <div key={i} className="text-sm space-y-1">
-                              <div className="text-white font-medium">
-                                {ex.zh}
+                            <div
+                              key={i}
+                              className="p-3 sm:p-4 border border-white/10 rounded-lg transition-all duration-200"
+                            >
+                              <div className="space-y-1 sm:space-y-2">
+                                <div className="text-white font-semibold text-base sm:text-lg">
+                                  {ex.zh}
+                                </div>
+                                {ex.pinyin && (
+                                  <div className="flex items-center gap-2">
+                                    <div className="text-blue-400 text-xs sm:text-sm font-mono font-medium">
+                                      {ex.pinyin}
+                                    </div>
+                                    <button className="p-1 hover:bg-blue-500/20 rounded transition-colors duration-200">
+                                      <Volume2 className="w-3 h-3 text-blue-400" />
+                                    </button>
+                                  </div>
+                                )}
+                                {ex.en && (
+                                  <div className="text-white/70 text-xs sm:text-sm italic">
+                                    {ex.en}
+                                  </div>
+                                )}
                               </div>
-                              {ex.pinyin && (
-                                <div className="text-white/60 text-xs font-mono">
-                                  {ex.pinyin}
-                                </div>
-                              )}
-                              {ex.en && (
-                                <div className="text-white/70 italic">
-                                  {ex.en}
-                                </div>
-                              )}
                             </div>
                           )
                         )}
@@ -466,9 +513,9 @@ function ExplainView({ content }: { content: ExplainContent }) {
                   )}
 
                   {Array.isArray(s.pitfalls) && s.pitfalls.length > 0 && (
-                    <div>
-                      <h4 className="text-white font-medium text-sm uppercase tracking-wide mb-3">
-                        Pitfalls
+                    <div className="space-y-4">
+                      <h4 className="text-white font-medium text-base">
+                        Common Pitfalls
                       </h4>
                       <div className="space-y-3">
                         {s.pitfalls.map(
@@ -477,24 +524,24 @@ function ExplainView({ content }: { content: ExplainContent }) {
                             i: number
                           ) => (
                             <div key={i} className="space-y-2">
-                              <div className="flex items-start gap-3">
-                                <span className="text-red-400 font-bold text-lg leading-none">
+                              <div className="flex items-start gap-3 p-3 border border-red-500/20 rounded-lg bg-red-500/5">
+                                <span className="text-red-400 font-bold text-lg leading-none mt-0.5">
                                   ✕
                                 </span>
-                                <div className="text-red-300 text-sm">
+                                <div className="text-red-300 text-sm flex-1">
                                   {p.bad}
                                 </div>
                               </div>
-                              <div className="flex items-start gap-3">
-                                <span className="text-green-400 font-bold text-lg leading-none">
+                              <div className="flex items-start gap-3 p-3 border border-green-500/20 rounded-lg bg-green-500/5">
+                                <span className="text-green-400 font-bold text-lg leading-none mt-0.5">
                                   ✓
                                 </span>
-                                <div className="text-green-300 text-sm">
+                                <div className="text-green-300 text-sm flex-1">
                                   {p.good}
                                 </div>
                               </div>
                               {p.note && (
-                                <div className="text-white/60 text-sm ml-6 italic">
+                                <div className="text-white/60 text-sm italic ml-6 p-2 bg-white/5 rounded border-l-2 border-white/20">
                                   {p.note}
                                 </div>
                               )}
@@ -506,9 +553,9 @@ function ExplainView({ content }: { content: ExplainContent }) {
                   )}
 
                   {Array.isArray(s.checks) && s.checks.length > 0 && (
-                    <div>
-                      <h4 className="text-white font-medium text-sm uppercase tracking-wide mb-3">
-                        Quick checks
+                    <div className="space-y-4">
+                      <h4 className="text-white font-medium text-base">
+                        Quick Checks
                       </h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {s.checks.map(
@@ -522,13 +569,13 @@ function ExplainView({ content }: { content: ExplainContent }) {
                           ) => (
                             <div
                               key={i}
-                              className="border border-white/10 rounded-lg p-4"
+                              className="p-4 border border-white/10 rounded-lg hover:border-white/20 hover:bg-white/5 transition-all duration-200"
                             >
                               <div className="text-white/90 text-sm mb-2">
                                 {c.prompt}
                               </div>
                               {typeof c.answer === "string" && (
-                                <div className="text-white/60 text-xs font-mono">
+                                <div className="text-blue-400 text-xs font-mono bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20">
                                   Answer: {c.answer}
                                 </div>
                               )}
@@ -632,9 +679,11 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
     : [];
   if (!content?.microPassage?.hanzi) return null;
   return (
-    <div className="mt-6" ref={contentRef}>
-      <h3 className="text-base font-semibold text-white mb-2">Micro passage</h3>
-      <div className="rounded-xl border border-[#404040] bg-[#2e323a] p-4 relative">
+    <div className="mt-4 sm:mt-6" ref={contentRef}>
+      <h3 className="text-sm sm:text-base font-semibold text-white mb-2">
+        Micro passage
+      </h3>
+      <div className="rounded-xl border border-[#404040] bg-[#2e323a] p-3 sm:p-4 relative">
         <div className="flex items-center justify-end mb-2">
           <button
             onClick={() => setShowPinyin((v) => !v)}
@@ -650,7 +699,10 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
             Pinyin {showPinyin ? "On" : "Off"}
           </button>
         </div>
-        <p className="text-white text-lg leading-8" aria-label="Micro passage">
+        <p
+          className="text-white text-base sm:text-lg leading-7 sm:leading-8"
+          aria-label="Micro passage"
+        >
           {tokens.length > 0 ? (
             tokens.map((t, i) => (
               <span
@@ -690,17 +742,17 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
               >
                 {showPinyin ? (
                   t.isWord && t.pinyin ? (
-                    <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
+                    <span className="text-[10px] sm:text-xs text-[#9aa6ff] leading-none mb-[1px] sm:mb-[2px]">
                       {t.pinyin}
                     </span>
                   ) : (
-                    <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
+                    <span className="text-[10px] sm:text-xs opacity-0 leading-none mb-[1px] sm:mb-[2px] select-none">
                       •
                     </span>
                   )
                 ) : null}
                 <span
-                  className={`px-[1px] rounded ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
+                  className={`px-[1px] rounded text-sm sm:text-lg ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
                 >
                   {t.text ?? t.zh ?? ""}
                 </span>
@@ -711,7 +763,7 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
           )}
         </p>
         {content.microPassage.translation && (
-          <div className="text-white/70 mt-2">
+          <div className="text-white/70 mt-2 text-sm sm:text-base">
             {content.microPassage.translation}
           </div>
         )}
@@ -908,8 +960,8 @@ function ReadView({ content }: { content: ReadContent }) {
 
   const tokens = Array.isArray(content?.segments) ? content.segments : [];
   return (
-    <div className="space-y-3" ref={contentRef}>
-      <div className="rounded-xl border border-[#404040] bg-[#2e323a] p-4 relative">
+    <div className="space-y-2 sm:space-y-3" ref={contentRef}>
+      <div className="rounded-xl border border-[#404040] bg-[#2e323a] p-3 sm:p-4 relative">
         <div className="flex items-center justify-end mb-2">
           <button
             onClick={() => setShowPinyin((v) => !v)}
@@ -925,7 +977,10 @@ function ReadView({ content }: { content: ReadContent }) {
             Pinyin {showPinyin ? "On" : "Off"}
           </button>
         </div>
-        <p className="text-white text-lg leading-8" aria-label="Micro passage">
+        <p
+          className="text-white text-base sm:text-lg leading-7 sm:leading-8"
+          aria-label="Micro passage"
+        >
           {tokens.length > 0 ? (
             tokens.map((t, i) => (
               <span
@@ -964,17 +1019,17 @@ function ReadView({ content }: { content: ReadContent }) {
               >
                 {showPinyin ? (
                   t.isWord && t.pinyin ? (
-                    <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
+                    <span className="text-[10px] sm:text-xs text-[#9aa6ff] leading-none mb-[1px] sm:mb-[2px]">
                       {t.pinyin}
                     </span>
                   ) : (
-                    <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
+                    <span className="text-[10px] sm:text-xs opacity-0 leading-none mb-[1px] sm:mb-[2px] select-none">
                       •
                     </span>
                   )
                 ) : null}
                 <span
-                  className={`px-[1px] rounded ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
+                  className={`px-[1px] rounded text-sm sm:text-lg ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
                 >
                   {t.text ?? t.zh ?? ""}
                 </span>
@@ -985,7 +1040,7 @@ function ReadView({ content }: { content: ReadContent }) {
           )}
         </p>
         {content?.passage?.translation && (
-          <div className="text-white/70 mt-2">
+          <div className="text-white/70 mt-2 text-sm sm:text-base">
             {content.passage.translation}
           </div>
         )}
@@ -1094,16 +1149,16 @@ function ReadView({ content }: { content: ReadContent }) {
         )}
       </div>
       {Array.isArray(content?.questions) && content.questions.length > 0 && (
-        <div className="rounded-xl border border-white/10 p-4">
-          <div className="text-white/80 text-sm font-medium mb-2">
+        <div className="rounded-xl border border-white/10 p-3 sm:p-4">
+          <div className="text-white/80 text-xs sm:text-sm font-medium mb-2">
             Comprehension
           </div>
-          <ul className="space-y-2 text-sm">
+          <ul className="space-y-2 text-xs sm:text-sm">
             {content.questions.map(
               (q: { type: "tf" | "short"; prompt: string }, i: number) => (
                 <li
                   key={i}
-                  className="rounded-lg bg-black/30 border border-white/10 p-2"
+                  className="rounded-lg bg-black/30 border border-white/10 p-2 sm:p-3"
                 >
                   <div className="text-white/90">{q.prompt}</div>
                 </li>
@@ -1131,6 +1186,9 @@ function QuizView({
   } | null>(null);
 
   const items = Array.isArray(content?.items) ? content.items : [];
+  const answeredCount = Object.keys(selected).length;
+  const progressPercentage =
+    items.length > 0 ? (answeredCount / items.length) * 100 : 0;
 
   const toggle = (qi: number, oi: number) => {
     if (submitted) return;
@@ -1155,90 +1213,247 @@ function QuizView({
     }
   };
 
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return "text-green-400";
+    if (score >= 60) return "text-yellow-400";
+    return "text-red-400";
+  };
+
+  const getScoreMessage = (score: number) => {
+    if (score >= 90) return "Excellent work!";
+    if (score >= 80) return "Great job!";
+    if (score >= 70) return "Good effort!";
+    if (score >= 60) return "Keep practicing!";
+    return "Review the material and try again.";
+  };
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       {items.length > 0 ? (
         <>
-          <ol className="space-y-3 list-decimal list-inside">
+          {/* Quiz Header */}
+          <div className="flex items-center justify-between p-3 sm:p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div>
+                <h3 className="text-white font-semibold text-base sm:text-lg">
+                  Quiz Assessment
+                </h3>
+                <p className="text-white/70 text-xs sm:text-sm">
+                  {items.length} question{items.length !== 1 ? "s" : ""} •
+                  Choose the best answer
+                </p>
+              </div>
+            </div>
+            {!submitted && (
+              <div className="text-right">
+                <div className="text-white/70 text-xs sm:text-sm mb-1">
+                  Progress
+                </div>
+                <div className="text-white font-semibold text-sm sm:text-base">
+                  {answeredCount} / {items.length}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Progress Bar */}
+          {!submitted && (
+            <div className="w-full bg-white/10 rounded-full h-2">
+              <div
+                className="bg-blue-500 h-2 rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${progressPercentage}%` }}
+              ></div>
+            </div>
+          )}
+
+          {/* Questions */}
+          <div className="space-y-4 sm:space-y-6">
             {items.map((it: QuizItem, i: number) => {
               const choice = selected[i] ?? null;
               const showRationale =
                 submitted && typeof it.rationale === "string";
-              // correctness indicated via button states; avoid unused var
+              const showState = submitted && typeof it.answerIndex === "number";
+              const isCorrect = showState && choice === it.answerIndex;
+              const isIncorrect =
+                showState && choice !== null && choice !== it.answerIndex;
+
               return (
-                <li
+                <div
                   key={i}
-                  className="rounded-xl border border-white/10 bg-[#2e323a] p-4"
+                  className="relative p-4 sm:p-6 border border-white/10 rounded-xl bg-white/[0.02] hover:border-white/20 transition-all duration-200"
                 >
-                  <div className="text-white/90 mb-2">{it.question}</div>
-                  {Array.isArray(it.options) && (
-                    <ul
-                      role="listbox"
-                      aria-label={`Choices for question ${i + 1}`}
-                      className="space-y-1 text-sm"
+                  {/* Question Number */}
+                  <div className="flex items-start gap-3 sm:gap-4 mb-3 sm:mb-4">
+                    <div
+                      className={`flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
+                        showState
+                          ? isCorrect
+                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                            : isIncorrect
+                              ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                              : "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                          : "bg-white/10 text-white/80 border border-white/20"
+                      }`}
                     >
+                      {i + 1}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-white font-medium text-base sm:text-lg mb-3 sm:mb-4 leading-relaxed">
+                        {it.question}
+                      </h4>
+                    </div>
+                  </div>
+
+                  {/* Answer Options */}
+                  {Array.isArray(it.options) && (
+                    <div className="space-y-2 sm:space-y-3 ml-8 sm:ml-12">
                       {it.options.map((opt: string, j: number) => {
                         const selectedNow = choice === j;
-                        const showState =
-                          submitted && typeof it.answerIndex === "number";
                         const correctChoice = showState && it.answerIndex === j;
                         const incorrectChosen =
                           showState && selectedNow && !correctChoice;
+
                         return (
-                          <li key={j}>
-                            <button
-                              type="button"
-                              role="option"
-                              aria-selected={selectedNow}
-                              onClick={() => toggle(i, j)}
-                              className={
-                                "w-full text-left rounded border px-3 py-2 transition-colors cursor-pointer" +
-                                (selectedNow
-                                  ? " border-white/40 bg-white/10 "
-                                  : " border-white/10 bg-black/30 hover:bg-white/10 ") +
-                                (correctChoice
-                                  ? " border-green-500/50 bg-green-500/10 "
-                                  : "") +
-                                (incorrectChosen
-                                  ? " border-red-500/50 bg-red-500/10 "
-                                  : "")
-                              }
-                            >
-                              {opt}
-                            </button>
-                          </li>
+                          <button
+                            key={j}
+                            type="button"
+                            onClick={() => toggle(i, j)}
+                            disabled={submitted}
+                            className={`w-full text-left p-3 sm:p-4 rounded-lg border transition-all duration-200 ${
+                              submitted
+                                ? "cursor-default"
+                                : "cursor-pointer hover:border-white/30 hover:bg-white/5"
+                            } ${
+                              selectedNow
+                                ? showState
+                                  ? correctChoice
+                                    ? "border-green-500/50 bg-green-500/10 text-green-100"
+                                    : incorrectChosen
+                                      ? "border-red-500/50 bg-red-500/10 text-red-100"
+                                      : "border-blue-500/50 bg-blue-500/10 text-blue-100"
+                                  : "border-blue-500/50 bg-blue-500/10 text-white"
+                                : showState && correctChoice
+                                  ? "border-green-500/30 bg-green-500/5 text-green-200"
+                                  : "border-white/10 bg-white/5 text-white/90"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 sm:gap-3">
+                              <div
+                                className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full border-2 flex items-center justify-center ${
+                                  selectedNow
+                                    ? showState
+                                      ? correctChoice
+                                        ? "border-green-400 bg-green-500"
+                                        : incorrectChosen
+                                          ? "border-red-400 bg-red-500"
+                                          : "border-blue-400 bg-blue-500"
+                                      : "border-blue-400 bg-blue-500"
+                                    : showState && correctChoice
+                                      ? "border-green-400 bg-green-500/20"
+                                      : "border-white/30"
+                                }`}
+                              >
+                                {selectedNow && (
+                                  <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-white rounded-full"></div>
+                                )}
+                                {showState && correctChoice && !selectedNow && (
+                                  <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-green-400" />
+                                )}
+                              </div>
+                              <span className="flex-1 text-sm sm:text-base">
+                                {opt}
+                              </span>
+                              {showState && correctChoice && (
+                                <Check className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
+                              )}
+                              {showState && incorrectChosen && (
+                                <XCircle className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
+                              )}
+                            </div>
+                          </button>
                         );
                       })}
-                    </ul>
-                  )}
-                  {showRationale && (
-                    <div className="text-white/60 mt-2 text-sm">
-                      Rationale: {it.rationale}
                     </div>
                   )}
-                </li>
+
+                  {/* Rationale */}
+                  {showRationale && (
+                    <div className="mt-3 sm:mt-4 ml-8 sm:ml-12 p-3 sm:p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <div>
+                          <h5 className="text-blue-400 font-medium text-xs sm:text-sm mb-1">
+                            Explanation
+                          </h5>
+                          <p className="text-white/80 text-xs sm:text-sm leading-relaxed">
+                            {it.rationale}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               );
             })}
-          </ol>
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={onSubmit}
-              disabled={submitted}
-              className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 cursor-pointer"
-            >
-              {submitted ? "Submitted" : "Submit"}
-            </button>
-            {submitted && result && (
-              <div className="text-white/80 text-sm">
-                You answered {result.correct.filter(Boolean).length} /{" "}
-                {items.length} correctly ({result.score}%).
-              </div>
-            )}
           </div>
+
+          {/* Results Summary */}
+          {submitted && result && (
+            <div className="p-4 sm:p-6 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="p-2 sm:p-3 bg-blue-500/20 rounded-lg">
+                    <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-semibold text-lg sm:text-xl">
+                      Quiz Complete!
+                    </h3>
+                    <p className="text-white/70 text-xs sm:text-sm">
+                      {getScoreMessage(result.score)}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div
+                    className={`text-2xl sm:text-3xl font-bold ${getScoreColor(result.score)}`}
+                  >
+                    {result.score}%
+                  </div>
+                  <div className="text-white/70 text-xs sm:text-sm">
+                    {result.correct.filter(Boolean).length} / {items.length}{" "}
+                    correct
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Submit Button */}
+          {!submitted && (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pt-4 gap-3 sm:gap-0">
+              <div className="text-white/70 text-xs sm:text-sm">
+                {answeredCount === items.length
+                  ? "Ready to submit!"
+                  : `${items.length - answeredCount} question${items.length - answeredCount !== 1 ? "s" : ""} remaining`}
+              </div>
+              <button
+                type="button"
+                onClick={onSubmit}
+                disabled={answeredCount !== items.length}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl cursor-pointer text-sm sm:text-base"
+              >
+                Submit Quiz
+              </button>
+            </div>
+          )}
         </>
       ) : (
-        <div className="text-white/70">No quiz items.</div>
+        <div className="text-center py-12">
+          <div className="p-4 bg-white/5 rounded-lg inline-block mb-4">
+            <Target className="w-8 h-8 text-white/60" />
+          </div>
+          <p className="text-white/70">No quiz items available.</p>
+        </div>
       )}
     </div>
   );
