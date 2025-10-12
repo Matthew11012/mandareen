@@ -171,11 +171,6 @@ export default function UnitDetailPage({
                 return lesson.title.replace(/^(\d+)\s/, "$1. ");
               })()}
             </h3>
-            {lesson.description && lesson.description !== lesson.title && (
-              <p className="mt-1 text-sm font-inter text-white/60 line-clamp-2">
-                {lesson.description}
-              </p>
-            )}
           </div>
           {getBadge()}
         </div>
