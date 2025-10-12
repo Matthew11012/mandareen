@@ -17,7 +17,16 @@ import {
   Layers,
   Loader2,
   Rocket,
+  Play,
+  RotateCcw,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type FilterValue = "all" | "incomplete" | "completed";
 
@@ -34,6 +43,31 @@ export default function CurriculumUnitsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterValue>("all");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>("");
+  const [sortBy, setSortBy] = useState<string>("order");
+
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Initialize from URL params
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const urlSearch = sp.get("search");
+    const urlSort = sp.get("sort");
+    if (urlSearch) {
+      setSearchQuery(urlSearch);
+      setDebouncedSearchQuery(urlSearch);
+    }
+    if (urlSort) {
+      setSortBy(urlSort);
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -107,6 +141,22 @@ export default function CurriculumUnitsPage() {
     };
   }, [selectedSourceKey, selectedSourceId]);
 
+  // Update URL when search or sort changes
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (debouncedSearchQuery.trim()) {
+      url.searchParams.set("search", debouncedSearchQuery);
+    } else {
+      url.searchParams.delete("search");
+    }
+    if (sortBy !== "order") {
+      url.searchParams.set("sort", sortBy);
+    } else {
+      url.searchParams.delete("sort");
+    }
+    window.history.replaceState({}, "", url.toString());
+  }, [debouncedSearchQuery, sortBy]);
+
   const totals = useMemo(() => {
     const totalLessons = units.reduce(
       (acc, unit) => acc + (unit.totalLessons ?? 0),
@@ -133,22 +183,63 @@ export default function CurriculumUnitsPage() {
   }, [units]);
 
   const filteredUnits = useMemo(() => {
+    let filtered = units;
+
+    // Apply status filter
     switch (filter) {
       case "completed":
-        return units.filter(
+        filtered = units.filter(
           (unit) =>
             (unit.totalLessons ?? 0) > 0 &&
             (unit.completedLessons ?? 0) >= (unit.totalLessons ?? 0)
         );
+        break;
       case "incomplete":
-        return units.filter(
+        filtered = units.filter(
           (unit) =>
             (unit.completedLessons ?? 0) < Math.max(1, unit.totalLessons ?? 0)
         );
+        break;
       default:
-        return units;
+        filtered = units;
     }
-  }, [filter, units]);
+
+    // Apply search filter
+    if (debouncedSearchQuery.trim()) {
+      const query = debouncedSearchQuery.toLowerCase().trim();
+      filtered = filtered.filter((unit) => {
+        const title = unit.title.toLowerCase();
+        const description = (unit.description || "").toLowerCase();
+        return title.includes(query) || description.includes(query);
+      });
+    }
+
+    // Apply sorting
+    const sorted = [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case "progress-low":
+          return (
+            (a.completedLessons ?? 0) / Math.max(1, a.totalLessons ?? 0) -
+            (b.completedLessons ?? 0) / Math.max(1, b.totalLessons ?? 0)
+          );
+        case "progress-high":
+          return (
+            (b.completedLessons ?? 0) / Math.max(1, b.totalLessons ?? 0) -
+            (a.completedLessons ?? 0) / Math.max(1, a.totalLessons ?? 0)
+          );
+        case "title":
+          return a.title.localeCompare(b.title);
+        case "order":
+        default:
+          // Extract unit number for natural sorting
+          const aNum = parseInt(a.title.match(/^(\d+)/)?.[1] || "0");
+          const bNum = parseInt(b.title.match(/^(\d+)/)?.[1] || "0");
+          return aNum - bNum;
+      }
+    });
+
+    return sorted;
+  }, [filter, units, debouncedSearchQuery, sortBy]);
 
   const filters: Array<{ value: FilterValue; label: string; count: number }> =
     useMemo(
@@ -192,12 +283,15 @@ export default function CurriculumUnitsPage() {
 
     // Status-based styling
     const getCardClasses = () => {
+      const baseClasses =
+        "group relative flex flex-col rounded-2xl p-5 transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-2 focus:ring-offset-[#222831]";
+
       if (isCompleted) {
-        return "group relative flex flex-col rounded-2xl border border-green-500/50 bg-gradient-to-br from-green-900/20 to-green-800/10 p-5 transition-all duration-200 hover:border-green-500/70 hover:from-green-900/30 hover:to-green-800/20 shadow-lg ring-1 ring-green-500/30";
+        return `${baseClasses} border border-green-500/50 bg-gradient-to-br from-green-900/20 to-green-800/10 hover:border-green-500/70 hover:from-green-900/30 hover:to-green-800/20 hover:shadow-xl hover:scale-[1.02] shadow-lg ring-1 ring-green-500/30`;
       } else if (isInProgress) {
-        return "group relative flex flex-col rounded-2xl border border-amber-500/50 bg-gradient-to-br from-amber-900/20 to-amber-800/10 p-5 transition-all duration-200 hover:border-amber-500/70 hover:from-amber-900/30 hover:to-amber-800/20 shadow-lg ring-1 ring-amber-500/30";
+        return `${baseClasses} border border-amber-500/50 bg-gradient-to-br from-amber-900/20 to-amber-800/10 hover:border-amber-500/70 hover:from-amber-900/30 hover:to-amber-800/20 hover:shadow-xl hover:scale-[1.02] shadow-lg ring-1 ring-amber-500/30`;
       } else {
-        return "group relative flex flex-col rounded-2xl border border-white/10 bg-[#2e323a] p-5 transition-colors duration-200 hover:border-[#4040f2] shadow-md";
+        return `${baseClasses} border border-white/10 bg-[#2e323a] hover:border-[#4040f2] hover:shadow-lg hover:scale-[1.02] shadow-md`;
       }
     };
 
@@ -241,6 +335,77 @@ export default function CurriculumUnitsPage() {
       }
     };
 
+    const getStatusBadge = () => {
+      if (isCompleted) {
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs font-inter text-green-300">
+            <CheckCircle2 className="h-3 w-3" /> Completed
+          </span>
+        );
+      } else if (isInProgress) {
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-inter text-amber-300">
+            <Rocket className="h-3 w-3" /> In Progress
+          </span>
+        );
+      } else {
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2 py-1 text-xs font-inter text-white/80">
+            <BookOpen className="h-3 w-3" /> Not Started
+          </span>
+        );
+      }
+    };
+
+    const getActionButton = () => {
+      if (isCompleted) {
+        return (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              window.location.href = `/curriculum/${unit.id}`;
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2 text-xs font-inter text-green-300 transition-colors duration-200 hover:bg-green-500/20 hover:border-green-500/50 cursor-pointer"
+            aria-label="Review completed unit"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Review Unit
+          </button>
+        );
+      } else if (isInProgress) {
+        return (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              window.location.href = `/curriculum/${unit.id}`;
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-inter text-amber-300 transition-colors duration-200 hover:bg-amber-500/20 hover:border-amber-500/50 cursor-pointer"
+            aria-label="Continue learning this unit"
+          >
+            <Play className="h-3.5 w-3.5" />
+            Continue Learning
+          </button>
+        );
+      } else {
+        return (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              window.location.href = `/curriculum/${unit.id}`;
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs font-inter text-blue-300 transition-colors duration-200 hover:bg-blue-500/20 hover:border-blue-500/50 cursor-pointer"
+            aria-label="Start this unit"
+          >
+            <Play className="h-3.5 w-3.5" />
+            Start Unit
+          </button>
+        );
+      }
+    };
+
     return (
       <Link
         key={unit.id}
@@ -254,7 +419,7 @@ export default function CurriculumUnitsPage() {
         )}
 
         <div className="flex items-start gap-3 relative z-10">
-          <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex-1 min-w-0 space-y-2">
             <h3 className="text-lg font-inter font-semibold text-white group-hover:text-white/90 leading-tight">
               {(() => {
                 const match = unit.title.match(/^(\d+)\.?\s*(.*)$/);
@@ -262,7 +427,7 @@ export default function CurriculumUnitsPage() {
                   const [, number, rest] = match;
                   return (
                     <>
-                      <span className="text-3xl font-bold text-white/90">
+                      <span className="text-2xl font-bold text-white/90">
                         {number}{" "}
                       </span>
                       <span>{rest}</span>
@@ -272,17 +437,18 @@ export default function CurriculumUnitsPage() {
                 return unit.title;
               })()}
             </h3>
+            {getStatusBadge()}
           </div>
           <div className={`flex-shrink-0 ${getIconContainerClasses()}`}>
             {getIconComponent()}
           </div>
         </div>
-        <div className="mt-5 space-y-2 relative z-10">
-          <div className="flex items-center justify-between text-xs font-inter text-white/60">
+        <div className="mt-3 space-y-3 relative z-10">
+          <div className="flex items-center justify-between text-xs font-inter text-white/80">
             <span aria-label="Lessons completed">
               {done} / {total} lessons
             </span>
-            <span>{percent}%</span>
+            <span className="font-semibold">{percent}%</span>
           </div>
           <div className="h-2 rounded-full bg-white/10">
             <div
@@ -290,8 +456,8 @@ export default function CurriculumUnitsPage() {
               style={{ width: `${percent}%` }}
             />
           </div>
+          <div className="flex justify-end">{getActionButton()}</div>
         </div>
-        {/* Remove the old completed badge since the entire card is now distinctly styled */}
       </Link>
     );
   };
@@ -362,7 +528,7 @@ export default function CurriculumUnitsPage() {
                 style={{ width: `${totals.percent}%` }}
               />
             </div>
-            <p className="mt-2 text-xs font-inter text-white/60">
+            <p className="mt-2 text-xs font-inter text-white/80">
               {totals.completedLessons} of {totals.totalLessons} lessons
               finished
             </p>
@@ -382,65 +548,160 @@ export default function CurriculumUnitsPage() {
                 </p>
               </div>
             </div>
-            <p className="mt-2 text-xs font-inter text-white/60">
+            <p className="mt-2 text-xs font-inter text-white/70">
               Filter by status to focus on what matters next.
             </p>
           </div>
         </section>
 
         <section className="space-y-4">
-          {/* Source selector */}
-          <div className="flex flex-wrap items-center gap-2">
-            {sources.map((s) => {
-              const active = selectedSourceKey === s.key;
-              return (
-                <button
-                  key={s.key}
-                  type="button"
-                  onClick={() => {
-                    setSelectedSourceKey(s.key);
-                    setSelectedSourceId(s.id);
-                  }}
-                  className={
-                    "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-inter transition-colors duration-200" +
-                    (active
-                      ? " border-white bg-white text-black"
-                      : " border-white/10 bg-white/5 text-white/80 hover:bg-white/10")
-                  }
-                  aria-pressed={active}
-                  aria-label={`Select source ${s.title}`}
-                >
-                  <span>{s.title}</span>
-                </button>
-              );
-            })}
+          {/* Source selector and Search bar container */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            {/* Source selector */}
+            <div className="flex flex-wrap items-center gap-2">
+              {sources.map((s) => {
+                const active = selectedSourceKey === s.key;
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedSourceKey(s.key);
+                      setSelectedSourceId(s.id);
+                    }}
+                    className={
+                      "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-inter transition-colors duration-200" +
+                      (active
+                        ? " border-white bg-white text-black"
+                        : " border-white/10 bg-white/5 text-white/80 hover:bg-white/10")
+                    }
+                    aria-pressed={active}
+                    aria-label={`Select source ${s.title}`}
+                  >
+                    <span>{s.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Search bar */}
+            <div className="flex items-center gap-3">
+              <div className="relative w-full sm:w-auto sm:min-w-[300px]">
+                <input
+                  type="text"
+                  placeholder="Search units by title"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full px-4 py-2 pl-10 pr-10 bg-[#2e323a] border border-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-colors duration-200"
+                  aria-label="Search curriculum units"
+                />
+                <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                  <svg
+                    className="w-4 h-4 text-white/50"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                </div>
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/50 hover:text-white transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded"
+                    aria-label="Clear search"
+                    type="button"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              {debouncedSearchQuery.trim() && (
+                <div className="text-sm text-white/70 whitespace-nowrap">
+                  {filteredUnits.length} result
+                  {filteredUnits.length !== 1 ? "s" : ""} found
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <h2 className="text-lg font-inter font-semibold text-white">
               Units
             </h2>
-            <div className="flex flex-wrap gap-2">
-              {filters.map(({ value, label, count }) => {
-                const isActive = filter === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setFilter(value)}
-                    className={
-                      "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-inter transition-colors duration-200 cursor-pointer" +
-                      (isActive
-                        ? " border-white bg-white text-black"
-                        : " border-white/10 bg-white/5 text-white/80 hover:bg-white/10")
-                    }
-                    aria-pressed={isActive}
+            <div className="flex flex-wrap gap-3">
+              {/* Sort dropdown */}
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-[200px] bg-[#2e323a] border-white/10 text-white hover:bg-[#2e323a]/80 focus:ring-blue-500/50">
+                  <SelectValue placeholder="Sort by Order" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#2e323a] border-white/10">
+                  <SelectItem
+                    value="order"
+                    className="text-white hover:bg-white/10 focus:bg-white/10"
                   >
-                    <span>{label}</span>
-                    <span className="">{count}</span>
-                  </button>
-                );
-              })}
+                    Sort by Order
+                  </SelectItem>
+                  <SelectItem
+                    value="progress-low"
+                    className="text-white hover:bg-white/10 focus:bg-white/10"
+                  >
+                    Progress (Low to High)
+                  </SelectItem>
+                  <SelectItem
+                    value="progress-high"
+                    className="text-white hover:bg-white/10 focus:bg-white/10"
+                  >
+                    Progress (High to Low)
+                  </SelectItem>
+                  <SelectItem
+                    value="title"
+                    className="text-white hover:bg-white/10 focus:bg-white/10"
+                  >
+                    Title (A-Z)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="flex flex-wrap gap-2">
+                {filters.map(({ value, label, count }) => {
+                  const isActive = filter === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setFilter(value)}
+                      className={
+                        "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-inter transition-all duration-200 cursor-pointer min-h-[44px]" +
+                        (isActive
+                          ? " border-white bg-white text-black font-semibold shadow-md"
+                          : " border-white/10 bg-white/5 text-white/80 hover:bg-white/10 hover:border-white/20 hover:scale-105")
+                      }
+                      aria-pressed={isActive}
+                      aria-label={`Filter by ${label.toLowerCase()}`}
+                    >
+                      <span>{label}</span>
+                      <span className="font-medium">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
