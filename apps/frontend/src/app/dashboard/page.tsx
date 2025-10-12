@@ -170,17 +170,17 @@ export default function DashboardPage() {
         </div>
 
         {/* Guided Path Widget */}
-        <section className="bg-[#2e323a] rounded-2xl border border-[#404040] p-6">
+        <section className="bg-[#2e323a] rounded-2xl border border-white/10 p-6 shadow-md">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-start gap-3">
-              <div className="w-12 h-12 flex items-center justify-center rounded-lg bg-blue-500/20">
-                <Compass className="w-6 h-6 text-blue-300" />
+              <div className="w-12 h-12 flex items-center justify-center rounded-lg bg-amber-500/15 border border-amber-500/30">
+                <Compass className="w-6 h-6 text-amber-400" />
               </div>
               <div>
                 <h3 className="text-lg font-inter font-semibold text-white">
                   Guided Path
                 </h3>
-                <p className="text-sm text-[#a6a6a6] font-inter">
+                <p className="text-sm text-amber-300 font-inter">
                   Follow the structured curriculum sourced from Modern Mandarin
                   Chinese Grammar.
                 </p>
@@ -189,7 +189,7 @@ export default function DashboardPage() {
 
             <button
               onClick={() => router.push("/curriculum")}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/5 text-white hover:bg-white/10 transition-colors duration-200"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition-colors duration-200"
             >
               View curriculum
             </button>
@@ -198,8 +198,8 @@ export default function DashboardPage() {
           <div className="mt-5">
             {guidedPathLoading ? (
               <div className="grid gap-3 md:grid-cols-2">
-                <div className="h-16 bg-[#1f2229] border border-[#333842] rounded-xl animate-pulse" />
-                <div className="h-16 bg-[#1f2229] border border-[#333842] rounded-xl animate-pulse" />
+                <div className="h-16 bg-[#16181d] border border-white/10 rounded-xl animate-pulse" />
+                <div className="h-16 bg-[#16181d] border border-white/10 rounded-xl animate-pulse" />
               </div>
             ) : guidedPathError ? (
               <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -207,34 +207,32 @@ export default function DashboardPage() {
               </div>
             ) : guidedUnit && guidedLesson ? (
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-[#333842] bg-[#1f2229] p-4">
-                  <h4 className="text-sm font-inter text-[#a6a6a6]">Next up</h4>
-                  <p className="text-white font-inter font-semibold mt-1">
+                <div className="rounded-xl border border-white/10 bg-[#16181d] p-4">
+                  <h4 className="text-sm font-inter text-amber-300">Next up</h4>
+                  <p className="text-white text-xl font-inter font-semibold mt-1">
                     {guidedUnit.title}
                   </p>
-                  <p className="text-sm text-white/70 font-inter mt-0.5">
-                    {guidedLesson.title}
-                  </p>
-                  {guidedLesson.description && (
-                    <p className="text-xs text-[#a6a6a6] mt-2 line-clamp-2">
-                      {guidedLesson.description}
-                    </p>
-                  )}
+                  {guidedLesson.description &&
+                    guidedLesson.description !== guidedLesson.title && (
+                      <p className="text-sm text-white/70 font-inter mt-2 line-clamp-2">
+                        {guidedLesson.description}
+                      </p>
+                    )}
                 </div>
-                <div className="rounded-xl border border-[#333842] bg-[#1f2229] p-4">
-                  <h4 className="text-sm font-inter text-[#a6a6a6]">
+                <div className="rounded-xl border border-white/10 bg-[#16181d] p-4">
+                  <h4 className="text-sm font-inter text-green-300">
                     Progress
                   </h4>
                   <div
-                    className="mt-3 h-2 rounded-full bg-[#2e323a] overflow-hidden"
+                    className="mt-3 h-2 rounded-full bg-white/10 overflow-hidden"
                     aria-label="Curriculum progress"
                   >
                     <div
-                      className="h-full bg-gradient-to-r from-[#4040f2] to-[#7c80ff]"
+                      className="h-full bg-gradient-to-r from-[#20c997] to-[#38ef7d] transition-all duration-500"
                       style={{ width: `${curriculumProgress?.percent ?? 0}%` }}
                     />
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-xs text-[#a6a6a6] font-inter">
+                  <div className="mt-2 flex items-center justify-between text-xs text-white/60 font-inter">
                     <span>
                       {curriculumProgress?.completed ?? 0} /{" "}
                       {curriculumProgress?.total ?? 0} lessons
@@ -247,15 +245,15 @@ export default function DashboardPage() {
                         `/curriculum/${guidedUnit.id}/${guidedLesson.id}`
                       )
                     }
-                    className="mt-4 inline-flex items-center justify-center rounded-full px-4 py-2 border border-white/10 bg-white/10 text-white text-sm hover:bg-white/20 transition-colors duration-200"
+                    className="mt-4 inline-flex items-center justify-center rounded-full px-4 py-2 border border-green-500/30 bg-green-500/10 text-green-300 text-sm hover:bg-green-500/20 transition-colors duration-200"
                   >
                     Resume lesson
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="rounded-xl border border-[#333842] bg-[#1f2229] p-4">
-                <p className="text-sm text-[#a6a6a6]">
+              <div className="rounded-xl border border-white/10 bg-[#16181d] p-4">
+                <p className="text-sm text-white/70">
                   Curriculum coming soon. Check back after units are seeded.
                 </p>
               </div>

@@ -10,7 +10,14 @@ import {
 } from "@/lib/api/curriculum";
 import { DashboardLayout } from "@/components/layout";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
-import { Compass, CheckCircle2, BookOpen, Layers, Loader2 } from "lucide-react";
+import {
+  Compass,
+  CheckCircle2,
+  BookOpen,
+  Layers,
+  Loader2,
+  Rocket,
+} from "lucide-react";
 
 type FilterValue = "all" | "incomplete" | "completed";
 
@@ -172,29 +179,105 @@ export default function CurriculumUnitsPage() {
     const total = unit.totalLessons ?? 0;
     const done = unit.completedLessons ?? 0;
     const percent = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+
+    // Determine unit status
+    const isCompleted = done >= total && total > 0;
+    const isInProgress = done > 0 && done < total;
+
     unit.description = unit.description?.replace(
       /(Chapter\s*\d+:)\s*\d+\s*/,
       "$1 "
     );
     unit.title = unit.title.replace(/^(\d+)(?!\.)\s+/, "$1. ");
 
+    // Status-based styling
+    const getCardClasses = () => {
+      if (isCompleted) {
+        return "group relative flex flex-col rounded-2xl border border-green-500/50 bg-gradient-to-br from-green-900/20 to-green-800/10 p-5 transition-all duration-200 hover:border-green-500/70 hover:from-green-900/30 hover:to-green-800/20 shadow-lg ring-1 ring-green-500/30";
+      } else if (isInProgress) {
+        return "group relative flex flex-col rounded-2xl border border-amber-500/50 bg-gradient-to-br from-amber-900/20 to-amber-800/10 p-5 transition-all duration-200 hover:border-amber-500/70 hover:from-amber-900/30 hover:to-amber-800/20 shadow-lg ring-1 ring-amber-500/30";
+      } else {
+        return "group relative flex flex-col rounded-2xl border border-white/10 bg-[#2e323a] p-5 transition-colors duration-200 hover:border-[#4040f2] shadow-md";
+      }
+    };
+
+    const getIconContainerClasses = () => {
+      if (isCompleted) {
+        return "flex h-10 w-10 items-center justify-center rounded-xl border border-green-500/30 bg-green-500/15";
+      } else if (isInProgress) {
+        return "flex h-10 w-10 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/15 animate-pulse";
+      } else {
+        return "flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5";
+      }
+    };
+
+    const getIconClasses = () => {
+      if (isCompleted) {
+        return "h-5 w-5 text-green-400";
+      } else if (isInProgress) {
+        return "h-5 w-5 text-amber-400";
+      } else {
+        return "h-5 w-5 text-white/70";
+      }
+    };
+
+    const getProgressBarClasses = () => {
+      if (isCompleted) {
+        return "h-full rounded-full bg-gradient-to-r from-[#20c997] to-[#38ef7d] transition-all duration-300";
+      } else if (isInProgress) {
+        return "h-full rounded-full bg-gradient-to-r from-[#f59e0b] to-[#fbbf24] transition-all duration-300";
+      } else {
+        return "h-full rounded-full bg-gradient-to-r from-[#4040f2] to-[#7c80ff] transition-all duration-300";
+      }
+    };
+
+    const getIconComponent = () => {
+      if (isCompleted) {
+        return <CheckCircle2 className={getIconClasses()} />;
+      } else if (isInProgress) {
+        return <Rocket className={getIconClasses()} />;
+      } else {
+        return <BookOpen className={getIconClasses()} />;
+      }
+    };
+
     return (
       <Link
         key={unit.id}
         href={`/curriculum/${unit.id}`}
-        className="group relative flex flex-col rounded-2xl border border-white/10 bg-[#2e323a] p-5 transition-colors duration-200 hover:border-[#4040f2] shadow-md"
+        className={getCardClasses()}
+        aria-label={`${unit.title} - ${isCompleted ? "Completed" : isInProgress ? "In progress" : "Not started"}`}
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <h3 className="text-lg font-inter font-semibold text-white group-hover:text-white/90">
-              {unit.title}
+        {/* Celebratory shine effect for completed units */}
+        {isCompleted && (
+          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 animate-pulse" />
+        )}
+
+        <div className="flex items-start gap-3 relative z-10">
+          <div className="flex-1 min-w-0 space-y-1">
+            <h3 className="text-lg font-inter font-semibold text-white group-hover:text-white/90 leading-tight">
+              {(() => {
+                const match = unit.title.match(/^(\d+)\.?\s*(.*)$/);
+                if (match) {
+                  const [, number, rest] = match;
+                  return (
+                    <>
+                      <span className="text-3xl font-bold text-white/90">
+                        {number}{" "}
+                      </span>
+                      <span>{rest}</span>
+                    </>
+                  );
+                }
+                return unit.title;
+              })()}
             </h3>
           </div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5">
-            <BookOpen className="h-5 w-5 text-white/70" />
+          <div className={`flex-shrink-0 ${getIconContainerClasses()}`}>
+            {getIconComponent()}
           </div>
         </div>
-        <div className="mt-5 space-y-2">
+        <div className="mt-5 space-y-2 relative z-10">
           <div className="flex items-center justify-between text-xs font-inter text-white/60">
             <span aria-label="Lessons completed">
               {done} / {total} lessons
@@ -203,17 +286,12 @@ export default function CurriculumUnitsPage() {
           </div>
           <div className="h-2 rounded-full bg-white/10">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-[#4040f2] to-[#7c80ff] transition-all duration-300"
+              className={getProgressBarClasses()}
               style={{ width: `${percent}%` }}
             />
           </div>
         </div>
-        {(unit.completedLessons ?? 0) >=
-          Math.max(1, unit.totalLessons ?? 0) && (
-          <span className="mt-4 inline-flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-inter text-green-300">
-            <CheckCircle2 className="h-4 w-4" /> Completed
-          </span>
-        )}
+        {/* Remove the old completed badge since the entire card is now distinctly styled */}
       </Link>
     );
   };
@@ -241,13 +319,13 @@ export default function CurriculumUnitsPage() {
         )}
 
         <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-[#16181d] p-5">
+          <div className="rounded-2xl border border-white/10 bg-[#2e323a] p-5 shadow-md">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/15">
-                <Compass className="h-5 w-5 text-blue-300" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/15 border border-amber-500/30">
+                <Compass className="h-5 w-5 text-amber-400" />
               </div>
               <div>
-                <p className="text-sm font-inter text-white/60">Next step</p>
+                <p className="text-sm font-inter text-amber-300">Next step</p>
                 <p className="text-base font-inter font-semibold text-white">
                   {nextUnit ? nextUnit.title : "Curriculum coming soon"}
                 </p>
@@ -257,20 +335,20 @@ export default function CurriculumUnitsPage() {
               <Link
                 href={`/curriculum/${nextUnit.id}`}
                 aria-label={`Go to curriculum unit ${nextUnit.title}`}
-                className="mt-4 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm font-inter text-white transition-colors duration-200 hover:bg-white/20"
+                className="mt-4 inline-flex items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-inter text-amber-300 transition-colors duration-200 hover:bg-amber-500/20"
               >
                 Go to unit
               </Link>
             )}
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-[#16181d] p-5">
+          <div className="rounded-2xl border border-white/10 bg-[#2e323a] p-5 shadow-md">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/15">
-                <CheckCircle2 className="h-5 w-5 text-green-300" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/15 border border-green-500/30">
+                <CheckCircle2 className="h-5 w-5 text-green-400" />
               </div>
               <div>
-                <p className="text-sm font-inter text-white/60">
+                <p className="text-sm font-inter text-green-300">
                   Overall progress
                 </p>
                 <p className="text-lg font-inter font-semibold text-white">
@@ -290,13 +368,13 @@ export default function CurriculumUnitsPage() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-[#16181d] p-5">
+          <div className="rounded-2xl border border-white/10 bg-[#2e323a] p-5 shadow-md">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/15">
-                <Layers className="h-5 w-5 text-purple-300" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/15 border border-purple-500/30">
+                <Layers className="h-5 w-5 text-purple-400" />
               </div>
               <div>
-                <p className="text-sm font-inter text-white/60">
+                <p className="text-sm font-inter text-purple-300">
                   Units available
                 </p>
                 <p className="text-lg font-inter font-semibold text-white">
