@@ -263,6 +263,7 @@ model CurriculumUnit {
   ragSource RagSource @relation(fields: [ragSourceId], references: [id], onDelete: Cascade)
 
   @@unique([ragSourceId, title])
+  @@index([ragSourceId, order])
 }
 
 model CurriculumLesson {
@@ -286,6 +287,7 @@ model CurriculumLesson {
   @@unique([unitId, ragSectionId])
   @@unique([unitId, title])
   @@index([unitId])
+  @@index([unitId, order])
   @@index([ragSectionId])
 }
 
@@ -334,6 +336,7 @@ model CurriculumProgress {
   @@index([userId, unitId])
   @@index([userId, lessonId])
   @@index([userId, activityId])
+  @@index([userId, status])
 }
 
 model ActivityAttempt {
