@@ -454,13 +454,13 @@ function ExplainView({ content }: { content: ExplainContent }) {
                   {s.title}
                 </h3>
               </AccordionTrigger>
-              <AccordionContent className="px-4 sm:px-6 pb-4 sm:pb-6 text-white/80">
+              <AccordionContent className="pt-2 px-4 sm:px-6 pb-4 sm:pb-6 text-white/80">
                 <div className="space-y-4 sm:space-y-6">
                   {s.concept && (
                     <div className="relative">
                       <div className="absolute left-0 top-0 w-1 h-full bg-blue-500/30 rounded-full"></div>
                       <div className="pl-4 sm:pl-6">
-                        <h4 className="text-white font-medium text-sm sm:text-base mb-2 sm:mb-3">
+                        <h4 className="text-white font-medium text-sm sm:text-base mb-2 sm:mb-3 ">
                           Key Concept
                         </h4>
                         <p className="text-white/80 leading-relaxed text-sm sm:text-base">
@@ -494,9 +494,6 @@ function ExplainView({ content }: { content: ExplainContent }) {
                                     <div className="text-blue-400 text-xs sm:text-sm font-mono font-medium">
                                       {ex.pinyin}
                                     </div>
-                                    <button className="p-1 hover:bg-blue-500/20 rounded transition-colors duration-200">
-                                      <Volume2 className="w-3 h-3 text-blue-400" />
-                                    </button>
                                   </div>
                                 )}
                                 {ex.en && (
