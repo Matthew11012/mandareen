@@ -205,6 +205,22 @@ export class LessonsController {
     return { streakDays };
   }
 
+  @Get('progress/streak-status')
+  async getStudyStreakStatus(
+    @Req() req: AuthenticatedRequest,
+    @Query('offsetMinutes') offsetMinutes?: string,
+  ): Promise<{
+    todayContinued: boolean;
+    streakDays: number;
+    carryOverDays: number;
+    lastActivityLocalDate: string | null;
+  }> {
+    const parsed =
+      typeof offsetMinutes === 'string' ? parseInt(offsetMinutes, 10) : 0;
+    const safeOffset = Number.isFinite(parsed) ? parsed : 0;
+    return this.lessonsService.getStudyStreakStatus(req.user.id, safeOffset);
+  }
+
   @Get('progress/words-read')
   async getWordsRead(
     @Req() req: AuthenticatedRequest,

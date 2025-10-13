@@ -25,6 +25,8 @@ import {
   Play,
   Lightbulb,
   Calendar,
+  Flame,
+  Check,
 } from "lucide-react";
 
 /**
@@ -49,6 +51,12 @@ export default function DashboardPage() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [finishedLessonsCount, setFinishedLessonsCount] = useState(0);
   const [studyStreakDays, setStudyStreakDays] = useState(0);
+  const [streakTodayContinued, setStreakTodayContinued] = useState<
+    boolean | null
+  >(null);
+  const [streakCarryOverDays, setStreakCarryOverDays] = useState<number | null>(
+    null
+  );
   const [wordsLearned, setWordsLearned] = useState(0);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(5);
   const [guidedPathLoading, setGuidedPathLoading] = useState(false);
@@ -77,10 +85,20 @@ export default function DashboardPage() {
       .getProgressCount()
       .then((r) => setFinishedLessonsCount(r.finishedCount || 0))
       .catch(() => setFinishedLessonsCount(0));
+    // Prefer new streak-status; fall back to legacy if unavailable
     lessonsApi
-      .getStudyStreak()
-      .then((r) => setStudyStreakDays(r.streakDays || 0))
-      .catch(() => setStudyStreakDays(0));
+      .getStudyStreakStatus()
+      .then((r) => {
+        setStreakTodayContinued(Boolean(r.todayContinued));
+        setStreakCarryOverDays(r.carryOverDays ?? 0);
+        setStudyStreakDays(r.streakDays || 0);
+      })
+      .catch(() => {
+        lessonsApi
+          .getStudyStreak()
+          .then((r) => setStudyStreakDays(r.streakDays || 0))
+          .catch(() => setStudyStreakDays(0));
+      });
     lessonsApi
       .getWordsRead()
       .then((r) => setWordsLearned(r.readCount || 0))
@@ -369,17 +387,49 @@ export default function DashboardPage() {
                 <Clock className="w-5 h-5 text-purple-400" />
               </div>
               <div>
-                <p className="text-[#c4c4c4] text-sm font-inter">
-                  Study Streak
-                </p>
-                <p
-                  className="text-white text-xl font-inter font-semibold transition-all duration-300"
-                  aria-live="polite"
-                  key={studyStreakDays}
-                  style={{ fontVariantNumeric: "tabular-nums" }}
-                >
-                  {studyStreakDays} {studyStreakDays === 1 ? "day" : "days"}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-[#c4c4c4] text-sm font-inter">
+                    Study Streak
+                  </p>
+                  {streakTodayContinued === true && (
+                    <span
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-green-500/15 border border-green-500/30 text-green-200"
+                      title="Today's streak continued"
+                      aria-label="Today's streak continued"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </span>
+                  )}
+                  {streakTodayContinued === false &&
+                    (streakCarryOverDays ?? 0) > 0 && (
+                      <span
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-200"
+                        title={`You're on a ${streakCarryOverDays ?? 0}-day streak. Study today to reach ${(streakCarryOverDays ?? 0) + 1}!`}
+                        aria-label={`You're on a ${streakCarryOverDays ?? 0}-day streak. Study today to reach ${(streakCarryOverDays ?? 0) + 1}!`}
+                      >
+                        <Flame className="w-3.5 h-3.5" />
+                      </span>
+                    )}
+                </div>
+                <div>
+                  <p
+                    className="text-white text-xl font-inter font-semibold transition-all duration-300"
+                    aria-live="polite"
+                    key={`streak-${streakTodayContinued ?? "u"}-${studyStreakDays}-${streakCarryOverDays ?? 0}`}
+                    style={{ fontVariantNumeric: "tabular-nums" }}
+                  >
+                    {streakTodayContinued || streakTodayContinued === null
+                      ? studyStreakDays
+                      : Math.max(streakCarryOverDays ?? 0, 0)}{" "}
+                    {streakTodayContinued || streakTodayContinued === null
+                      ? studyStreakDays === 1
+                        ? "day"
+                        : "days"
+                      : (streakCarryOverDays ?? 0) === 1
+                        ? "day"
+                        : "days"}
+                  </p>
+                </div>
               </div>
             </div>
           </div>

@@ -1179,6 +1179,100 @@ export class LessonsService {
     return streak;
   }
 
+  async getStudyStreakStatus(
+    userId: number,
+    offsetMinutes = 0,
+  ): Promise<{
+    todayContinued: boolean;
+    streakDays: number;
+    carryOverDays: number;
+    lastActivityLocalDate: string | null;
+  }> {
+    // Fetch finished legacy AI lessons
+    const progresses: Array<{ finishedAt: Date | null }> = await (
+      this.prismaService as any
+    ).lessonProgress.findMany({
+      where: { userId, finishedAt: { not: null } },
+      select: { finishedAt: true },
+      orderBy: { finishedAt: 'desc' },
+    });
+    // Fetch completed curriculum progress (use updatedAt as completion time)
+    const curriculum: Array<{ updatedAt: Date }> = await (
+      this.prismaService as any
+    ).curriculumProgress.findMany({
+      where: { userId, status: 'completed' },
+      select: { updatedAt: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    // Build a set of LOCAL date keys (YYYY-MM-DD); multiple finishes per day count once
+    const finishedDays = new Set<string>();
+    for (const p of progresses) {
+      if (!p.finishedAt) continue;
+      const shifted = new Date(p.finishedAt.getTime() + offsetMinutes * 60_000);
+      const key = `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`;
+      finishedDays.add(key);
+    }
+    for (const cp of curriculum) {
+      const shifted = new Date(cp.updatedAt.getTime() + offsetMinutes * 60_000);
+      const key = `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`;
+      finishedDays.add(key);
+    }
+
+    const formatKey = (date: Date) =>
+      `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+
+    // Compute today and yesterday in LOCAL time using offsetMinutes
+    const now = new Date();
+    const nowShifted = new Date(now.getTime() + offsetMinutes * 60_000);
+    const todayLocal = new Date(
+      Date.UTC(
+        nowShifted.getUTCFullYear(),
+        nowShifted.getUTCMonth(),
+        nowShifted.getUTCDate(),
+      ),
+    );
+    const yesterdayLocal = new Date(todayLocal);
+    yesterdayLocal.setUTCDate(yesterdayLocal.getUTCDate() - 1);
+
+    // last activity (max key)
+    let lastActivityLocalDate: string | null = null;
+    if (finishedDays.size > 0) {
+      lastActivityLocalDate =
+        Array.from(finishedDays).sort().slice(-1)[0] ?? null;
+    }
+
+    // today streak (only if today has a completion)
+    let todayStreak = 0;
+    if (finishedDays.has(formatKey(todayLocal))) {
+      todayStreak = 1;
+      for (let i = 1; i < 10000; i++) {
+        const d = new Date(todayLocal);
+        d.setUTCDate(d.getUTCDate() - i);
+        if (finishedDays.has(formatKey(d))) todayStreak++;
+        else break;
+      }
+    }
+
+    // yesterday streak (carry-over)
+    let yesterdayStreak = 0;
+    if (finishedDays.has(formatKey(yesterdayLocal))) {
+      yesterdayStreak = 1;
+      for (let i = 1; i < 10000; i++) {
+        const d = new Date(yesterdayLocal);
+        d.setUTCDate(d.getUTCDate() - i);
+        if (finishedDays.has(formatKey(d))) yesterdayStreak++;
+        else break;
+      }
+    }
+
+    const todayContinued = todayStreak > 0;
+    const streakDays = todayStreak; // keep semantics: includes today only if continued
+    const carryOverDays = yesterdayStreak;
+
+    return { todayContinued, streakDays, carryOverDays, lastActivityLocalDate };
+  }
+
   private async resolveUserLevel(userId: number): Promise<number> {
     const latest = await this.prismaService.assessment.findFirst({
       where: { userId },
