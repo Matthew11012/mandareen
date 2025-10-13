@@ -509,10 +509,16 @@ export class OpenAIService {
   }): Promise<{
     passage?: { hanzi: string; pinyin?: string; translation?: string };
     segments?: Array<{ zh: string; pinyin?: string; en?: string }>;
-    questions?: Array<{ type: 'tf' | 'short'; prompt: string }>;
+    questions?: Array<{
+      type: 'tf' | 'short';
+      prompt: string;
+      translation: string;
+      answer?: boolean;
+      explanation?: string;
+    }>;
   }> {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-    const sys = `You are a precise Mandarin tutor. Author a SHORT leveled passage in Mandarin Chinese. Keep it concise and aligned to the target HSK level. Include translation. Also add 3 micro comprehension questions (T/F or short).`;
+    const sys = `You are a precise Mandarin tutor. Author a SHORT leveled passage in Mandarin Chinese. Keep it concise and aligned to the target HSK level. Include translation. Also add 3 micro comprehension questions (T/F only). For T/F questions, provide clear correct answers and brief explanations.`;
     const user = `Title: ${args.title}
     Level: HSK-${args.level}
     Max characters (Chinese): ${args.maxChars ?? 800}
@@ -521,7 +527,15 @@ export class OpenAIService {
     Return STRICT JSON:
     {
       "passage": { "hanzi": "...", "translation": "..." },
-      "questions": [ { "type": "tf", "prompt": "..." } ]
+      "questions": [ 
+        { 
+          "type": "tf", 
+          "prompt": "Chinese question text...", 
+          "translation": "English translation of the question",
+          "answer": true,
+          "explanation": "Brief explanation of why this is correct/incorrect in english"
+        } 
+      ]
     }`;
     const completion = await this.openai.chat.completions.create({
       model,
@@ -574,7 +588,7 @@ export class OpenAIService {
     Return STRICT JSON with ${n} items (no commentary):
     {
       "items": [
-        { "question": "...", "options": ["A","B","C","D"], "answerIndex": 0, "rationale": "..." }
+        { "question": "...", "options": ["A","B","C","D"], "answerIndex": 0, "rationale": "<primarily english explanation>" }
       ]
     }`;
     const completion = await this.openai.chat.completions.create({
@@ -640,7 +654,7 @@ export class OpenAIService {
       - title (English or Chinese),
       - concept (English),
       - 2-3 examples with Chinese, pinyin, English,
-      - pitfalls (min 1 if applicable): {bad, good, note}, emphasize minimal pairs/contrasts and "say X, not Y" patterns when relevant,
+      - pitfalls (min 1 if applicable): {bad, good, note} all should be in english, emphasize minimal pairs/contrasts and "say X, not Y" patterns when relevant,
       - 2 short checks: type tf|fill with prompt and answer.
       3) "microPassage": ${microChars} chars Chinese max, with translation (short), integrating 1-2 key points.
     4) "citations": optional [{key, chunkId}] referencing context markers like [S1].
@@ -673,7 +687,7 @@ export class OpenAIService {
               { "zh": "我吃了饭。", "pinyin": "wǒ chī le fàn", "en": "I ate (already)." }
             ],
             "pitfalls": [
-              { "bad": "我了吃饭。", "good": "我吃了饭。", "note": "了 follows the verb here." }
+              { "bad": "Treat syllables like English 'lettuce' parts (no meaning).", "good": "Note meanings of individual Mandarin syllables.", "note": "With very few exceptions (e.g., suffix 子), syllables carry meaning." }
             ],
             "checks": [
               { "type": "tf", "prompt": "了 always indicates past tense.", "answer": "F" },

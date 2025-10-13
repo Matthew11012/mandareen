@@ -113,6 +113,109 @@ export class CurriculumService {
     };
   }
 
+  async getUnitNavigation(
+    userId: number,
+    currentUnitId: number,
+    opts?: { sourceId?: number; sourceSlug?: string },
+  ) {
+    const where: any = {};
+    if (opts?.sourceId) where.ragSourceId = opts.sourceId;
+    if (!opts?.sourceId && opts?.sourceSlug) {
+      const source = await this.prisma.ragSource.findFirst({
+        where: { metadata: { path: ['slug'], equals: opts.sourceSlug } as any },
+        select: { id: true },
+      });
+      where.ragSourceId = source ? source.id : -1;
+    }
+
+    // Get all units in order
+    const units = await this.prisma.curriculumUnit.findMany({
+      where,
+      orderBy: { order: 'asc' },
+      select: { id: true, title: true, order: true },
+    });
+
+    // Find current unit index
+    const currentIndex = units.findIndex((u) => u.id === currentUnitId);
+
+    if (currentIndex === -1) {
+      return { previous: null, next: null };
+    }
+
+    const previous = currentIndex > 0 ? units[currentIndex - 1] : null;
+    const next =
+      currentIndex < units.length - 1 ? units[currentIndex + 1] : null;
+
+    return { previous, next };
+  }
+
+  async getLessonNavigation(
+    userId: number,
+    currentUnitId: number,
+    currentLessonId: number,
+    opts?: { sourceId?: number; sourceSlug?: string },
+  ) {
+    const where: any = {};
+    if (opts?.sourceId) where.ragSourceId = opts.sourceId;
+    if (!opts?.sourceId && opts?.sourceSlug) {
+      const source = await this.prisma.ragSource.findFirst({
+        where: { metadata: { path: ['slug'], equals: opts.sourceSlug } as any },
+        select: { id: true },
+      });
+      where.ragSourceId = source ? source.id : -1;
+    }
+
+    // Get all units with lessons in order
+    const units = await this.prisma.curriculumUnit.findMany({
+      where,
+      orderBy: { order: 'asc' },
+      include: {
+        lessons: {
+          orderBy: { order: 'asc' },
+          select: { id: true, title: true, order: true },
+        },
+      },
+    });
+
+    // Flatten all lessons with their unit info
+    const allLessons: Array<{
+      unitId: number;
+      unitTitle: string;
+      lessonId: number;
+      lessonTitle: string;
+      lessonOrder: number;
+    }> = [];
+
+    for (const unit of units) {
+      for (const lesson of unit.lessons) {
+        allLessons.push({
+          unitId: unit.id,
+          unitTitle: unit.title,
+          lessonId: lesson.id,
+          lessonTitle: lesson.title,
+          lessonOrder: lesson.order,
+        });
+      }
+    }
+
+    // Find current lesson index
+    const currentIndex = allLessons.findIndex(
+      (l) => l.unitId === currentUnitId && l.lessonId === currentLessonId,
+    );
+
+    if (currentIndex === -1) {
+      return { previous: null, next: null };
+    }
+
+    const previous = currentIndex > 0 ? allLessons[currentIndex - 1] : null;
+    const next =
+      currentIndex < allLessons.length - 1
+        ? allLessons[currentIndex + 1]
+        : null;
+
+    return { previous, next };
+  }
+
   async getLessonWithActivities(
     userId: number,
     unitId: number,
@@ -225,6 +328,36 @@ export class CurriculumService {
     } catch {
       // leave segments empty on failure
     }
+    // Process comprehension questions with segmentation
+    let processedQuestions: any[] = [];
+    if (Array.isArray(read?.questions)) {
+      for (const question of read.questions) {
+        let questionSegments: any[] = [];
+        try {
+          const segs = await this.segmentationService.segmentText(
+            question.prompt || '',
+          );
+          questionSegments = segs.map((s) => ({
+            text: s.word,
+            startIndex: s.startIndex,
+            endIndex: s.endIndex,
+            isWord: s.isWord,
+            hskLevel: s.hskLevel,
+            pinyin: toToneMarks((s.pinyin || '').toLowerCase()),
+            definition: s.definition,
+            definitions: s.definitions,
+          }));
+        } catch {
+          // leave segments empty on failure
+        }
+
+        processedQuestions.push({
+          ...question,
+          segments: questionSegments,
+        });
+      }
+    }
+
     const content = {
       title: passageTitle,
       type: 'READ',
@@ -235,7 +368,7 @@ export class CurriculumService {
         translation: read?.passage?.translation || '',
       },
       segments,
-      questions: Array.isArray(read?.questions) ? read.questions : [],
+      questions: processedQuestions,
       citations,
     };
     await this.prisma.curriculumActivity.create({
@@ -267,7 +400,7 @@ export class CurriculumService {
         key: `[S${i + 1}]`,
       }));
     // Optionally enrich the microPassage with segments too
-    let micro = explain?.microPassage || null;
+    const micro = explain?.microPassage || null;
     if (
       micro &&
       typeof micro?.hanzi === 'string' &&
@@ -444,6 +577,16 @@ export class CurriculumService {
     });
     // Update progress counters; mark completed if quiz passed
     if (typeof score === 'number') {
+      const act = await this.prisma.curriculumActivity.findUnique({
+        where: { id: activityId },
+        select: {
+          lessonId: true,
+          lesson: { select: { unitId: true } },
+        },
+      });
+      const lessonId = act?.lessonId || null;
+      const unitId = act?.lesson?.unitId || null;
+
       const existing = await this.prisma.curriculumProgress.findFirst({
         where: { userId, activityId },
       });
@@ -456,6 +599,9 @@ export class CurriculumService {
             status: newStatus,
             score,
             attempts: (existing.attempts || 0) + 1,
+            // Backfill unit/lesson if missing
+            unitId: existing.unitId ?? unitId,
+            lessonId: existing.lessonId ?? lessonId,
           },
         });
       } else {
@@ -463,6 +609,8 @@ export class CurriculumService {
           data: {
             userId,
             activityId,
+            unitId,
+            lessonId,
             status: newStatus,
             score,
             attempts: 1,

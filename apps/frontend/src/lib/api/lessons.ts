@@ -103,6 +103,17 @@ export const lessonsApi = {
     );
     return res.data;
   },
+  async getStudyStreakStatus() {
+    const offsetMinutes =
+      typeof window !== "undefined" ? -new Date().getTimezoneOffset() : 0;
+    const res = await api.get<{
+      todayContinued: boolean;
+      streakDays: number;
+      carryOverDays: number;
+      lastActivityLocalDate: string | null;
+    }>(`/lessons/progress/streak-status`, { params: { offsetMinutes } });
+    return res.data;
+  },
   async getWordsRead() {
     const res = await api.get<{ readCount: number }>(
       `/lessons/progress/words-read`

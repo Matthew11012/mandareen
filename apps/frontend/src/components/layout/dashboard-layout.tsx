@@ -116,7 +116,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
           {/* User Menu */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#2e323a] rounded-lg">
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-[#2e323a] rounded-lg min-h-[44px] cursor-pointer hover:bg-[#3a3e46] transition-colors">
               <User className="w-4 h-4 text-[#a6a6a6]" />
               <span className="text-sm font-inter text-[#a6a6a6] hidden sm:block">
                 {user?.email || "User"}
@@ -125,7 +125,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
             <button
               onClick={logout}
-              className="p-2 hover:bg-red-600/20 hover:text-red-400 rounded-lg transition-all duration-200 group cursor-pointer"
+              className="p-3 min-w-[44px] min-h-[44px] hover:bg-red-600/20 hover:text-red-400 rounded-lg transition-all duration-200 group cursor-pointer"
               title="Logout"
             >
               <LogOut className="w-5 h-5 text-[#a6a6a6] group-hover:text-red-400" />
