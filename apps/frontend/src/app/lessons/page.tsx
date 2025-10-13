@@ -1020,7 +1020,11 @@ export default function LessonsPage() {
                                                     delay: idx2 * 0.05,
                                                     layout: { duration: 0.4 },
                                                   }}
-                                                  className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
+                                                  className={`rounded-xl p-4 cursor-pointer ${
+                                                    finishedIds.has(l.id)
+                                                      ? "border border-green-500/50 bg-gradient-to-br from-green-900/20 to-green-800/10 shadow-lg ring-1 ring-green-500/30"
+                                                      : "border border-[#404040] bg-[#2e323a]"
+                                                  }`}
                                                   onClick={() =>
                                                     router.push(
                                                       `/lessons/${l.id}`
@@ -1028,7 +1032,10 @@ export default function LessonsPage() {
                                                   }
                                                   whileHover={{
                                                     scale: 1.02,
-                                                    borderColor: "#4040f2",
+                                                    borderColor:
+                                                      finishedIds.has(l.id)
+                                                        ? "#20c997"
+                                                        : "#4040f2",
                                                   }}
                                                   whileTap={{ scale: 0.98 }}
                                                 >
@@ -1041,7 +1048,7 @@ export default function LessonsPage() {
                                                       </span>
                                                       {finishedIds.has(l.id) ? (
                                                         <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                                                          <Check className="w-3 h-3 text-green-400 mx-auto"/>
+                                                          <Check className="w-3 h-3 text-green-400 mx-auto" />
                                                           Finished
                                                         </span>
                                                       ) : (
@@ -1302,7 +1309,11 @@ export default function LessonsPage() {
                                                     delay: idx2 * 0.05,
                                                     layout: { duration: 0.4 },
                                                   }}
-                                                  className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
+                                                  className={`rounded-xl p-4 cursor-pointer ${
+                                                    finishedIds.has(l.id)
+                                                      ? "border border-green-500/50 bg-gradient-to-br from-green-900/20 to-green-800/10 shadow-lg ring-1 ring-green-500/30"
+                                                      : "border border-[#404040] bg-[#2e323a]"
+                                                  }`}
                                                   onClick={() =>
                                                     router.push(
                                                       `/lessons/${l.id}`
@@ -1310,7 +1321,10 @@ export default function LessonsPage() {
                                                   }
                                                   whileHover={{
                                                     scale: 1.02,
-                                                    borderColor: "#4040f2",
+                                                    borderColor:
+                                                      finishedIds.has(l.id)
+                                                        ? "#20c997"
+                                                        : "#4040f2",
                                                   }}
                                                   whileTap={{ scale: 0.98 }}
                                                 >
@@ -1323,7 +1337,7 @@ export default function LessonsPage() {
                                                       </span>
                                                       {finishedIds.has(l.id) ? (
                                                         <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                                                          <Check className="w-3 h-3 text-green-400 mx-auto"/>
+                                                          <Check className="w-3 h-3 text-green-400 mx-auto" />
                                                           Finished
                                                         </span>
                                                       ) : (
@@ -1622,13 +1636,19 @@ export default function LessonsPage() {
                                               delay: idx2 * 0.05,
                                               layout: { duration: 0.4 },
                                             }}
-                                            className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
+                                            className={`rounded-xl p-4 cursor-pointer ${
+                                              finishedIds.has(l.id)
+                                                ? "border border-green-500/50 bg-gradient-to-br from-green-900/20 to-green-800/10 shadow-lg ring-1 ring-green-500/30"
+                                                : "border border-[#404040] bg-[#2e323a]"
+                                            }`}
                                             onClick={() =>
                                               router.push(`/lessons/${l.id}`)
                                             }
                                             whileHover={{
                                               scale: 1.02,
-                                              borderColor: "#4040f2",
+                                              borderColor: finishedIds.has(l.id)
+                                                ? "#20c997"
+                                                : "#4040f2",
                                             }}
                                             whileTap={{ scale: 0.98 }}
                                           >
@@ -1641,7 +1661,7 @@ export default function LessonsPage() {
                                                 </span>
                                                 {finishedIds.has(l.id) ? (
                                                   <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                                                    <Check className="w-3 h-3 text-green-400 mx-auto"/>
+                                                    <Check className="w-3 h-3 text-green-400 mx-auto" />
                                                     Finished
                                                   </span>
                                                 ) : (
@@ -1930,13 +1950,19 @@ export default function LessonsPage() {
                                             delay: idx2 * 0.05,
                                             layout: { duration: 0.4 },
                                           }}
-                                          className="bg-[#2e323a] rounded-xl p-4 border border-[#404040]  cursor-pointer"
+                                          className={`rounded-xl p-4 cursor-pointer ${
+                                            finishedIds.has(l.id)
+                                              ? "border border-green-500/50 bg-gradient-to-br from-green-900/20 to-green-800/10 shadow-lg ring-1 ring-green-500/30"
+                                              : "border border-[#404040] bg-[#2e323a]"
+                                          }`}
                                           onClick={() =>
                                             router.push(`/lessons/${l.id}`)
                                           }
                                           whileHover={{
                                             scale: 1.02,
-                                            borderColor: "#4040f2",
+                                            borderColor: finishedIds.has(l.id)
+                                              ? "#20c997"
+                                              : "#4040f2",
                                           }}
                                           whileTap={{ scale: 0.98 }}
                                         >
@@ -1949,7 +1975,7 @@ export default function LessonsPage() {
                                               </span>
                                               {finishedIds.has(l.id) ? (
                                                 <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                                                  <Check className="w-3 h-3 text-green-400 mx-auto"/>
+                                                  <Check className="w-3 h-3 text-green-400 mx-auto" />
                                                   Finished
                                                 </span>
                                               ) : (
