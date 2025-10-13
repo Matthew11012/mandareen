@@ -20,7 +20,19 @@ export interface DueFlashcardItem {
   definition: string;
   hskLevel: number | null;
   nextReview: string;
-  sentences?: Array<{ hanzi: string; pinyin?: string; translation?: string }>;
+  sentences?: Array<{
+    hanzi: string;
+    pinyin?: string;
+    translation?: string;
+    segments?: Array<{
+      text: string;
+      isWord: boolean;
+      pinyin?: string;
+      definition?: string;
+      definitions?: string[];
+      hskLevel?: number;
+    }>;
+  }>;
 }
 
 export const flashcardsApi = {

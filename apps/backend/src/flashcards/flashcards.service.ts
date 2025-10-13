@@ -269,13 +269,29 @@ export class FlashcardsService {
       if (Array.isArray(rows) && rows.length > 0) {
         sentences = [];
         for (const s of rows) {
-          // Always recompute to ensure alignment correctness and tone marks
+          // Prefer stored pinyin if present; fall back to recomputation.
+          // Many sentences are saved with correctly aligned per-character pinyin
+          // from the source; recomputing may introduce duplication/misalignment
+          // for certain tokens. We only recompute when missing.
           const sp: string | undefined =
-            await this.computeSentencePinyinPerCharacter(s.hanzi);
+            s.pinyin && s.pinyin.trim().length > 0
+              ? s.pinyin
+              : await this.computeSentencePinyinPerCharacter(s.hanzi);
+          // Also provide token-level segmentation to allow precise rendering on the client
+          const segs = await this.segmentationService.segmentText(s.hanzi);
           sentences.push({
             hanzi: s.hanzi,
             pinyin: sp,
             translation: s.translation || undefined,
+            // @ts-expect-error – enrich payload with segments for client rendering
+            segments: segs.map((seg) => ({
+              text: seg.word,
+              isWord: seg.isWord,
+              hskLevel: seg.hskLevel,
+              pinyin: seg.pinyin ? toToneMarks(seg.pinyin) : undefined,
+              definition: seg.definition,
+              definitions: seg.definitions,
+            })),
           });
         }
       }
