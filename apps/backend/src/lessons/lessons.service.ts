@@ -28,6 +28,193 @@ export class LessonsService {
     private readonly jwt?: JwtService,
   ) {}
 
+  private async batchUpsertVocabulary(
+    items: Array<{
+      hanzi: string;
+      pinyin?: string;
+      definition?: string;
+      source?: string;
+    }>,
+  ): Promise<void> {
+    if (!Array.isArray(items) || items.length === 0) return;
+    const map = new Map<
+      string,
+      { hanzi: string; pinyin?: string; definition?: string; source?: string }
+    >();
+    for (const it of items) {
+      const key = (it.hanzi || '').trim();
+      if (!key) continue;
+      if (!map.has(key)) {
+        map.set(key, {
+          hanzi: key,
+          pinyin: (it.pinyin || '').toLowerCase().trim() || undefined,
+          definition: (it.definition || '').toString(),
+          source: it.source || 'LLM-NE',
+        });
+      }
+    }
+    const dedup = Array.from(map.values());
+    if (dedup.length === 0) return;
+
+    const existing = await (this.prismaService as any).vocabularyItem.findMany({
+      where: { hanzi: { in: dedup.map((d) => d.hanzi) } },
+      select: { hanzi: true },
+    });
+    const existingSet = new Set<string>(existing.map((e: any) => e.hanzi));
+    const toCreate = dedup.filter((d) => !existingSet.has(d.hanzi));
+    const toUpdate = dedup.filter((d) => existingSet.has(d.hanzi));
+
+    if (toCreate.length > 0) {
+      try {
+        await (this.prismaService as any).vocabularyItem.createMany({
+          data: toCreate.map((d) => ({
+            hanzi: d.hanzi,
+            pinyin: d.pinyin || '',
+            definition: d.definition || '',
+            isCustom: true,
+            source: d.source || 'LLM-NE',
+          })),
+          skipDuplicates: true,
+        });
+      } catch (err) {
+        this.logger.warn(
+          'createMany(vocabularyItem) failed in batchUpsertVocabulary',
+          err as any,
+        );
+      }
+    }
+
+    if (toUpdate.length > 0) {
+      try {
+        await (this.prismaService as any).$transaction(
+          toUpdate.map((d) =>
+            (this.prismaService as any).vocabularyItem.update({
+              where: { hanzi: d.hanzi },
+              data: {
+                pinyin: d.pinyin || undefined,
+                definition: d.definition || undefined,
+              },
+            }),
+          ),
+        );
+      } catch (err) {
+        this.logger.warn(
+          'transaction(update vocabularyItem) failed in batchUpsertVocabulary',
+          err as any,
+        );
+      }
+    }
+  }
+
+  private async populateWordInstancesForLesson(
+    lessonId: number,
+  ): Promise<void> {
+    const lesson = await (this.prismaService as any).lesson.findUnique({
+      where: { id: lessonId },
+      select: {
+        sections: {
+          select: { id: true, sectionType: true, content: true },
+          orderBy: { id: 'asc' },
+        },
+      },
+    });
+    if (!lesson?.sections || lesson.sections.length === 0) return;
+
+    type Seg = {
+      text: string;
+      startIndex: number;
+      endIndex: number;
+      isWord: boolean;
+    };
+    const tokens = new Map<string, true>();
+    const rows: Array<{
+      sectionId: number;
+      hanzi: string;
+      startIndex: number;
+      endIndex: number;
+      context: string;
+    }> = [];
+    for (const s of lesson.sections as Array<{
+      id: number;
+      sectionType: string;
+      content: any;
+    }>) {
+      const content: any = s.content || {};
+      if ((s.sectionType || '').toLowerCase() === 'dialogue') {
+        const turns: any[] = Array.isArray(content.turns) ? content.turns : [];
+        for (const t of turns) {
+          const segs: Seg[] = Array.isArray(t?.segments) ? t.segments : [];
+          for (const seg of segs) {
+            if (!seg?.isWord || !seg.text || !seg.text.trim()) continue;
+            const hanzi = seg.text.trim();
+            tokens.set(hanzi, true);
+            rows.push({
+              sectionId: s.id,
+              hanzi,
+              startIndex: Math.max(0, seg.startIndex || 0),
+              endIndex: Math.max(0, seg.endIndex || 0),
+              context: String(t?.hanzi || '').slice(0, 200),
+            });
+          }
+        }
+      } else {
+        const segs: Seg[] = Array.isArray(content.segments)
+          ? content.segments
+          : [];
+        for (const seg of segs) {
+          if (!seg?.isWord || !seg.text || !seg.text.trim()) continue;
+          const hanzi = seg.text.trim();
+          tokens.set(hanzi, true);
+          rows.push({
+            sectionId: s.id,
+            hanzi,
+            startIndex: Math.max(0, seg.startIndex || 0),
+            endIndex: Math.max(0, seg.endIndex || 0),
+            context: String(content?.hanzi || '').slice(0, 200),
+          });
+        }
+      }
+    }
+    if (rows.length === 0) return;
+
+    const hanziList = Array.from(tokens.keys());
+    const vocab = await (this.prismaService as any).vocabularyItem.findMany({
+      where: { hanzi: { in: hanziList } },
+      select: { id: true, hanzi: true },
+    });
+    const toId = new Map<string, number>();
+    for (const v of vocab) toId.set(v.hanzi, v.id);
+
+    const createRows = rows
+      .map((r) => ({
+        sectionId: r.sectionId,
+        vocabId: toId.get(r.hanzi),
+        startIndex: r.startIndex,
+        endIndex: r.endIndex,
+        context: r.context,
+      }))
+      .filter((r) => typeof r.vocabId === 'number') as Array<{
+      sectionId: number;
+      vocabId: number;
+      startIndex: number;
+      endIndex: number;
+      context: string;
+    }>;
+    if (createRows.length === 0) return;
+
+    const BATCH = 500;
+    for (let i = 0; i < createRows.length; i += BATCH) {
+      const slice = createRows.slice(i, i + BATCH);
+      try {
+        await (this.prismaService as any).wordInstance.createMany({
+          data: slice,
+        });
+      } catch (err) {
+        this.logger.warn('createMany(wordInstance) batch failed', err as any);
+      }
+    }
+  }
+
   // Stream generation progress via SSE-compatible Observable
   streamGenerateWithToken(
     token: string,
@@ -221,37 +408,22 @@ export class LessonsService {
               emit('step', { key: 'segment_grammar_notes_and_tips' });
             }
 
-            // Upsert named entities into vocabulary (dialogue)
+            // Upsert named entities into vocabulary (dialogue) - batched
             if (
               Array.isArray(dedupNamedEntities) &&
               dedupNamedEntities.length > 0
             ) {
-              this.logger.log(
+              this.logger.debug?.(
                 `Upserting ${dedupNamedEntities.length} named entities (dialogue)`,
               );
-              for (const ne of dedupNamedEntities) {
-                try {
-                  await this.prismaService.vocabularyItem.upsert({
-                    where: { hanzi: ne.text },
-                    create: {
-                      hanzi: ne.text,
-                      pinyin: (ne.pinyin || '').toLowerCase(),
-                      definition: (ne.definition || '').toString(),
-                      isCustom: true,
-                      source: 'LLM-NE',
-                    } as any,
-                    update: {
-                      pinyin: (ne.pinyin || '').toLowerCase(),
-                      definition: (ne.definition || '').toString() || undefined,
-                    } as any,
-                  });
-                } catch (err) {
-                  this.logger.warn(
-                    `Failed to upsert named entity ${ne.text} into vocabulary`,
-                    err as any,
-                  );
-                }
-              }
+              await this.batchUpsertVocabulary(
+                dedupNamedEntities.map((e: any) => ({
+                  hanzi: e.text,
+                  pinyin: e.pinyin,
+                  definition: e.definition,
+                  source: 'LLM-NE',
+                })),
+              );
             }
 
             emit('step', { key: 'persist_lesson' });
@@ -281,6 +453,14 @@ export class LessonsService {
               },
               select: { id: true },
             });
+            try {
+              await this.populateWordInstancesForLesson(created.id);
+            } catch (e) {
+              this.logger.warn(
+                'populateWordInstancesForLesson failed (stream dialogue)',
+                e as any,
+              );
+            }
             emit('complete', { id: created.id });
             if (heartbeat) clearInterval(heartbeat);
             subscriber.complete();
@@ -307,7 +487,7 @@ export class LessonsService {
             namedEntities,
           );
 
-          // Upsert named entities into vocabulary (story - streaming)
+          // Upsert named entities into vocabulary (story - streaming) - batched
           if (Array.isArray(namedEntities) && namedEntities.length > 0) {
             const seenNeStream = new Set<string>();
             const dedupNeStream = namedEntities.filter((e: any) => {
@@ -315,32 +495,17 @@ export class LessonsService {
               seenNeStream.add(e.text);
               return true;
             });
-            this.logger.log(
+            this.logger.debug?.(
               `Upserting ${dedupNeStream.length} named entities (story-stream)`,
             );
-            for (const ne of dedupNeStream) {
-              try {
-                await this.prismaService.vocabularyItem.upsert({
-                  where: { hanzi: ne.text },
-                  create: {
-                    hanzi: ne.text,
-                    pinyin: (ne.pinyin || '').toLowerCase(),
-                    definition: (ne.definition || '').toString(),
-                    isCustom: true,
-                    source: 'LLM-NE',
-                  } as any,
-                  update: {
-                    pinyin: (ne.pinyin || '').toLowerCase(),
-                    definition: (ne.definition || '').toString() || undefined,
-                  } as any,
-                });
-              } catch (err) {
-                this.logger.warn(
-                  `Failed to upsert named entity ${ne.text} into vocabulary`,
-                  err as any,
-                );
-              }
-            }
+            await this.batchUpsertVocabulary(
+              dedupNeStream.map((e: any) => ({
+                hanzi: e.text,
+                pinyin: e.pinyin,
+                definition: e.definition,
+                source: 'LLM-NE',
+              })),
+            );
           }
 
           emit('step', { key: 'openai_generate_grammar_notes' });
@@ -442,6 +607,14 @@ export class LessonsService {
             },
             select: { id: true },
           });
+          try {
+            await this.populateWordInstancesForLesson(created.id);
+          } catch (e) {
+            this.logger.warn(
+              'populateWordInstancesForLesson failed (stream story)',
+              e as any,
+            );
+          }
           emit('complete', { id: created.id });
           if (heartbeat) clearInterval(heartbeat);
           subscriber.complete();
@@ -606,34 +779,19 @@ export class LessonsService {
         this.logger.warn('Named entity upsert failed (dialogue)', err as any);
       }
 
-      // Upsert named entities into vocabulary (dialogue)
+      // Upsert named entities into vocabulary (dialogue) - batched
       if (Array.isArray(dedupNamedEntities) && dedupNamedEntities.length > 0) {
-        this.logger.log(
+        this.logger.debug?.(
           `Upserting ${dedupNamedEntities.length} named entities (dialogue)`,
         );
-        for (const ne of dedupNamedEntities) {
-          try {
-            await this.prismaService.vocabularyItem.upsert({
-              where: { hanzi: ne.text },
-              create: {
-                hanzi: ne.text,
-                pinyin: (ne.pinyin || '').toLowerCase(),
-                definition: (ne.definition || '').toString(),
-                isCustom: true,
-                source: 'LLM-NE',
-              } as any,
-              update: {
-                pinyin: (ne.pinyin || '').toLowerCase(),
-                definition: (ne.definition || '').toString() || undefined,
-              } as any,
-            });
-          } catch (err) {
-            this.logger.warn(
-              `Failed to upsert named entity ${ne.text} into vocabulary`,
-              err as any,
-            );
-          }
-        }
+        await this.batchUpsertVocabulary(
+          dedupNamedEntities.map((e: any) => ({
+            hanzi: e.text,
+            pinyin: e.pinyin,
+            definition: e.definition,
+            source: 'LLM-NE',
+          })),
+        );
       }
 
       lesson = await this.prismaService.lesson.create({
@@ -661,6 +819,14 @@ export class LessonsService {
         },
         select: { id: true },
       });
+      try {
+        await this.populateWordInstancesForLesson(lesson.id);
+      } catch (e) {
+        this.logger.warn(
+          'populateWordInstancesForLesson failed (dialogue)',
+          e as any,
+        );
+      }
     } else {
       // story
       const mainText: string = generated.story?.hanzi || '';
@@ -753,37 +919,22 @@ export class LessonsService {
         this.logger.warn('Error generating grammar notes', err as any);
       }
 
-      // Upsert named entities into vocabulary (story)
+      // Upsert named entities into vocabulary (story) - batched
       if (
         Array.isArray(dedupNamedEntities2) &&
         dedupNamedEntities2.length > 0
       ) {
-        this.logger.log(
+        this.logger.debug?.(
           `Upserting ${dedupNamedEntities2.length} named entities (story)`,
         );
-        for (const ne of dedupNamedEntities2) {
-          try {
-            await this.prismaService.vocabularyItem.upsert({
-              where: { hanzi: ne.text },
-              create: {
-                hanzi: ne.text,
-                pinyin: (ne.pinyin || '').toLowerCase(),
-                definition: (ne.definition || '').toString(),
-                isCustom: true,
-                source: 'LLM-NE',
-              } as any,
-              update: {
-                pinyin: (ne.pinyin || '').toLowerCase(),
-                definition: (ne.definition || '').toString() || undefined,
-              } as any,
-            });
-          } catch (err) {
-            this.logger.warn(
-              `Failed to upsert named entity ${ne.text} into vocabulary`,
-              err as any,
-            );
-          }
-        }
+        await this.batchUpsertVocabulary(
+          dedupNamedEntities2.map((e: any) => ({
+            hanzi: e.text,
+            pinyin: e.pinyin,
+            definition: e.definition,
+            source: 'LLM-NE',
+          })),
+        );
       }
 
       lesson = await this.prismaService.lesson.create({
@@ -814,6 +965,14 @@ export class LessonsService {
         },
         select: { id: true },
       });
+      try {
+        await this.populateWordInstancesForLesson(lesson.id);
+      } catch (e) {
+        this.logger.warn(
+          'populateWordInstancesForLesson failed (story)',
+          e as any,
+        );
+      }
     }
 
     return { id: lesson.id };
@@ -936,18 +1095,32 @@ export class LessonsService {
   async getFinishedCountsByLevel(
     userId: number,
   ): Promise<Record<number, number>> {
-    // Fetch finished progresses with lesson level to aggregate in-memory.
-    const rows = await (this.prismaService as any).lessonProgress.findMany({
-      where: { userId, finishedAt: { not: null } },
-      select: { lesson: { select: { level: true } } },
-    });
-    const counts: Record<number, number> = {};
-    for (const r of rows) {
-      const lvl: number | undefined = r?.lesson?.level;
-      if (!lvl) continue;
-      counts[lvl] = (counts[lvl] || 0) + 1;
+    try {
+      const rows: Array<{ level: number; count: bigint }> = await (
+        this.prismaService as any
+      ).$queryRawUnsafe(
+        'SELECT l.level AS level, COUNT(*)::bigint AS count FROM "LessonProgress" p JOIN "Lesson" l ON l.id = p."lessonId" WHERE p."userId" = $1 AND p."finishedAt" IS NOT NULL GROUP BY l.level',
+        userId,
+      );
+      const out: Record<number, number> = {};
+      for (const r of rows) out[r.level] = Number(r.count);
+      return out;
+    } catch (e) {
+      this.logger.warn(
+        'getFinishedCountsByLevel aggregation failed; falling back',
+        e as any,
+      );
+      const ids = await this.getFinishedLessonIds(userId);
+      if (ids.length === 0) return {};
+      const grouped = await (this.prismaService as any).lesson.groupBy({
+        by: ['level'],
+        where: { id: { in: ids } },
+        _count: { id: true },
+      });
+      const out: Record<number, number> = {};
+      for (const g of grouped) out[g.level] = g._count.id as number;
+      return out;
     }
-    return counts;
   }
 
   async getWordsReadCount(userId: number): Promise<number> {

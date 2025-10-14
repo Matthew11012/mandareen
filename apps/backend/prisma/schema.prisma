@@ -48,6 +48,8 @@ model LessonSection {
   content       Json
   lesson        Lesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   wordInstances WordInstance[]
+
+  @@index([lessonId])
 }
 
 model LessonProgress {
@@ -98,6 +100,9 @@ model WordInstance {
   message    Message?       @relation(fields: [messageId], references: [id], onDelete: Cascade)
   section    LessonSection? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   vocab      VocabularyItem @relation(fields: [vocabId], references: [id], onDelete: Cascade)
+
+  @@index([sectionId])
+  @@index([vocabId])
 }
 
 model Flashcard {

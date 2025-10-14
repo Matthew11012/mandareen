@@ -61,7 +61,7 @@ export class SegmentationService {
         this.maxTokenLength = 6;
       }
       this.initialized = true;
-      this.logger.log(
+      this.logger.debug?.(
         `SegmentationService initialized (mode=db), maxTokenLength=${this.maxTokenLength}`,
       );
       return;
@@ -140,7 +140,7 @@ export class SegmentationService {
     // Finalize: use the computed maximum from loaded entries (no cap)
 
     this.initialized = true;
-    this.logger.log(
+    this.logger.debug?.(
       `SegmentationService initialized (mode=preload), maxTokenLength=${this.maxTokenLength}, entries=${this.dictionary.size}`,
     );
     return;
@@ -312,8 +312,8 @@ export class SegmentationService {
       }
     }
 
-    // Always log stats so it's visible regardless of mode
-    this.logger.log(
+    // Debug-level stats to avoid noisy logs
+    this.logger.debug?.(
       `Segmentation stats: cacheHits=${cacheHits} cacheMisses=${cacheMisses} dbHits=${dbHits} dbMisses=${dbMisses} textLen=${text.length} mode=${this.mode}`,
     );
     return segments;
