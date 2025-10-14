@@ -118,6 +118,8 @@ model Flashcard {
   vocab            VocabularyItem      @relation(fields: [vocabId], references: [id], onDelete: Cascade)
   sentences        FlashcardSentence[]
   reviews          Review[]
+
+  @@index([userId, nextReview])
 }
 
 model Review {
@@ -136,6 +138,8 @@ model FlashcardSentence {
   translation String?
   createdAt   DateTime  @default(now())
   flashcard   Flashcard @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
+
+  @@index([flashcardId])
 }
 
 model Conversation {
