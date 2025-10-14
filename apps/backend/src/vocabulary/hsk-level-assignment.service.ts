@@ -102,84 +102,121 @@ export class HSKLevelAssignmentService {
     const content = fs.readFileSync(filePath, 'utf-8');
     const hskData: HSKWord[] = JSON.parse(content);
 
-    let processed = 0;
-    let updated = 0;
+    // Normalize input and precompute useful fields
+    const normalized: Array<{
+      hanzi: string;
+      lowestLevel: number;
+      frequency?: number;
+      traditional?: string;
+      pinyin?: string;
+      definition?: string;
+    }> = [];
 
     for (const hskWord of hskData) {
       if (!hskWord.simplified || !hskWord.level || hskWord.level.length === 0) {
         continue;
       }
-
       const hskLevels = this.extractHSKLevels(hskWord.level);
+      if (hskLevels.length === 0) continue;
+      const lowestLevel = Math.min(...hskLevels);
+      const form = hskWord.forms?.[0];
+      const pinyin = form?.transcriptions?.pinyin || '';
+      const meanings = form?.meanings || [];
+      const definition = meanings.length > 0 ? meanings.join('; ') : undefined;
+      normalized.push({
+        hanzi: hskWord.simplified,
+        lowestLevel,
+        frequency: hskWord.frequency || undefined,
+        traditional: form?.traditional || undefined,
+        pinyin: pinyin || undefined,
+        definition,
+      });
+    }
 
-      if (hskLevels.length === 0) {
-        continue;
+    if (normalized.length === 0) {
+      this.logger.log('No valid HSK entries to process.');
+      return;
+    }
+
+    const BATCH = 2000;
+    let processed = 0;
+    let updated = 0;
+    for (let i = 0; i < normalized.length; i += BATCH) {
+      const chunk = normalized.slice(i, i + BATCH);
+      const hanziList = chunk.map((c) => c.hanzi);
+
+      // Fetch existing words in one query
+      const existing = await this.prisma.vocabularyItem.findMany({
+        where: { hanzi: { in: hanziList } },
+        select: { id: true, hanzi: true, definition: true, traditional: true },
+      });
+      const existingMap = new Map(existing.map((e) => [e.hanzi, e]));
+
+      const toCreate: Array<{
+        hanzi: string;
+        pinyin: string;
+        definition: string;
+        hskLevel: number;
+        frequency?: number | null;
+        traditional?: string | null;
+        source: string;
+        isCustom: boolean;
+      }> = [];
+      const toUpdate: Array<{
+        hanzi: string;
+        data: any;
+      }> = [];
+
+      for (const c of chunk) {
+        const ex = existingMap.get(c.hanzi);
+        if (!ex) {
+          const pinyin = (c.pinyin || '').toLowerCase();
+          const definition = c.definition || 'Chinese word';
+          toCreate.push({
+            hanzi: c.hanzi,
+            pinyin,
+            definition,
+            hskLevel: c.lowestLevel,
+            frequency: typeof c.frequency === 'number' ? c.frequency : null,
+            traditional: c.traditional || c.hanzi,
+            source: 'HSK_COMPLETE',
+            isCustom: false,
+          });
+        } else {
+          const data: any = {
+            hskLevel: c.lowestLevel,
+            frequency: typeof c.frequency === 'number' ? c.frequency : null,
+            traditional: c.traditional || ex.traditional || undefined,
+            source: 'HSK_COMPLETE',
+          };
+          if (ex.definition === 'Chinese word' && c.definition) {
+            data.definition = c.definition;
+          }
+          toUpdate.push({ hanzi: c.hanzi, data });
+        }
       }
 
-      const existingWord = await this.prisma.vocabularyItem.findFirst({
-        where: { hanzi: hskWord.simplified },
+      await this.prisma.$transaction(async (tx) => {
+        if (toCreate.length > 0) {
+          await tx.vocabularyItem.createMany({
+            data: toCreate,
+            skipDuplicates: true,
+          });
+          updated += toCreate.length;
+        }
+        for (const u of toUpdate) {
+          const res = await tx.vocabularyItem.updateMany({
+            where: { hanzi: u.hanzi },
+            data: u.data,
+          });
+          updated += res.count;
+        }
       });
 
-      if (existingWord) {
-        // Update with HSK level (use the lowest/most basic level)
-        const lowestLevel = Math.min(...hskLevels);
-
-        // Extract definition from HSK meanings if the current definition is placeholder
-        const form = hskWord.forms?.[0];
-        const meanings = form?.meanings || [];
-        const hskDefinition = meanings.length > 0 ? meanings.join('; ') : null;
-
-        const updateData: any = {
-          hskLevel: lowestLevel,
-          frequency: hskWord.frequency || null,
-          traditional: form?.traditional || existingWord.traditional,
-          source: 'HSK_COMPLETE',
-        };
-
-        // Only update definition if current one is placeholder and we have HSK meanings
-        if (existingWord.definition === 'Chinese word' && hskDefinition) {
-          updateData.definition = hskDefinition;
-        }
-
-        await this.prisma.vocabularyItem.update({
-          where: { id: existingWord.id },
-          data: updateData,
-        });
-        updated++;
-      } else {
-        // Create new entry with basic info, using meanings from HSK data when available
-        const form = hskWord.forms?.[0];
-        const pinyin = form?.transcriptions?.pinyin || '';
-
-        if (pinyin) {
-          // Extract definition from meanings array, join multiple meanings with semicolons
-          const meanings = form?.meanings || [];
-          const definition =
-            meanings.length > 0 ? meanings.join('; ') : 'Chinese word'; 
-
-          await this.prisma.vocabularyItem.create({
-            data: {
-              hanzi: hskWord.simplified,
-              pinyin: pinyin.toLowerCase(),
-              definition: definition,
-              hskLevel: Math.min(...hskLevels),
-              frequency: hskWord.frequency || null,
-              traditional: form?.traditional || hskWord.simplified,
-              source: 'HSK_COMPLETE',
-              isCustom: false,
-            },
-          });
-          updated++;
-        }
-      }
-
-      processed++;
-
-      if (processed % 1000 === 0) {
-        this.logger.log(
-          `Processed ${processed} HSK words, updated ${updated} vocabulary items`,
-        );
-      }
+      processed += chunk.length;
+      this.logger.log(
+        `Processed ${processed} HSK words (batch ${i / BATCH + 1}), total updated/created so far: ${updated}`,
+      );
     }
 
     this.logger.log(

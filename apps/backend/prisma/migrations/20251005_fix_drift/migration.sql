@@ -20,7 +20,7 @@ BEGIN
       "chunkId" INTEGER NOT NULL,
       "kind" TEXT NOT NULL,
       "dimension" INTEGER NOT NULL,
-      "vector" vector(1536) NULL,
+      "vector" vector NULL,
       CONSTRAINT "RagEmbedding_chunkId_fkey" FOREIGN KEY ("chunkId") REFERENCES "RagChunk"("id") ON DELETE CASCADE ON UPDATE NO ACTION
     );
   END IF;

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface SegmentResult {
@@ -14,9 +14,18 @@ export interface SegmentResult {
 
 @Injectable()
 export class SegmentationService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) {
+    this.prisma = prisma;
+  }
 
   private initialized = false;
+  private readonly logger = new Logger(SegmentationService.name);
+  private mode: 'preload' | 'db' =
+    (process.env.SEGMENTATION_MODE as any) === 'db' ? 'db' : 'preload';
+  // Simple bounded LRU structures (only used in DB mode)
+  private cacheCapacity = 10000;
+  private cache = new Map<string, any>();
+  private cacheOrder: string[] = [];
   private dictionary = new Map<
     string,
     {
@@ -35,7 +44,30 @@ export class SegmentationService {
       return;
     }
 
-    // 1) Load vocabulary from DB
+    if (this.mode === 'db') {
+      // DB-backed mode: compute max token length from DB (max hanzi char length)
+      try {
+        const rows: any[] = await (this.prisma as any)
+          .$queryRaw`SELECT MAX(char_length("VocabularyItem"."hanzi"))::int AS max FROM "VocabularyItem";`;
+        const val = Array.isArray(rows) ? rows[0]?.max : undefined;
+        if (typeof val === 'number' && val > 0) {
+          this.maxTokenLength = val;
+        } else {
+          // Fallback if table is empty or value is invalid
+          this.maxTokenLength = 6;
+        }
+      } catch (e) {
+        // Fallback on error
+        this.maxTokenLength = 6;
+      }
+      this.initialized = true;
+      this.logger.debug?.(
+        `SegmentationService initialized (mode=db), maxTokenLength=${this.maxTokenLength}`,
+      );
+      return;
+    }
+
+    // 1) Load vocabulary from DB (preload mode)
     const vocabularyItems = await this.prisma.vocabularyItem.findMany({
       select: {
         id: true,
@@ -105,10 +137,12 @@ export class SegmentationService {
       console.error('Error loading vocabulary senses:', error);
     }
 
-    // Cap max token length and finalize (DB-only)
-    this.maxTokenLength = Math.min(this.maxTokenLength, 16);
+    // Finalize: use the computed maximum from loaded entries (no cap)
 
     this.initialized = true;
+    this.logger.debug?.(
+      `SegmentationService initialized (mode=preload), maxTokenLength=${this.maxTokenLength}, entries=${this.dictionary.size}`,
+    );
     return;
   }
 
@@ -122,6 +156,12 @@ export class SegmentationService {
     }>,
   ): Promise<SegmentResult[]> {
     await this.initializeDictionary();
+
+    // Metrics (DB mode only)
+    let cacheHits = 0;
+    let cacheMisses = 0;
+    let dbHits = 0;
+    let dbMisses = 0;
 
     // Local dictionary for this text that prioritizes provided phrases/words
     const localDict = new Map(this.dictionary);
@@ -162,8 +202,8 @@ export class SegmentationService {
       let matched = false;
       const maxLen = Math.min(this.maxTokenLength, textLength - i);
 
-      // Fast path: if first character cannot start any known word, emit single char
-      if (!this.firstCharSet.has(char)) {
+      // Fast path (preload mode only): if first character cannot start any known word, emit single char
+      if (this.mode === 'preload' && !this.firstCharSet.has(char)) {
         const chEntry = this.dictionary.get(char);
         segments.push({
           word: char,
@@ -181,7 +221,37 @@ export class SegmentationService {
 
       for (let len = maxLen; len >= 1; len--) {
         const substring = text.substring(i, i + len);
-        const dictEntry = localDict.get(substring);
+        let dictEntry = localDict.get(substring);
+        if (!dictEntry && this.mode === 'db') {
+          // DB-backed lookup with LRU cache
+          const cached = this.getFromCache(substring);
+          if (cached !== undefined) {
+            dictEntry = cached || undefined;
+            cacheHits++;
+          } else {
+            cacheMisses++;
+            const found = await this.prisma.vocabularyItem.findFirst({
+              where: { hanzi: substring },
+              select: {
+                hskLevel: true,
+                pinyin: true,
+                definition: true,
+              },
+            });
+            if (found) {
+              dbHits++;
+              dictEntry = {
+                hskLevel: found.hskLevel ?? undefined,
+                pinyin: (found.pinyin || '').toLowerCase() || undefined,
+                definition: found.definition || undefined,
+              };
+              this.setInCache(substring, dictEntry);
+            } else {
+              dbMisses++;
+              this.setInCache(substring, null); // negative cache
+            }
+          }
+        }
 
         if (dictEntry) {
           segments.push({
@@ -202,7 +272,32 @@ export class SegmentationService {
 
       if (!matched) {
         // Fallback: single Chinese character as a word segment
-        const chEntry = localDict.get(char);
+        let chEntry = localDict.get(char);
+        if (!chEntry && this.mode === 'db') {
+          const cached = this.getFromCache(char);
+          if (cached !== undefined) {
+            chEntry = cached || undefined;
+            cacheHits++;
+          } else {
+            cacheMisses++;
+            const found = await this.prisma.vocabularyItem.findFirst({
+              where: { hanzi: char },
+              select: { hskLevel: true, pinyin: true, definition: true },
+            });
+            if (found) {
+              dbHits++;
+              chEntry = {
+                hskLevel: found.hskLevel ?? undefined,
+                pinyin: (found.pinyin || '').toLowerCase() || undefined,
+                definition: found.definition || undefined,
+              };
+              this.setInCache(char, chEntry);
+            } else {
+              dbMisses++;
+              this.setInCache(char, null);
+            }
+          }
+        }
         segments.push({
           word: char,
           startIndex: i,
@@ -217,6 +312,10 @@ export class SegmentationService {
       }
     }
 
+    // Debug-level stats to avoid noisy logs
+    this.logger.debug?.(
+      `Segmentation stats: cacheHits=${cacheHits} cacheMisses=${cacheMisses} dbHits=${dbHits} dbMisses=${dbMisses} textLen=${text.length} mode=${this.mode}`,
+    );
     return segments;
   }
 
@@ -227,5 +326,29 @@ export class SegmentationService {
       (code >= 0x3400 && code <= 0x4dbf) || // CJK Extension A
       (code >= 0x20000 && code <= 0x2a6df)
     ); // CJK Extension B
+  }
+
+  // LRU helpers (simple, bounded)
+  private getFromCache(key: string): any | undefined {
+    if (!this.cache.has(key)) return undefined;
+    // move to MRU
+    this.cacheOrder = this.cacheOrder.filter((k) => k !== key);
+    this.cacheOrder.push(key);
+    return this.cache.get(key);
+  }
+
+  private setInCache(key: string, value: any): void {
+    if (this.cache.has(key)) {
+      this.cache.set(key, value);
+      this.cacheOrder = this.cacheOrder.filter((k) => k !== key);
+      this.cacheOrder.push(key);
+      return;
+    }
+    if (this.cache.size >= this.cacheCapacity) {
+      const lru = this.cacheOrder.shift();
+      if (lru !== undefined) this.cache.delete(lru);
+    }
+    this.cache.set(key, value);
+    this.cacheOrder.push(key);
   }
 }

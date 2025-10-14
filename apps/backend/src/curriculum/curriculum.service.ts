@@ -53,31 +53,27 @@ export class CurriculumService {
     const units = await this.prisma.curriculumUnit.findMany({
       where,
       orderBy: { order: 'asc' },
-      include: { lessons: { select: { id: true } } },
-    });
-    // Compute simple % complete per unit
-    const unitIds = units.map((u) => u.id);
-    const progresses = await this.prisma.curriculumProgress.findMany({
-      where: {
-        userId,
-        unitId: { in: unitIds },
-        lessonId: { not: null },
-        status: 'completed',
+      include: {
+        lessons: { select: { id: true } },
+        _count: {
+          select: {
+            lessons: {
+              where: {
+                progresses: {
+                  some: { userId, status: 'completed' as any },
+                },
+              },
+            },
+          },
+        },
       },
-      select: { unitId: true, lessonId: true },
-      distinct: ['lessonId'],
     });
-    const doneByUnit = new Map<number, number>();
-    for (const p of progresses) {
-      if (!p.unitId) continue;
-      doneByUnit.set(p.unitId, (doneByUnit.get(p.unitId) || 0) + 1);
-    }
-    return units.map((u) => ({
+    return (units as any[]).map((u: any) => ({
       id: u.id,
       title: u.title,
       description: u.description,
       totalLessons: u.lessons.length,
-      completedLessons: doneByUnit.get(u.id) || 0,
+      completedLessons: u._count?.lessons ?? 0,
     }));
   }
 
@@ -85,32 +81,41 @@ export class CurriculumService {
     if (!Number.isFinite(unitId)) {
       throw new Error('Invalid unitId');
     }
+    const debugStart = process.env.CURRICULUM_DEBUG ? Date.now() : 0;
     const unit = await this.prisma.curriculumUnit.findUnique({
       where: { id: unitId },
       include: {
         lessons: {
           orderBy: { order: 'asc' },
-          select: { id: true, title: true, description: true, order: true },
+          include: {
+            progresses: {
+              where: { userId, status: 'completed' as any },
+              select: { id: true },
+            },
+          },
         },
       },
     });
     if (!unit) return null;
-    const lessonIds = unit.lessons.map((l) => l.id);
-    const completed = await this.prisma.curriculumProgress.findMany({
-      where: { userId, lessonId: { in: lessonIds }, status: 'completed' },
-      select: { lessonId: true },
-      distinct: ['lessonId'],
-    });
-    const completedSet = new Set(completed.map((c) => c.lessonId));
-    return {
+    const uUnit: any = unit as any;
+    const result = {
       id: unit.id,
       title: unit.title,
       description: unit.description,
-      lessons: unit.lessons.map((l) => ({
-        ...l,
-        completed: completedSet.has(l.id),
+      lessons: uUnit.lessons.map((l: any) => ({
+        id: l.id,
+        title: l.title,
+        description: l.description,
+        order: l.order,
+        completed: Array.isArray(l.progresses) && l.progresses.length > 0,
       })),
     };
+    if (process.env.CURRICULUM_DEBUG && debugStart) {
+      this.logger.log(
+        `getUnitDetail computed in ${Date.now() - debugStart}ms for unit ${unitId}`,
+      );
+    }
+    return result;
   }
 
   async getUnitNavigation(
@@ -155,6 +160,7 @@ export class CurriculumService {
     currentLessonId: number,
     opts?: { sourceId?: number; sourceSlug?: string },
   ) {
+    const debugStart = process.env.CURRICULUM_DEBUG ? Date.now() : 0;
     const where: any = {};
     if (opts?.sourceId) where.ragSourceId = opts.sourceId;
     if (!opts?.sourceId && opts?.sourceSlug) {
@@ -165,53 +171,136 @@ export class CurriculumService {
       where.ragSourceId = source ? source.id : -1;
     }
 
-    // Get all units with lessons in order
-    const units = await this.prisma.curriculumUnit.findMany({
-      where,
-      orderBy: { order: 'asc' },
-      include: {
-        lessons: {
-          orderBy: { order: 'asc' },
-          select: { id: true, title: true, order: true },
+    // Load current lesson and its unit info
+    const currentLesson = await this.prisma.curriculumLesson.findUnique({
+      where: { id: currentLessonId },
+      select: {
+        id: true,
+        title: true,
+        order: true,
+        unitId: true,
+        unit: {
+          select: { id: true, title: true, order: true, ragSourceId: true },
         },
       },
     });
-
-    // Flatten all lessons with their unit info
-    const allLessons: Array<{
-      unitId: number;
-      unitTitle: string;
-      lessonId: number;
-      lessonTitle: string;
-      lessonOrder: number;
-    }> = [];
-
-    for (const unit of units) {
-      for (const lesson of unit.lessons) {
-        allLessons.push({
-          unitId: unit.id,
-          unitTitle: unit.title,
-          lessonId: lesson.id,
-          lessonTitle: lesson.title,
-          lessonOrder: lesson.order,
-        });
-      }
-    }
-
-    // Find current lesson index
-    const currentIndex = allLessons.findIndex(
-      (l) => l.unitId === currentUnitId && l.lessonId === currentLessonId,
-    );
-
-    if (currentIndex === -1) {
+    if (!currentLesson || currentLesson.unitId !== currentUnitId) {
       return { previous: null, next: null };
     }
 
-    const previous = currentIndex > 0 ? allLessons[currentIndex - 1] : null;
-    const next =
-      currentIndex < allLessons.length - 1
-        ? allLessons[currentIndex + 1]
-        : null;
+    const unitFilter: any = {};
+    if (typeof where.ragSourceId === 'number')
+      unitFilter.ragSourceId = where.ragSourceId;
+
+    // Previous in same unit
+    const prevInUnit = await this.prisma.curriculumLesson.findFirst({
+      where: {
+        unitId: currentLesson.unitId,
+        order: { lt: currentLesson.order },
+      },
+      orderBy: { order: 'desc' },
+      select: {
+        id: true,
+        title: true,
+        order: true,
+        unitId: true,
+        unit: { select: { id: true, title: true } },
+      },
+    });
+
+    // Next in same unit
+    const nextInUnit = await this.prisma.curriculumLesson.findFirst({
+      where: {
+        unitId: currentLesson.unitId,
+        order: { gt: currentLesson.order },
+      },
+      orderBy: { order: 'asc' },
+      select: {
+        id: true,
+        title: true,
+        order: true,
+        unitId: true,
+        unit: { select: { id: true, title: true } },
+      },
+    });
+
+    let previous: any = null;
+    let next: any = null;
+
+    if (prevInUnit) {
+      previous = {
+        unitId: prevInUnit.unitId,
+        unitTitle: prevInUnit.unit?.title || '',
+        lessonId: prevInUnit.id,
+        lessonTitle: prevInUnit.title,
+        lessonOrder: prevInUnit.order,
+      };
+    } else {
+      // Find previous unit by order within same source filter
+      const prevUnit = await this.prisma.curriculumUnit.findFirst({
+        where: { ...unitFilter, order: { lt: currentLesson.unit.order } },
+        orderBy: { order: 'desc' },
+        select: { id: true, title: true },
+      });
+      if (prevUnit) {
+        const lastLessonPrevUnit = await this.prisma.curriculumLesson.findFirst(
+          {
+            where: { unitId: prevUnit.id },
+            orderBy: { order: 'desc' },
+            select: { id: true, title: true, order: true, unitId: true },
+          },
+        );
+        if (lastLessonPrevUnit) {
+          previous = {
+            unitId: prevUnit.id,
+            unitTitle: prevUnit.title,
+            lessonId: lastLessonPrevUnit.id,
+            lessonTitle: lastLessonPrevUnit.title,
+            lessonOrder: lastLessonPrevUnit.order,
+          };
+        }
+      }
+    }
+
+    if (nextInUnit) {
+      next = {
+        unitId: nextInUnit.unitId,
+        unitTitle: nextInUnit.unit?.title || '',
+        lessonId: nextInUnit.id,
+        lessonTitle: nextInUnit.title,
+        lessonOrder: nextInUnit.order,
+      };
+    } else {
+      // Find next unit by order within same source filter
+      const nextUnit = await this.prisma.curriculumUnit.findFirst({
+        where: { ...unitFilter, order: { gt: currentLesson.unit.order } },
+        orderBy: { order: 'asc' },
+        select: { id: true, title: true },
+      });
+      if (nextUnit) {
+        const firstLessonNextUnit =
+          await this.prisma.curriculumLesson.findFirst({
+            where: { unitId: nextUnit.id },
+            orderBy: { order: 'asc' },
+            select: { id: true, title: true, order: true, unitId: true },
+          });
+        if (firstLessonNextUnit) {
+          next = {
+            unitId: nextUnit.id,
+            unitTitle: nextUnit.title,
+            lessonId: firstLessonNextUnit.id,
+            lessonTitle: firstLessonNextUnit.title,
+            lessonOrder: firstLessonNextUnit.order,
+          };
+        }
+      }
+    }
+
+    if (process.env.CURRICULUM_DEBUG && debugStart) {
+      this.logger.log(
+        `getLessonNavigation computed in ${Date.now() - debugStart}ms for lesson ${currentLessonId}`,
+      );
+    }
 
     return { previous, next };
   }

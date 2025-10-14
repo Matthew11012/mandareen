@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { toToneMarks } from '../utils/pinyin';
 import { PrismaService } from '../prisma/prisma.service';
 import { SegmentationService } from '../vocabulary/segmentation.service';
+import type { SegmentResult } from '../vocabulary/segmentation.service';
 
 export interface CreateFlashcardInput {
   userId: number;
@@ -54,6 +55,14 @@ export class FlashcardsService {
     text: string,
   ): Promise<string> {
     const segments = await this.segmentationService.segmentText(text);
+    return this.computeSentencePinyinPerCharacterFromSegments(text, segments);
+  }
+
+  // Compute per-character pinyin using precomputed segments (avoids extra segmentation calls)
+  private computeSentencePinyinPerCharacterFromSegments(
+    text: string,
+    segments: SegmentResult[],
+  ): string {
     const chars = Array.from(text);
     const perChar: string[] = new Array(chars.length).fill('');
     // Pointer to next chinese char index in sentence
@@ -219,9 +228,63 @@ export class FlashcardsService {
     const due = await this.prisma.flashcard.findMany({
       where: { userId, nextReview: { lte: now } },
       orderBy: { nextReview: 'asc' },
-      include: { vocab: true, sourceInstance: true },
+      include: {
+        vocab: true,
+        sourceInstance: true,
+        sentences: { orderBy: { id: 'asc' } },
+      },
       take: 100,
     });
+
+    // Collect unique texts for segmentation
+    const vocabTextsNeedingFill = new Set<string>();
+    const sentenceTexts: string[] = [];
+
+    for (const f of due) {
+      const hasPinyin = !!(f.vocab?.pinyin && f.vocab.pinyin.trim().length > 0);
+      const hasDefinition = !!(
+        f.vocab?.definition && f.vocab.definition.trim().length > 0
+      );
+      const hasHSK = f.vocab?.hskLevel != null;
+      if (!(hasPinyin && hasDefinition && hasHSK)) {
+        const wordHanzi = f.vocab?.hanzi || '';
+        if (wordHanzi) vocabTextsNeedingFill.add(wordHanzi);
+      }
+      if (Array.isArray((f as any).sentences)) {
+        for (const s of (f as any).sentences) {
+          // We always need segments for client; pinyin only if missing
+          if (typeof s?.hanzi === 'string' && s.hanzi.length > 0) {
+            sentenceTexts.push(s.hanzi);
+          }
+        }
+      }
+    }
+
+    // Deduplicate sentence texts
+    const uniqueSentenceTexts = Array.from(new Set(sentenceTexts));
+
+    // Run segmentation with small concurrency limit
+    const segMap = new Map<string, SegmentResult[]>();
+    const toProcess = [
+      ...Array.from(vocabTextsNeedingFill),
+      ...uniqueSentenceTexts,
+    ];
+
+    const concurrency = 6;
+    let idx = 0;
+    const workers: Promise<void>[] = [];
+    const runWorker = async () => {
+      while (idx < toProcess.length) {
+        const current = toProcess[idx++];
+        if (segMap.has(current)) continue;
+        const segs = await this.segmentationService.segmentText(current);
+        segMap.set(current, segs);
+      }
+    };
+    for (let i = 0; i < Math.min(concurrency, toProcess.length); i++) {
+      workers.push(runWorker());
+    }
+    await Promise.all(workers);
 
     const results = [] as Array<{
       id: number;
@@ -239,12 +302,13 @@ export class FlashcardsService {
     }>;
 
     for (const f of due) {
+      // Vocab fields, prefer stored
       let pinyin = toToneMarks(f.vocab?.pinyin || '') || '';
       let definition = f.vocab?.definition || '';
       let hskLevel = f.vocab?.hskLevel ?? null;
       if (!pinyin || !definition || !hskLevel) {
         const wordHanzi = f.vocab?.hanzi || '';
-        const segs = await this.segmentationService.segmentText(wordHanzi);
+        const segs = wordHanzi ? segMap.get(wordHanzi) || [] : [];
         const best = segs.find((s) => s.isWord && s.word === wordHanzi);
         if (best) {
           pinyin = pinyin || toToneMarks(best.pinyin || '') || '';
@@ -258,29 +322,28 @@ export class FlashcardsService {
         }
       }
 
-      // Fetch sentences (best effort), compute pinyin if missing
+      // Sentences (already loaded); compute pinyin only when missing, reuse segments
       let sentences:
         | Array<{ hanzi: string; pinyin?: string; translation?: string }>
         | undefined;
-      const rows = await this.prisma.flashcardSentence.findMany({
-        where: { flashcardId: f.id },
-        orderBy: { id: 'asc' },
-      });
+      const rows = (f as any).sentences as
+        | Array<{
+            hanzi: string;
+            pinyin?: string | null;
+            translation?: string | null;
+          }>
+        | undefined;
       if (Array.isArray(rows) && rows.length > 0) {
         sentences = [];
         for (const s of rows) {
-          // Prefer stored pinyin if present; fall back to recomputation.
-          // Many sentences are saved with correctly aligned per-character pinyin
-          // from the source; recomputing may introduce duplication/misalignment
-          // for certain tokens. We only recompute when missing.
+          const text = s.hanzi;
+          const segs = segMap.get(text) || [];
           const sp: string | undefined =
             s.pinyin && s.pinyin.trim().length > 0
               ? s.pinyin
-              : await this.computeSentencePinyinPerCharacter(s.hanzi);
-          // Also provide token-level segmentation to allow precise rendering on the client
-          const segs = await this.segmentationService.segmentText(s.hanzi);
+              : this.computeSentencePinyinPerCharacterFromSegments(text, segs);
           sentences.push({
-            hanzi: s.hanzi,
+            hanzi: text,
             pinyin: sp,
             translation: s.translation || undefined,
             // @ts-expect-error – enrich payload with segments for client rendering

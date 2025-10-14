@@ -48,6 +48,8 @@ model LessonSection {
   content       Json
   lesson        Lesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   wordInstances WordInstance[]
+
+  @@index([lessonId])
 }
 
 model LessonProgress {
@@ -98,6 +100,9 @@ model WordInstance {
   message    Message?       @relation(fields: [messageId], references: [id], onDelete: Cascade)
   section    LessonSection? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   vocab      VocabularyItem @relation(fields: [vocabId], references: [id], onDelete: Cascade)
+
+  @@index([sectionId])
+  @@index([vocabId])
 }
 
 model Flashcard {
@@ -113,6 +118,8 @@ model Flashcard {
   vocab            VocabularyItem      @relation(fields: [vocabId], references: [id], onDelete: Cascade)
   sentences        FlashcardSentence[]
   reviews          Review[]
+
+  @@index([userId, nextReview])
 }
 
 model Review {
@@ -131,6 +138,8 @@ model FlashcardSentence {
   translation String?
   createdAt   DateTime  @default(now())
   flashcard   Flashcard @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
+
+  @@index([flashcardId])
 }
 
 model Conversation {
@@ -263,6 +272,7 @@ model CurriculumUnit {
   ragSource RagSource @relation(fields: [ragSourceId], references: [id], onDelete: Cascade)
 
   @@unique([ragSourceId, title])
+  @@index([ragSourceId, order])
 }
 
 model CurriculumLesson {
@@ -286,6 +296,7 @@ model CurriculumLesson {
   @@unique([unitId, ragSectionId])
   @@unique([unitId, title])
   @@index([unitId])
+  @@index([unitId, order])
   @@index([ragSectionId])
 }
 
@@ -334,6 +345,7 @@ model CurriculumProgress {
   @@index([userId, unitId])
   @@index([userId, lessonId])
   @@index([userId, activityId])
+  @@index([userId, status])
 }
 
 model ActivityAttempt {

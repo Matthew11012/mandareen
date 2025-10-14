@@ -61,3 +61,4 @@ ModernMandarinChineseGrammar.md
 src/test-gemini.ts
 src/rag-test.ts
 mandareen_data.dump
+mandareen_data_inserts.sql
