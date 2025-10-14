@@ -353,11 +353,10 @@ export class RagService {
     const queryText = qtexts.join(' ');
     this.logger.log(`Generating embeddings for query: "${queryText}"`);
 
-    const [titleVec, enVec, zhVec] = await Promise.all([
-      this.generateEmbedding([queryText]),
-      this.generateEmbedding([queryText]),
-      this.generateEmbedding([queryText]),
-    ]);
+    const queryVecs = await this.generateEmbedding([queryText]);
+    const titleVec = queryVecs;
+    const enVec = queryVecs;
+    const zhVec = queryVecs;
 
     this.logger.log(
       `Generated embeddings: title=${titleVec[0]?.length || 0}D, en=${enVec[0]?.length || 0}D, zh=${zhVec[0]?.length || 0}D`,
