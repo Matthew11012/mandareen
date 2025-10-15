@@ -141,6 +141,37 @@ export default function LessonViewerPage() {
             definitions?: string[];
           }>;
         }>;
+        quiz?: {
+          items?: Array<{
+            question: {
+              zh: string;
+              translation?: string;
+              segments?: Array<{
+                text: string;
+                isWord?: boolean;
+                pinyin?: string;
+                definition?: string;
+                definitions?: string[];
+                hskLevel?: number;
+              }>;
+            };
+            options?: Array<{
+              zh: string;
+              translation?: string;
+              segments?: Array<{
+                text: string;
+                isWord?: boolean;
+                pinyin?: string;
+                definition?: string;
+                definitions?: string[];
+                hskLevel?: number;
+              }>;
+            }>;
+            answerIndex?: number;
+            rationale?: string;
+          }>;
+          passingScore?: number;
+        };
       }
     | undefined;
 
@@ -205,6 +236,37 @@ export default function LessonViewerPage() {
           translation?: string;
           segments?: LessonToken[];
         }>;
+        quiz?: {
+          items?: Array<{
+            question: {
+              zh: string;
+              translation?: string;
+              segments?: Array<{
+                text: string;
+                isWord?: boolean;
+                pinyin?: string;
+                definition?: string;
+                definitions?: string[];
+                hskLevel?: number;
+              }>;
+            };
+            options?: Array<{
+              zh: string;
+              translation?: string;
+              segments?: Array<{
+                text: string;
+                isWord?: boolean;
+                pinyin?: string;
+                definition?: string;
+                definitions?: string[];
+                hskLevel?: number;
+              }>;
+            }>;
+            answerIndex?: number;
+            rationale?: string;
+          }>;
+          passingScore?: number;
+        };
       }
     | undefined;
 
@@ -1346,6 +1408,67 @@ export default function LessonViewerPage() {
                     </AnimatePresence>
                   </div>
                 ))}
+                {/* Quiz section (dialogue) */}
+                {(() => {
+                  type Seg = {
+                    text: string;
+                    isWord?: boolean;
+                    pinyin?: string;
+                    definition?: string;
+                    definitions?: string[];
+                    hskLevel?: number;
+                  };
+                  type QuizShape = {
+                    items?: Array<{
+                      question: {
+                        zh: string;
+                        translation?: string;
+                        segments?: Seg[];
+                      };
+                      options?: Array<{
+                        zh: string;
+                        translation?: string;
+                        segments?: Seg[];
+                      }>;
+                      answerIndex?: number;
+                      rationale?: string;
+                    }>;
+                    passingScore?: number;
+                  };
+                  const dialogueContent = dialogue as unknown as
+                    | { quiz?: QuizShape }
+                    | undefined;
+                  const quiz = dialogueContent?.quiz;
+                  if (
+                    !quiz ||
+                    !Array.isArray(quiz.items) ||
+                    quiz.items.length === 0
+                  )
+                    return null;
+                  return (
+                    <div className="mt-6">
+                      <LessonQuizView
+                        quiz={quiz}
+                        disabled={Boolean(data?.finished)}
+                        onAddFlashcard={(hanzi, ctx, vocab) =>
+                          void addSingleToFlashcards(hanzi, ctx, vocab)
+                        }
+                        onPerfectScore={async () => {
+                          if (data?.finished) return;
+                          try {
+                            await lessonsApi.finish(id);
+                            setData((prev) =>
+                              prev ? { ...prev, finished: true } : prev
+                            );
+                            toast.success("Marked as finished");
+                          } catch {
+                            toast.error("Failed to mark as finished");
+                          }
+                        }}
+                      />
+                    </div>
+                  );
+                })()}
                 {Array.isArray(dialogue.grammarNotes) &&
                   dialogue.grammarNotes.length > 0 && (
                     <div className="mt-4 border border-[#3a3a3a] rounded-lg p-3 bg-[#1e2229]">
@@ -1519,6 +1642,71 @@ export default function LessonViewerPage() {
                   )}
               </div>
             )}
+
+            {/* Quiz section (story/dialogue) */}
+            {(() => {
+              type Seg = {
+                text: string;
+                isWord?: boolean;
+                pinyin?: string;
+                definition?: string;
+                definitions?: string[];
+                hskLevel?: number;
+              };
+              type QuizShape = {
+                items?: Array<{
+                  question: {
+                    zh: string;
+                    translation?: string;
+                    segments?: Seg[];
+                  };
+                  options?: Array<{
+                    zh: string;
+                    translation?: string;
+                    segments?: Seg[];
+                  }>;
+                  answerIndex?: number;
+                  rationale?: string;
+                }>;
+                passingScore?: number;
+              };
+              const dialogueContent = dialogue as unknown as
+                | { quiz?: QuizShape }
+                | undefined;
+              const storyContent = story as unknown as
+                | { quiz?: QuizShape }
+                | undefined;
+              const quiz = dialogueContent?.quiz || storyContent?.quiz;
+              if (
+                !quiz ||
+                !Array.isArray(quiz.items) ||
+                quiz.items.length === 0
+              )
+                return null;
+              return (
+                <div className="mt-6">
+                  <LessonQuizView
+                    quiz={quiz}
+                    disabled={Boolean(data?.finished)}
+                    onAddFlashcard={(hanzi, ctx, vocab) =>
+                      void addSingleToFlashcards(hanzi, ctx, vocab)
+                    }
+                    onPerfectScore={async () => {
+                      if (data?.finished) return;
+                      try {
+                        await lessonsApi.finish(id);
+                        setData((prev) =>
+                          prev ? { ...prev, finished: true } : prev
+                        );
+                        toast.success("Marked as finished");
+                      } catch {
+                        toast.error("Failed to mark as finished");
+                      }
+                    }}
+                  />
+                </div>
+              );
+            })()}
 
             {story &&
               Array.isArray(story.grammarNotes) &&
@@ -1771,59 +1959,76 @@ export default function LessonViewerPage() {
                 </div>
               )}
 
-            {/* Finish lesson action at the bottom, after Tips */}
+            {/* Finish lesson action (hide if quiz exists and not finished) */}
             <div className="mt-8 flex justify-center">
-              <button
-                aria-label={
-                  data?.finished ? "Lesson finished" : "Mark lesson as finished"
-                }
-                disabled={finishLoading || Boolean(data?.finished)}
-                className={
-                  `w-full sm:w-auto px-4 py-2 text-sm rounded-lg font-medium transition-all duration-200 active:scale-[0.98]  disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831] ` +
-                  (data?.finished
-                    ? `bg-green-600 text-white border border-green-500 hover:bg-green-500`
-                    : `bg-[#222831] text-white border border-[#404060] hover:border-[#4040f2] shadow-sm`)
-                }
-                onClick={async () => {
-                  try {
-                    setFinishLoading(true);
-                    await lessonsApi.finish(id);
-                    setData((prev) =>
-                      prev ? { ...prev, finished: true } : prev
-                    );
-                    toast.success("Marked as finished");
-                  } catch {
-                    toast.error("Failed to mark as finished");
-                  } finally {
-                    setFinishLoading(false);
-                  }
-                }}
-              >
-                {!data?.finished && finishLoading ? (
-                  <svg
-                    className="mr-2 inline h-4 w-4 animate-spin text-[#cbd5e1]"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
+              {(() => {
+                const dialogueContent = dialogue as unknown as
+                  | { quiz?: { items?: unknown[] } }
+                  | undefined;
+                const storyContent = story as unknown as
+                  | { quiz?: { items?: unknown[] } }
+                  | undefined;
+                const quiz = dialogueContent?.quiz || storyContent?.quiz;
+                const hasQuiz = Boolean(
+                  quiz && Array.isArray(quiz.items) && quiz.items.length > 0
+                );
+                if (hasQuiz && !data?.finished) return null;
+                return (
+                  <button
+                    aria-label={
+                      data?.finished
+                        ? "Lesson finished"
+                        : "Mark lesson as finished"
+                    }
+                    disabled={finishLoading || Boolean(data?.finished)}
+                    className={
+                      `w-full sm:w-auto px-4 py-2 text-sm rounded-lg font-medium transition-all duration-200 active:scale-[0.98]  disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831] ` +
+                      (data?.finished
+                        ? `bg-green-600 text-white border border-green-500 hover:bg-green-500`
+                        : `bg-[#222831] text-white border border-[#404060] hover:border-[#4040f2] shadow-sm`)
+                    }
+                    onClick={async () => {
+                      try {
+                        setFinishLoading(true);
+                        await lessonsApi.finish(id);
+                        setData((prev) =>
+                          prev ? { ...prev, finished: true } : prev
+                        );
+                        toast.success("Marked as finished");
+                      } catch {
+                        toast.error("Failed to mark as finished");
+                      } finally {
+                        setFinishLoading(false);
+                      }
+                    }}
                   >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                    ></path>
-                  </svg>
-                ) : null}
-                {data?.finished ? "Finished ✓" : "Mark lesson as finished"}
-              </button>
+                    {!data?.finished && finishLoading ? (
+                      <svg
+                        className="mr-2 inline h-4 w-4 animate-spin text-[#cbd5e1]"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                        ></path>
+                      </svg>
+                    ) : null}
+                    {data?.finished ? "Finished ✓" : "Mark lesson as finished"}
+                  </button>
+                );
+              })()}
             </div>
 
             {popup.open && (
@@ -2125,5 +2330,502 @@ export default function LessonViewerPage() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+// Quiz view for lesson-generated quizzes (does not reveal correct on wrong)
+function LessonQuizView({
+  quiz,
+  disabled,
+  onAddFlashcard,
+  onPerfectScore,
+}: {
+  quiz: {
+    items?: Array<{
+      question: {
+        zh: string;
+        translation?: string;
+        segments?: Array<{
+          text: string;
+          isWord?: boolean;
+          pinyin?: string;
+          definition?: string;
+          definitions?: string[];
+          hskLevel?: number;
+        }>;
+      };
+      options?: Array<{
+        zh: string;
+        translation?: string;
+        segments?: Array<{
+          text: string;
+          isWord?: boolean;
+          pinyin?: string;
+          definition?: string;
+          definitions?: string[];
+          hskLevel?: number;
+        }>;
+      }>;
+      answerIndex?: number;
+      rationale?: string;
+    }>;
+    passingScore?: number;
+  };
+  disabled?: boolean;
+  onAddFlashcard?: (
+    hanzi: string,
+    context?: { hanzi?: string; pinyin?: string; translation?: string },
+    vocab?: { pinyin?: string; definition?: string; hskLevel?: number }
+  ) => void;
+  onPerfectScore: () => void | Promise<void>;
+}) {
+  const items = Array.isArray(quiz?.items) ? quiz.items : [];
+  const [selected, setSelected] = useState<Record<number, number | null>>({});
+  const [submitted, setSubmitted] = useState<boolean>(false);
+  const [result, setResult] = useState<{
+    correct: boolean[];
+    score: number;
+  } | null>(null);
+  const [showPinyin, setShowPinyin] = useState<boolean>(false);
+  const [showTranslation, setShowTranslation] = useState<boolean>(false);
+  const completed = Boolean(disabled);
+
+  const toggle = (qi: number, oi: number) => {
+    if (submitted || disabled) return;
+    setSelected((prev) => ({ ...prev, [qi]: prev[qi] === oi ? null : oi }));
+  };
+
+  const onSubmit = async () => {
+    const answers = items.map((_, i) => selected[i] ?? null);
+    const correct = items.map((it, i) =>
+      typeof it.answerIndex === "number" ? answers[i] === it.answerIndex : false
+    );
+    const score = Math.round(
+      (correct.filter(Boolean).length / Math.max(1, items.length)) * 100
+    );
+    setResult({ correct, score });
+    setSubmitted(true);
+    if (score === 100) {
+      await onPerfectScore();
+    }
+  };
+
+  const onRetry = () => {
+    setSelected({});
+    setSubmitted(false);
+    setResult(null);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+        <div>
+          <h3 className="text-white font-semibold">Quiz</h3>
+          <p className="text-white/70 text-xs">
+            {items.length} questions • Choose the best answer
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {completed && (
+            <span className="px-2 py-1 text-xs rounded bg-green-500/15 text-green-300 border border-green-500/30">
+              Completed
+            </span>
+          )}
+          <button
+            onClick={() => setShowPinyin((v) => !v)}
+            className={`px-2 py-1 text-xs rounded border ${showPinyin ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer`}
+            type="button"
+            aria-pressed={showPinyin}
+          >
+            Pinyin {showPinyin ? "On" : "Off"}
+          </button>
+          <button
+            onClick={() => setShowTranslation((v) => !v)}
+            className={`px-2 py-1 text-xs rounded border ${showTranslation ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer`}
+            type="button"
+            aria-pressed={showTranslation}
+          >
+            Translation {showTranslation ? "On" : "Off"}
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {items.map((it, i) => {
+          const choice = selected[i] ?? null;
+          const showState =
+            (submitted || completed) && typeof it.answerIndex === "number";
+          const isCorrect = showState && choice === it.answerIndex;
+          const isIncorrect =
+            showState && choice !== null && choice !== it.answerIndex;
+          return (
+            <div
+              key={i}
+              className={`relative p-4 border border-white/10 rounded-xl bg-white/[0.02] hover:border-white/20 transition-all duration-200 ${
+                isCorrect
+                  ? "border-green-500/30 bg-green-500/5"
+                  : isIncorrect
+                    ? "border-red-500/30 bg-red-500/5"
+                    : ""
+              }`}
+            >
+              <div className="mb-3 text-white">
+                <InlineSegments
+                  segments={it.question?.segments}
+                  fallbackZh={it.question?.zh}
+                  showPinyin={showPinyin}
+                  contextSentenceZh={it.question?.zh}
+                  contextSentenceTranslation={it.question?.translation}
+                  onAddFlashcard={onAddFlashcard}
+                />
+                {showTranslation && it.question?.translation ? (
+                  <div className="text-white/60 text-xs mt-1 italic">
+                    {it.question.translation}
+                  </div>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                {(it.options || []).map((opt, j) => {
+                  const selectedNow = choice === j;
+                  const correctChoice = showState && it.answerIndex === j;
+                  const incorrectChosen =
+                    showState && selectedNow && !correctChoice;
+                  return (
+                    <div
+                      key={j}
+                      onClick={() => toggle(i, j)}
+                      aria-disabled={submitted || disabled}
+                      tabIndex={submitted || disabled ? -1 : 0}
+                      role="button"
+                      onKeyDown={(e) => {
+                        if (submitted || disabled) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggle(i, j);
+                        }
+                      }}
+                      className={`w-full text-left p-3 rounded-lg border transition-all duration-200 ${
+                        submitted || disabled
+                          ? "cursor-default"
+                          : "cursor-pointer"
+                      } ${
+                        // Force green highlight for correct option when completed
+                        completed && correctChoice
+                          ? "border-green-500/50 bg-green-500/10 text-green-100"
+                          : selectedNow
+                            ? showState
+                              ? isCorrect
+                                ? "border-green-500/50 bg-green-500/10 text-green-100"
+                                : incorrectChosen
+                                  ? "border-red-500/50 bg-red-500/10 text-red-100"
+                                  : "border-blue-500/50 bg-blue-500/10 text-blue-100"
+                              : "border-blue-500/50 bg-blue-500/10 text-white"
+                            : `border-white/10 bg-white/5 text-white/90${disabled ? "" : " hover:border-white/30 hover:bg-white/5"}`
+                      } ${selectedNow && !disabled ? "hover:border-blue-500/50 hover:bg-blue-500/10" : ""}`}
+                    >
+                      <div className="text-sm text-white">
+                        <InlineSegments
+                          segments={opt.segments}
+                          fallbackZh={opt.zh}
+                          showPinyin={showPinyin}
+                          hoverClass="hover:bg-white/15"
+                          contextSentenceZh={opt.zh}
+                          contextSentenceTranslation={opt.translation}
+                          onAddFlashcard={onAddFlashcard}
+                        />
+                        {showTranslation && opt.translation ? (
+                          <div className="text-white/60 text-xs mt-1">
+                            {opt.translation}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-between pt-2">
+        {completed ? (
+          <div className="text-sm font-semibold text-green-400">
+            Score: 100%
+          </div>
+        ) : result ? (
+          <div
+            className={`text-sm font-semibold ${result.score === 100 ? "text-green-400" : "text-white/80"}`}
+          >
+            Score: {result.score}%
+          </div>
+        ) : (
+          <div className="text-white/70 text-xs">
+            {Object.keys(selected).length} / {items.length} answered
+          </div>
+        )}
+        {!completed && (
+          <div className="flex items-center gap-2">
+            {!submitted ? (
+              <button
+                type="button"
+                onClick={onSubmit}
+                disabled={Object.keys(selected).length !== items.length}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm"
+              >
+                Submit
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="px-4 py-2 border border-white/20 text-white rounded-lg hover:bg-white/5 transition-colors duration-200 cursor-pointer text-sm"
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InlineSegments({
+  segments,
+  fallbackZh,
+  showPinyin,
+  hoverClass,
+  contextSentenceZh,
+  contextSentenceTranslation,
+  onAddFlashcard,
+}: {
+  segments?: Array<{
+    text: string;
+    isWord?: boolean;
+    pinyin?: string;
+    definition?: string;
+    definitions?: string[];
+    hskLevel?: number;
+  }>;
+  fallbackZh?: string;
+  showPinyin?: boolean;
+  hoverClass?: string;
+  contextSentenceZh?: string;
+  contextSentenceTranslation?: string;
+  onAddFlashcard?: (
+    hanzi: string,
+    context?: { hanzi?: string; pinyin?: string; translation?: string },
+    vocab?: { pinyin?: string; definition?: string; hskLevel?: number }
+  ) => void;
+}) {
+  const [popup, setPopup] = useState<{
+    open: boolean;
+    x: number;
+    y: number;
+    anchorH?: number;
+    word: string;
+    pinyin?: string;
+    definition?: string;
+    definitions?: string[];
+    hskLevel?: number;
+  }>({ open: false, x: 0, y: 0, word: "" });
+  const popupRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [popupPos, setPopupPos] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        setPopup((p) => ({ ...p, open: false }));
+      }
+    };
+    if (popup.open) document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [popup.open]);
+
+  useEffect(() => {
+    if (!popup.open) {
+      setPopupPos(null);
+      return;
+    }
+    const modal = popupRef.current;
+    const container = contentRef.current;
+    if (!modal || !container) return;
+    const modalRect = modal.getBoundingClientRect();
+    const contRect = container.getBoundingClientRect();
+    const margin = 8;
+    const contW = contRect.width;
+    const contH = contRect.height;
+    const toolbar = document.querySelector(
+      '[role="toolbar"][aria-label="Lesson controls"]'
+    ) as HTMLElement | null;
+    const toolbarRect = toolbar?.getBoundingClientRect();
+    const toolbarBottom = toolbarRect ? toolbarRect.bottom : 0;
+    const visibleTopInContainer = Math.max(0, toolbarBottom - contRect.top);
+    const visibleBottomInContainer = Math.min(
+      contH,
+      Math.max(0, window.innerHeight - contRect.top)
+    );
+    let left = popup.x - modalRect.width / 2;
+    left = Math.max(margin, Math.min(left, contW - modalRect.width - margin));
+    const anchorH = popup.anchorH || 0;
+    const availableAbove = popup.y - visibleTopInContainer - margin;
+    const availableBelow =
+      visibleBottomInContainer - (popup.y + anchorH) - margin;
+    let top: number;
+    if (modalRect.height <= availableAbove || availableBelow < 0) {
+      top = Math.max(
+        visibleTopInContainer + margin,
+        popup.y - modalRect.height - margin
+      );
+    } else if (modalRect.height <= availableBelow || availableAbove < 0) {
+      top = Math.min(
+        visibleBottomInContainer - modalRect.height - margin,
+        popup.y + anchorH + margin
+      );
+    } else {
+      top = Math.min(
+        visibleBottomInContainer - modalRect.height - margin,
+        Math.max(visibleTopInContainer + margin, popup.y + anchorH + margin)
+      );
+    }
+    setPopupPos({ left, top });
+  }, [popup.open, popup.x, popup.y, popup.anchorH]);
+
+  return (
+    <div className="relative" ref={contentRef}>
+      <div className="leading-7 text-white">
+        {Array.isArray(segments) && segments.length > 0
+          ? segments.map((seg, idx) => {
+              const isWord = Boolean(seg.isWord);
+              return (
+                <span
+                  key={idx}
+                  className="inline-flex flex-col items-center align-top mr-[2px]"
+                >
+                  {showPinyin ? (
+                    isWord && seg.pinyin ? (
+                      <span className="text-[10px] text-[#9aa6ff] leading-none mb-[2px]">
+                        {seg.pinyin}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] opacity-0 leading-none mb-[2px] select-none">
+                        •
+                      </span>
+                    )
+                  ) : null}
+                  <span
+                    className={`px-[1px] rounded ${isWord ? `${hoverClass || "hover:bg-[#404040]"} cursor-pointer` : ""}`}
+                    title={seg.definition || ""}
+                    onClick={(e) => {
+                      if (!isWord) return;
+                      const anchor = (
+                        e.currentTarget as HTMLSpanElement
+                      ).getBoundingClientRect();
+                      const container =
+                        contentRef.current?.getBoundingClientRect();
+                      const px = container
+                        ? anchor.left - container.left + anchor.width / 2
+                        : e.clientX;
+                      const py = container
+                        ? anchor.top - container.top
+                        : e.clientY;
+                      setPopup({
+                        open: true,
+                        x: px,
+                        y: py,
+                        anchorH: anchor.height,
+                        word: seg.text,
+                        pinyin: seg.pinyin,
+                        definition: seg.definition,
+                        definitions: seg.definitions,
+                        hskLevel: (seg as unknown as { hskLevel?: number })
+                          ?.hskLevel,
+                      });
+                    }}
+                  >
+                    {seg.text}
+                  </span>
+                </span>
+              );
+            })
+          : fallbackZh}
+      </div>
+      {popup.open && (
+        <div
+          ref={popupRef}
+          style={{
+            position: "absolute",
+            left: popupPos ? popupPos.left : popup.x,
+            top: popupPos ? popupPos.top : popup.y,
+            zIndex: 10,
+            visibility: popupPos ? "visible" : "hidden",
+            transform: popupPos ? "none" : "translate(-50%, calc(-100% - 8px))",
+          }}
+          className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="font-bold text-white text-lg truncate">
+              {popup.word}
+            </div>
+            {typeof popup.hskLevel === "number" && (
+              <span
+                className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                  popup.hskLevel as number
+                )}`}
+                aria-label={`HSK level ${popup.hskLevel}`}
+              >
+                HSK {popup.hskLevel}
+              </span>
+            )}
+          </div>
+          {popup.pinyin && (
+            <div className="text-[#c6ceff] text-sm font-medium truncate">
+              {popup.pinyin}
+            </div>
+          )}
+          {Array.isArray(popup.definitions) && popup.definitions.length > 0 ? (
+            <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
+              {popup.definitions.map((d, i) => (
+                <div key={i}>• {d}</div>
+              ))}
+            </div>
+          ) : popup.definition ? (
+            <div className="text-xs text-[#a6a6a6] mt-2">
+              {popup.definition}
+            </div>
+          ) : null}
+          <div className="mt-3 pt-3 border-t border-[#404040]">
+            <button
+              onClick={() => {
+                const ctx = {
+                  hanzi: contextSentenceZh || fallbackZh,
+                  pinyin: undefined,
+                  translation: contextSentenceTranslation,
+                };
+                const vocabDef = Array.isArray(popup.definitions)
+                  ? popup.definitions[0]
+                  : popup.definition;
+                onAddFlashcard?.(popup.word, ctx, {
+                  pinyin: popup.pinyin,
+                  definition: vocabDef,
+                  hskLevel: popup.hskLevel,
+                });
+                setPopup((p) => ({ ...p, open: false }));
+              }}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+              type="button"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="text-sm font-inter">Add to Flashcards</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
