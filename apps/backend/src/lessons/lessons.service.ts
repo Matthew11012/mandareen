@@ -62,14 +62,13 @@ export class LessonsService {
     });
     const existingSet = new Set<string>(existing.map((e: any) => e.hanzi));
     const toCreate = dedup.filter((d) => !existingSet.has(d.hanzi));
-    const toUpdate = dedup.filter((d) => existingSet.has(d.hanzi));
 
     if (toCreate.length > 0) {
       try {
         await (this.prismaService as any).vocabularyItem.createMany({
           data: toCreate.map((d) => ({
             hanzi: d.hanzi,
-            pinyin: d.pinyin || '',
+            pinyin: d.pinyin ? toToneMarks(d.pinyin) : '',
             definition: d.definition || '',
             isCustom: true,
             source: d.source || 'LLM-NE',
@@ -84,26 +83,7 @@ export class LessonsService {
       }
     }
 
-    if (toUpdate.length > 0) {
-      try {
-        await (this.prismaService as any).$transaction(
-          toUpdate.map((d) =>
-            (this.prismaService as any).vocabularyItem.update({
-              where: { hanzi: d.hanzi },
-              data: {
-                pinyin: d.pinyin || undefined,
-                definition: d.definition || undefined,
-              },
-            }),
-          ),
-        );
-      } catch (err) {
-        this.logger.warn(
-          'transaction(update vocabularyItem) failed in batchUpsertVocabulary',
-          err as any,
-        );
-      }
-    }
+    // No updates for existing rows as per policy; existing curated data remains unchanged.
   }
 
   private async populateWordInstancesForLesson(
@@ -1747,7 +1727,7 @@ export class LessonsService {
             "translation": "string (full English translation; mirror paragraph breaks with blank lines)"
           },
           "namedEntities": [
-            { "hanzi": "string", "pinyin": "string", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" } <list main characters, locations, brands, organizations, title phrases, events, festivals introduced (as relevant to the story)> 
+            { "hanzi": "string", "pinyin": "string<using tone marks>", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" } <list main characters, locations, brands, organizations, title phrases, events, festivals introduced (as relevant to the story)> 
           ]
         }`,
       },
@@ -1823,7 +1803,7 @@ export class LessonsService {
             ]
           },
           "namedEntities": [
-            { "hanzi": "string", "pinyin": "string", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" }
+            { "hanzi": "string", "pinyin": "string<using tone marks>", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" }
             // ...all topic-specific and stretch words/phrases
           ]
         }
