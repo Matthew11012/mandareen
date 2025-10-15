@@ -614,6 +614,148 @@ export class OpenAIService {
   }
 
   /**
+   * Generate MCQ quiz items for a STORY lesson, based solely on the completed
+   * story content. This is separate from curriculum quiz generation.
+   */
+  async generateQuizForStoryLesson(args: {
+    level: number;
+    title?: string | null;
+    story: { hanzi: string; translation?: string | null };
+    numItems?: number; // 3-5
+  }): Promise<{
+    items?: Array<{
+      question: { zh: string; translation: string };
+      options: Array<{ zh: string; translation: string }>;
+      answerIndex: number;
+      rationale?: string;
+    }>;
+  }> {
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const n = 3;
+    const sys = `You are a precise Mandarin pedagogy expert. Create fair, SHORT multiple-choice questions to test comprehension of a given Chinese story. Keep difficulty appropriate for the target HSK level. Return STRICT JSON.`;
+    const user = `Level: HSK-${args.level}\n
+    Title: ${args.title || ''}\n
+
+    STORY (Chinese):\n
+    CHINESE:\n
+    ${(args.story?.hanzi || '').slice(0, 8000)}\n
+
+    Instructions:\n
+    - Produce ${n} items. Each item MUST have exactly 4 options.
+    - Questions and options should be SHORT to MEDIUM length, relatively easy, level-appropriate.
+    - Output Chinese in 'zh' fields and include English 'translation' for both question and each option.
+    - Include 'answerIndex' (0-3) and a brief English 'rationale'.\n
+
+    Return STRICT JSON only:
+    {
+      "items": [
+        {
+          "question": { "zh": "...", "translation": "..." },
+          "options": [
+            { "zh": "...", "translation": "..." },
+            { "zh": "...", "translation": "..." },
+            { "zh": "...", "translation": "..." },
+            { "zh": "...", "translation": "..." }
+          ],
+          "answerIndex": 0,
+          "rationale": "brief english why"
+        }
+      ]
+    }`;
+    const completion = await this.openai.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: user },
+      ],
+      response_format: { type: 'json_object' },
+    } as any);
+    const content = completion.choices?.[0]?.message?.content;
+    if (!content) return {};
+    try {
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed?.items)) parsed.items = parsed.items.slice(0, n);
+      return parsed;
+    } catch (err) {
+      this.logger.warn('Error parsing story quiz JSON', err as any);
+      return {};
+    }
+  }
+
+  /**
+   * Generate MCQ quiz items for a DIALOGUE lesson, based solely on the
+   * completed dialogue content. This is separate from curriculum quiz generation.
+   */
+  async generateQuizForDialogueLesson(args: {
+    level: number;
+    title?: string | null;
+    dialogue: { turns: Array<{ hanzi: string; translation?: string }> };
+    numItems?: number; // 3-5
+  }): Promise<{
+    items?: Array<{
+      question: { zh: string; translation: string };
+      options: Array<{ zh: string; translation: string }>;
+      answerIndex: number;
+      rationale?: string;
+    }>;
+  }> {
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const n = 3;
+    const sys = `You are a precise Mandarin pedagogy expert. Create fair, SHORT multiple-choice questions to test comprehension of a given Chinese dialogue. Keep difficulty appropriate for the target HSK level. Return STRICT JSON.`;
+    const joinedHanzi = (args.dialogue?.turns || [])
+      .map((t) => `${t.hanzi || ''}`)
+      .join('\n');
+
+    const user = `Level: HSK-${args.level}\n
+    Title: ${args.title || ''}\n
+
+    DIALOGUE (Chinese):\n
+    CHINESE TURNS:\n
+    ${joinedHanzi.slice(0, 8000)}\n
+
+    Instructions:\n
+    - Produce ${n} items. Each item MUST have exactly 4 options.
+    - Questions and options should be SHORT to MEDIUM length, relatively easy, level-appropriate.
+    - Output Chinese in 'zh' fields and include English 'translation' for both question and each option.
+    - Include 'answerIndex' (0-3) and a brief English 'rationale'.\n
+
+    Return STRICT JSON only:
+    {
+      "items": [
+        {
+          "question": { "zh": "...", "translation": "..." },
+          "options": [
+            { "zh": "...", "translation": "..." },
+            { "zh": "...", "translation": "..." },
+            { "zh": "...", "translation": "..." },
+            { "zh": "...", "translation": "..." }
+          ],
+          "answerIndex": 0,
+          "rationale": "brief english why"
+        }
+      ]
+    }`;
+    const completion = await this.openai.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: user },
+      ],
+      response_format: { type: 'json_object' },
+    } as any);
+    const content = completion.choices?.[0]?.message?.content;
+    if (!content) return {};
+    try {
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed?.items)) parsed.items = parsed.items.slice(0, n);
+      return parsed;
+    } catch (err) {
+      this.logger.warn('Error parsing dialogue quiz JSON', err as any);
+      return {};
+    }
+  }
+
+  /**
    * Curriculum: Explain-first generator grounded by outline and RAG context.
    * Returns overview, sections (concept, examples, pitfalls, checks), microPassage, citations.
    */

@@ -62,14 +62,13 @@ export class LessonsService {
     });
     const existingSet = new Set<string>(existing.map((e: any) => e.hanzi));
     const toCreate = dedup.filter((d) => !existingSet.has(d.hanzi));
-    const toUpdate = dedup.filter((d) => existingSet.has(d.hanzi));
 
     if (toCreate.length > 0) {
       try {
         await (this.prismaService as any).vocabularyItem.createMany({
           data: toCreate.map((d) => ({
             hanzi: d.hanzi,
-            pinyin: d.pinyin || '',
+            pinyin: d.pinyin ? toToneMarks(d.pinyin) : '',
             definition: d.definition || '',
             isCustom: true,
             source: d.source || 'LLM-NE',
@@ -84,26 +83,7 @@ export class LessonsService {
       }
     }
 
-    if (toUpdate.length > 0) {
-      try {
-        await (this.prismaService as any).$transaction(
-          toUpdate.map((d) =>
-            (this.prismaService as any).vocabularyItem.update({
-              where: { hanzi: d.hanzi },
-              data: {
-                pinyin: d.pinyin || undefined,
-                definition: d.definition || undefined,
-              },
-            }),
-          ),
-        );
-      } catch (err) {
-        this.logger.warn(
-          'transaction(update vocabularyItem) failed in batchUpsertVocabulary',
-          err as any,
-        );
-      }
-    }
+    // No updates for existing rows as per policy; existing curated data remains unchanged.
   }
 
   private async populateWordInstancesForLesson(
@@ -361,51 +341,119 @@ export class LessonsService {
               });
             }
 
+            // Start grammar/tips and quiz generation in parallel
             emit('step', { key: 'rag_retrieve_context' });
-            let grammarNotes: any[] | undefined;
-            let tipsRichOut:
-              | Array<{ zh: string; en?: string; segments?: any[] }>
-              | undefined;
-            try {
-              const fullDialogue = turns.map((t: any) => t.hanzi).join('\n');
-              const ctx = await this.ragService.retrieveForLesson(user.id, {
-                topic: topic || generated.title || undefined,
-                level,
-              });
-              emit('step', { key: 'openai_generate_grammar_notes' });
-              const profile = await this.ragService.getUserProfile(user.id);
-              let notes = await (
-                this.openAIService as any
-              ).generateGrammarNotes(fullDialogue, {
-                level: profile.level,
-                strugglingWords: profile.strugglingWords,
-                contextText: ctx?.contextText,
-              });
-              emit('step', { key: 'segment_grammar_notes_and_tips' });
-              notes = await this.enrichNotesWithSegments(notes as any);
-              if (Array.isArray((notes as any).tips)) {
-                const tipsRich = [] as Array<{
-                  zh: string;
-                  en?: string;
-                  segments?: any[];
-                }>;
-                for (const t of (notes as any).tips) {
-                  if (t && typeof t.zh === 'string') {
-                    const segs = await this.enrichTextWithSegments(t.zh);
-                    tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
+            const fullDialogue = turns.map((t: any) => t.hanzi).join('\n');
+            const grammarPromise = (async () => {
+              try {
+                emit('step', { key: 'openai_generate_grammar_notes' });
+                const ctx = await this.ragService.retrieveForLesson(user.id, {
+                  topic: topic || generated.title || undefined,
+                  level,
+                });
+                const profile = await this.ragService.getUserProfile(user.id);
+                let notes = await (
+                  this.openAIService as any
+                ).generateGrammarNotes(fullDialogue, {
+                  level: profile.level,
+                  strugglingWords: profile.strugglingWords,
+                  contextText: ctx?.contextText,
+                });
+                emit('step', { key: 'segment_grammar_notes_and_tips' });
+                notes = await this.enrichNotesWithSegments(notes as any);
+                if (Array.isArray((notes as any).tips)) {
+                  const tipsRich = [] as Array<{
+                    zh: string;
+                    en?: string;
+                    segments?: any[];
+                  }>;
+                  for (const t of (notes as any).tips) {
+                    if (t && typeof t.zh === 'string') {
+                      const segs = await this.enrichTextWithSegments(t.zh);
+                      tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
+                    }
                   }
+                  (notes as any).tipsRich = tipsRich;
                 }
-                (notes as any).tipsRich = tipsRich;
+                const grammarNotes: any[] | undefined = Array.isArray(
+                  (notes as any).grammarNotes,
+                )
+                  ? (notes as any).grammarNotes
+                  : undefined;
+                const tipsRichOut:
+                  | Array<{ zh: string; en?: string; segments?: any[] }>
+                  | undefined = Array.isArray((notes as any).tipsRich)
+                  ? (notes as any).tipsRich
+                  : undefined;
+                return { grammarNotes, tipsRichOut };
+              } catch {
+                // advance anyway
+                emit('step', { key: 'segment_grammar_notes_and_tips' });
+                return { grammarNotes: undefined, tipsRichOut: undefined };
               }
-              grammarNotes = Array.isArray((notes as any).grammarNotes)
-                ? (notes as any).grammarNotes
-                : undefined;
-              tipsRichOut = Array.isArray((notes as any).tipsRich)
-                ? (notes as any).tipsRich
-                : undefined;
-            } catch {
-              // best-effort: still advance so UI can proceed
-              emit('step', { key: 'segment_grammar_notes_and_tips' });
+            })();
+
+            emit('step', { key: 'openai_generate_quiz' });
+            const quizPromise = (async () => {
+              try {
+                const quiz = await (
+                  this.openAIService as any
+                ).generateQuizForDialogueLesson({
+                  level,
+                  title: generated.title || null,
+                  dialogue: {
+                    turns: turns.map((t: any) => ({
+                      hanzi: t.hanzi,
+                      translation: t.translation,
+                    })),
+                  },
+                  numItems: 5,
+                });
+                return quiz;
+              } catch (e) {
+                this.logger.warn('Dialogue quiz generation failed', e as any);
+                return {};
+              }
+            })();
+
+            // Await parallel grammar and quiz
+            const { grammarNotes, tipsRichOut } = await grammarPromise;
+            const quizRaw = await quizPromise;
+
+            // Segment quiz items
+            let quizOut: any | undefined;
+            try {
+              if (
+                Array.isArray((quizRaw as any)?.items) &&
+                (quizRaw as any).items.length > 0
+              ) {
+                emit('step', { key: 'segment_quiz' });
+                const itemsSeg = [] as any[];
+                for (const it of (quizRaw as any).items) {
+                  const qSeg = await this.enrichTextWithSegments(
+                    it?.question?.zh,
+                  );
+                  const optSegs: any[] = [];
+                  for (const opt of it?.options || []) {
+                    const s = await this.enrichTextWithSegments(opt?.zh);
+                    optSegs.push({ ...opt, segments: s });
+                  }
+                  itemsSeg.push({
+                    question: {
+                      zh: it?.question?.zh || '',
+                      translation: it?.question?.translation || '',
+                      segments: qSeg,
+                    },
+                    options: optSegs,
+                    answerIndex:
+                      typeof it?.answerIndex === 'number' ? it.answerIndex : 0,
+                    rationale: it?.rationale,
+                  });
+                }
+                quizOut = { items: itemsSeg, passingScore: 100 };
+              }
+            } catch (e) {
+              this.logger.warn('Segment quiz failed', e as any);
             }
 
             // Upsert named entities into vocabulary (dialogue) - batched
@@ -446,6 +494,7 @@ export class LessonsService {
                         tipsRich: (typeof tipsRichOut !== 'undefined'
                           ? tipsRichOut
                           : undefined) as any,
+                        quiz: quizOut,
                       },
                     },
                   ],
@@ -508,53 +557,117 @@ export class LessonsService {
             );
           }
 
+          // Parallel grammar and quiz for story
+          const storyHanzi = (generated as any).story?.hanzi || '';
+          const storyTrans = (generated as any).story?.translation || '';
           emit('step', { key: 'openai_generate_grammar_notes' });
-          let grammarNotes2: any[] | undefined;
-          let tipsRichOut2:
-            | Array<{ zh: string; en?: string; segments?: any[] }>
-            | undefined;
-          try {
-            const ctx = await this.ragService.retrieveForLesson(user.id, {
-              topic: topic || (generated as any).title || undefined,
-              level,
-            });
-            const profile = await this.ragService.getUserProfile(user.id);
-            let notes = await (this.openAIService as any).generateGrammarNotes(
-              (generated as any).story?.hanzi || '',
-              {
+          const grammarPromise2 = (async () => {
+            try {
+              const ctx = await this.ragService.retrieveForLesson(user.id, {
+                topic: topic || (generated as any).title || undefined,
+                level,
+              });
+              const profile = await this.ragService.getUserProfile(user.id);
+              let notes = await (
+                this.openAIService as any
+              ).generateGrammarNotes(storyHanzi, {
                 level: profile.level,
                 strugglingWords: profile.strugglingWords,
                 contextText: ctx?.contextText,
-              },
-            );
-            emit('step', { key: 'segment_grammar_notes_and_tips' });
-            notes = await this.enrichNotesWithSegments(notes as any);
-            if (Array.isArray((notes as any).tips)) {
-              const tipsRich = [] as Array<{
-                zh: string;
-                en?: string;
-                segments?: any[];
-              }>;
-              for (const t of (notes as any).tips) {
-                if (t && typeof t.zh === 'string') {
-                  const seg = await this.enrichTextWithSegments(t.zh);
-                  tipsRich.push({ zh: t.zh, en: t.en, segments: seg });
+              });
+              emit('step', { key: 'segment_grammar_notes_and_tips' });
+              notes = await this.enrichNotesWithSegments(notes as any);
+              if (Array.isArray((notes as any).tips)) {
+                const tipsRich = [] as Array<{
+                  zh: string;
+                  en?: string;
+                  segments?: any[];
+                }>;
+                for (const t of (notes as any).tips) {
+                  if (t && typeof t.zh === 'string') {
+                    const seg = await this.enrichTextWithSegments(t.zh);
+                    tipsRich.push({ zh: t.zh, en: t.en, segments: seg });
+                  }
                 }
+                (notes as any).tipsRich = tipsRich;
               }
-              (notes as any).tipsRich = tipsRich;
+              const grammarNotes2: any[] | undefined = Array.isArray(
+                (notes as any).grammarNotes,
+              )
+                ? (notes as any).grammarNotes
+                : undefined;
+              const tipsRichOut2:
+                | Array<{ zh: string; en?: string; segments?: any[] }>
+                | undefined = Array.isArray((notes as any).tipsRich)
+                ? (notes as any).tipsRich
+                : undefined;
+              return { grammarNotes2, tipsRichOut2 };
+            } catch (e) {
+              this.logger.warn(
+                'Error generating grammar notes for story',
+                e as any,
+              );
+              emit('step', { key: 'segment_grammar_notes_and_tips' });
+              return { grammarNotes2: undefined, tipsRichOut2: undefined };
             }
-            grammarNotes2 = Array.isArray((notes as any).grammarNotes)
-              ? (notes as any).grammarNotes
-              : undefined;
-            tipsRichOut2 = Array.isArray((notes as any).tipsRich)
-              ? (notes as any).tipsRich
-              : undefined;
+          })();
+
+          emit('step', { key: 'openai_generate_quiz' });
+          const quizPromise2 = (async () => {
+            try {
+              const quiz = await (
+                this.openAIService as any
+              ).generateQuizForStoryLesson({
+                level,
+                title: (generated as any).title || null,
+                story: { hanzi: storyHanzi, translation: storyTrans },
+                numItems: 5,
+              });
+              return quiz;
+            } catch (e) {
+              this.logger.warn('Story quiz generation failed', e as any);
+              return {};
+            }
+          })();
+
+          // Await parallel grammar/quiz
+          const { grammarNotes2, tipsRichOut2 } = await grammarPromise2;
+          const quizRaw2 = await quizPromise2;
+
+          // Segment story quiz
+          let quizOut2: any | undefined;
+          try {
+            if (
+              Array.isArray((quizRaw2 as any)?.items) &&
+              (quizRaw2 as any).items.length > 0
+            ) {
+              emit('step', { key: 'segment_quiz' });
+              const itemsSeg = [] as any[];
+              for (const it of (quizRaw2 as any).items) {
+                const qSeg = await this.enrichTextWithSegments(
+                  it?.question?.zh,
+                );
+                const optSegs: any[] = [];
+                for (const opt of it?.options || []) {
+                  const s = await this.enrichTextWithSegments(opt?.zh);
+                  optSegs.push({ ...opt, segments: s });
+                }
+                itemsSeg.push({
+                  question: {
+                    zh: it?.question?.zh || '',
+                    translation: it?.question?.translation || '',
+                    segments: qSeg,
+                  },
+                  options: optSegs,
+                  answerIndex:
+                    typeof it?.answerIndex === 'number' ? it.answerIndex : 0,
+                  rationale: it?.rationale,
+                });
+              }
+              quizOut2 = { items: itemsSeg, passingScore: 100 };
+            }
           } catch (e) {
-            this.logger.warn(
-              'Error generating grammar notes for story',
-              e as any,
-            );
-            emit('step', { key: 'segment_grammar_notes_and_tips' });
+            this.logger.warn('Segment story quiz failed', e as any);
           }
 
           emit('step', { key: 'persist_lesson' });
@@ -600,6 +713,7 @@ export class LessonsService {
                       tipsRich: (typeof tipsRichOut2 !== 'undefined'
                         ? tipsRichOut2
                         : undefined) as any,
+                      quiz: quizOut2,
                     },
                   },
                 ],
@@ -730,54 +844,75 @@ export class LessonsService {
         });
       }
 
-      // Optionally compute grounded grammar notes for the whole dialogue text
-      let grammarNotes: any[] | undefined;
-      let tipsRichOut:
-        | Array<{ zh: string; en?: string; segments?: any[] }>
-        | undefined;
-      try {
-        const fullDialogue = turns.map((t: any) => t.hanzi).join('\n');
-        const ctx = await this.ragService.retrieveForLesson(user.id, {
-          topic: topic || generated.title || undefined,
-          level,
-        });
-        const profile = await this.ragService.getUserProfile(user.id);
-        let notes = await (this.openAIService as any).generateGrammarNotes(
-          fullDialogue,
-          {
-            level: profile.level,
-            strugglingWords: profile.strugglingWords,
-            contextText: ctx?.contextText,
-          },
-        );
-        // Enrich notes with segments for clickable tokens
-        notes = await this.enrichNotesWithSegments(notes as any);
-        // Also enrich tips into tipsRich with segments
-        if (Array.isArray((notes as any).tips)) {
-          const tipsRich = [] as Array<{
-            zh: string;
-            en?: string;
-            segments?: any[];
-          }>;
-          for (const t of (notes as any).tips) {
-            if (t && typeof t.zh === 'string') {
-              const segs = await this.enrichTextWithSegments(t.zh);
-              tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
+      // Parallel grammar notes and quiz for dialogue
+      const fullDialogue = turns.map((t: any) => t.hanzi).join('\n');
+      const grammarPromise = (async () => {
+        try {
+          const ctx = await this.ragService.retrieveForLesson(user.id, {
+            topic: topic || generated.title || undefined,
+            level,
+          });
+          const profile = await this.ragService.getUserProfile(user.id);
+          let notes = await (this.openAIService as any).generateGrammarNotes(
+            fullDialogue,
+            {
+              level: profile.level,
+              strugglingWords: profile.strugglingWords,
+              contextText: ctx?.contextText,
+            },
+          );
+          notes = await this.enrichNotesWithSegments(notes as any);
+          if (Array.isArray((notes as any).tips)) {
+            const tipsRich = [] as Array<{
+              zh: string;
+              en?: string;
+              segments?: any[];
+            }>;
+            for (const t of (notes as any).tips) {
+              if (t && typeof t.zh === 'string') {
+                const segs = await this.enrichTextWithSegments(t.zh);
+                tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
+              }
             }
+            (notes as any).tipsRich = tipsRich;
           }
-          (notes as any).tipsRich = tipsRich;
+          const grammarNotes: any[] | undefined = Array.isArray(
+            (notes as any).grammarNotes,
+          )
+            ? (notes as any).grammarNotes
+            : undefined;
+          const tipsRichOut:
+            | Array<{ zh: string; en?: string; segments?: any[] }>
+            | undefined = Array.isArray((notes as any).tipsRich)
+            ? (notes as any).tipsRich
+            : undefined;
+          return { grammarNotes, tipsRichOut };
+        } catch (err) {
+          this.logger.warn('Grammar notes failed (dialogue)', err as any);
+          return { grammarNotes: undefined, tipsRichOut: undefined };
         }
-        grammarNotes = Array.isArray((notes as any).grammarNotes)
-          ? (notes as any).grammarNotes
-          : undefined;
-        // attach tipsRich to be stored with section content
-        tipsRichOut = Array.isArray((notes as any).tipsRich)
-          ? (notes as any).tipsRich
-          : undefined;
-      } catch (err) {
-        // best-effort, log and continue
-        this.logger.warn('Named entity upsert failed (dialogue)', err as any);
-      }
+      })();
+      const quizPromise = (async () => {
+        try {
+          const quiz = await (
+            this.openAIService as any
+          ).generateQuizForDialogueLesson({
+            level,
+            title: generated.title || null,
+            dialogue: {
+              turns: turns.map((t: any) => ({
+                hanzi: t.hanzi,
+                translation: t.translation,
+              })),
+            },
+            numItems: 5,
+          });
+          return quiz;
+        } catch (e) {
+          this.logger.warn('Dialogue quiz generation failed', e as any);
+          return {};
+        }
+      })();
 
       // Upsert named entities into vocabulary (dialogue) - batched
       if (Array.isArray(dedupNamedEntities) && dedupNamedEntities.length > 0) {
@@ -792,6 +927,41 @@ export class LessonsService {
             source: 'LLM-NE',
           })),
         );
+      }
+
+      const { grammarNotes, tipsRichOut } = await grammarPromise;
+      const quizRaw = await quizPromise;
+      // Segment quiz
+      let quizOut: any | undefined;
+      try {
+        if (
+          Array.isArray((quizRaw as any)?.items) &&
+          (quizRaw as any).items.length > 0
+        ) {
+          const itemsSeg = [] as any[];
+          for (const it of (quizRaw as any).items) {
+            const qSeg = await this.enrichTextWithSegments(it?.question?.zh);
+            const optSegs: any[] = [];
+            for (const opt of it?.options || []) {
+              const s = await this.enrichTextWithSegments(opt?.zh);
+              optSegs.push({ ...opt, segments: s });
+            }
+            itemsSeg.push({
+              question: {
+                zh: it?.question?.zh || '',
+                translation: it?.question?.translation || '',
+                segments: qSeg,
+              },
+              options: optSegs,
+              answerIndex:
+                typeof it?.answerIndex === 'number' ? it.answerIndex : 0,
+              rationale: it?.rationale,
+            });
+          }
+          quizOut = { items: itemsSeg, passingScore: 100 };
+        }
+      } catch (e) {
+        this.logger.warn('Segment dialogue quiz failed', e as any);
       }
 
       lesson = await this.prismaService.lesson.create({
@@ -812,6 +982,7 @@ export class LessonsService {
                   tipsRich: (typeof tipsRichOut !== 'undefined'
                     ? tipsRichOut
                     : undefined) as any,
+                  quiz: quizOut,
                 },
               },
             ],
@@ -873,51 +1044,71 @@ export class LessonsService {
         pinyin: toToneMarks(s.pinyin),
       }));
 
-      // Optionally compute grounded grammar notes for the story text
-      let grammarNotes: any[] | undefined;
-      let tipsRichOut2:
-        | Array<{ zh: string; en?: string; segments?: any[] }>
-        | undefined;
-      try {
-        const ctx = await this.ragService.retrieveForLesson(user.id, {
-          topic: topic || generated.title || undefined,
-          level,
-        });
-        const profile = await this.ragService.getUserProfile(user.id);
-        let notes = await (this.openAIService as any).generateGrammarNotes(
-          generated.story?.hanzi || '',
-          {
-            level: profile.level,
-            strugglingWords: profile.strugglingWords,
-            contextText: ctx?.contextText,
-          },
-        );
-        // Enrich notes with segments for clickable tokens
-        notes = await this.enrichNotesWithSegments(notes as any);
-        // Also enrich tips into tipsRich with segments
-        if (Array.isArray((notes as any).tips)) {
-          const tipsRich = [] as Array<{
-            zh: string;
-            en?: string;
-            segments?: any[];
-          }>;
-          for (const t of (notes as any).tips) {
-            if (t && typeof t.zh === 'string') {
-              const segs = await this.enrichTextWithSegments(t.zh);
-              tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
+      // Parallel grammar and quiz for story
+      const storyHanzi = generated.story?.hanzi || '';
+      const storyTrans = generated.story?.translation || '';
+      const grammarPromise2 = (async () => {
+        try {
+          const ctx = await this.ragService.retrieveForLesson(user.id, {
+            topic: topic || generated.title || undefined,
+            level,
+          });
+          const profile = await this.ragService.getUserProfile(user.id);
+          let notes = await (this.openAIService as any).generateGrammarNotes(
+            storyHanzi,
+            {
+              level: profile.level,
+              strugglingWords: profile.strugglingWords,
+              contextText: ctx?.contextText,
+            },
+          );
+          notes = await this.enrichNotesWithSegments(notes as any);
+          if (Array.isArray((notes as any).tips)) {
+            const tipsRich = [] as Array<{
+              zh: string;
+              en?: string;
+              segments?: any[];
+            }>;
+            for (const t of (notes as any).tips) {
+              if (t && typeof t.zh === 'string') {
+                const seg = await this.enrichTextWithSegments(t.zh);
+                tipsRich.push({ zh: t.zh, en: t.en, segments: seg });
+              }
             }
+            (notes as any).tipsRich = tipsRich;
           }
-          (notes as any).tipsRich = tipsRich;
+          const grammarNotes: any[] | undefined = Array.isArray(
+            (notes as any).grammarNotes,
+          )
+            ? (notes as any).grammarNotes
+            : undefined;
+          const tipsRichOut2:
+            | Array<{ zh: string; en?: string; segments?: any[] }>
+            | undefined = Array.isArray((notes as any).tipsRich)
+            ? (notes as any).tipsRich
+            : undefined;
+          return { grammarNotes, tipsRichOut2 };
+        } catch (err) {
+          this.logger.warn('Error generating grammar notes', err as any);
+          return { grammarNotes: undefined, tipsRichOut2: undefined };
         }
-        grammarNotes = Array.isArray((notes as any).grammarNotes)
-          ? (notes as any).grammarNotes
-          : undefined;
-        tipsRichOut2 = Array.isArray((notes as any).tipsRich)
-          ? (notes as any).tipsRich
-          : undefined;
-      } catch (err) {
-        this.logger.warn('Error generating grammar notes', err as any);
-      }
+      })();
+      const quizPromise2 = (async () => {
+        try {
+          const quiz = await (
+            this.openAIService as any
+          ).generateQuizForStoryLesson({
+            level,
+            title: generated.title || null,
+            story: { hanzi: storyHanzi, translation: storyTrans },
+            numItems: 5,
+          });
+          return quiz;
+        } catch (e) {
+          this.logger.warn('Story quiz generation failed', e as any);
+          return {};
+        }
+      })();
 
       // Upsert named entities into vocabulary (story) - batched
       if (
@@ -937,6 +1128,42 @@ export class LessonsService {
         );
       }
 
+      const { grammarNotes: grammarNotes2, tipsRichOut2 } =
+        await grammarPromise2;
+      const quizRaw2 = await quizPromise2;
+      // Segment quiz
+      let quizOut2: any | undefined;
+      try {
+        if (
+          Array.isArray((quizRaw2 as any)?.items) &&
+          (quizRaw2 as any).items.length > 0
+        ) {
+          const itemsSeg = [] as any[];
+          for (const it of (quizRaw2 as any).items) {
+            const qSeg = await this.enrichTextWithSegments(it?.question?.zh);
+            const optSegs: any[] = [];
+            for (const opt of it?.options || []) {
+              const s = await this.enrichTextWithSegments(opt?.zh);
+              optSegs.push({ ...opt, segments: s });
+            }
+            itemsSeg.push({
+              question: {
+                zh: it?.question?.zh || '',
+                translation: it?.question?.translation || '',
+                segments: qSeg,
+              },
+              options: optSegs,
+              answerIndex:
+                typeof it?.answerIndex === 'number' ? it.answerIndex : 0,
+              rationale: it?.rationale,
+            });
+          }
+          quizOut2 = { items: itemsSeg, passingScore: 100 };
+        }
+      } catch (e) {
+        this.logger.warn('Segment story quiz failed', e as any);
+      }
+
       lesson = await this.prismaService.lesson.create({
         data: {
           level,
@@ -954,10 +1181,11 @@ export class LessonsService {
                   pinyin: toToneMarks(generated.story?.pinyin || ''),
                   translation: generated.story?.translation || '',
                   segments: filledSegs,
-                  grammarNotes,
+                  grammarNotes: grammarNotes2,
                   tipsRich: (typeof tipsRichOut2 !== 'undefined'
                     ? tipsRichOut2
                     : undefined) as any,
+                  quiz: quizOut2,
                 },
               },
             ],
@@ -1499,7 +1727,7 @@ export class LessonsService {
             "translation": "string (full English translation; mirror paragraph breaks with blank lines)"
           },
           "namedEntities": [
-            { "hanzi": "string", "pinyin": "string", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" } <list main characters, locations, brands, organizations, title phrases, events, festivals introduced (as relevant to the story)> 
+            { "hanzi": "string", "pinyin": "string<using tone marks>", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" } <list main characters, locations, brands, organizations, title phrases, events, festivals introduced (as relevant to the story)> 
           ]
         }`,
       },
@@ -1575,7 +1803,7 @@ export class LessonsService {
             ]
           },
           "namedEntities": [
-            { "hanzi": "string", "pinyin": "string", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" }
+            { "hanzi": "string", "pinyin": "string<using tone marks>", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" }
             // ...all topic-specific and stretch words/phrases
           ]
         }

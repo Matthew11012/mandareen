@@ -28,6 +28,7 @@ import {
   Flame,
   Check,
 } from "lucide-react";
+import CountUp from "@/components/ui/CountUp";
 
 /**
  * Dashboard Page (Protected Route)
@@ -163,6 +164,11 @@ export default function DashboardPage() {
       </div>
     );
   }
+
+  const displayedStreakDays =
+    streakTodayContinued || streakTodayContinued === null
+      ? studyStreakDays
+      : Math.max(streakCarryOverDays ?? 0, 0);
 
   return (
     <DashboardLayout
@@ -372,7 +378,13 @@ export default function DashboardPage() {
                   key={wordsLearned}
                   style={{ fontVariantNumeric: "tabular-nums" }}
                 >
-                  {wordsLearned}
+                  <CountUp
+                    from={0}
+                    to={wordsLearned}
+                    separator=","
+                    direction="up"
+                    duration={1}
+                  />
                 </p>
               </div>
             </div>
@@ -418,9 +430,13 @@ export default function DashboardPage() {
                     key={`streak-${streakTodayContinued ?? "u"}-${studyStreakDays}-${streakCarryOverDays ?? 0}`}
                     style={{ fontVariantNumeric: "tabular-nums" }}
                   >
-                    {streakTodayContinued || streakTodayContinued === null
-                      ? studyStreakDays
-                      : Math.max(streakCarryOverDays ?? 0, 0)}{" "}
+                    <CountUp
+                      from={0}
+                      to={displayedStreakDays}
+                      separator=","
+                      direction="up"
+                      duration={1}
+                    />{" "}
                     {streakTodayContinued || streakTodayContinued === null
                       ? studyStreakDays === 1
                         ? "day"
@@ -445,7 +461,14 @@ export default function DashboardPage() {
                   className="text-white text-xl font-inter font-semibold"
                   style={{ fontVariantNumeric: "tabular-nums" }}
                 >
-                  5 lessons
+                  <CountUp
+                    from={0}
+                    to={5}
+                    separator=","
+                    direction="up"
+                    duration={1}
+                  />{" "}
+                  lessons
                 </p>
               </div>
             </div>
