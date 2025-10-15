@@ -1643,7 +1643,7 @@ export default function LessonViewerPage() {
               </div>
             )}
 
-            {/* Quiz section (story/dialogue) */}
+            {/* Quiz section (story only; dialogue quiz is rendered above notes inside the dialogue block) */}
             {(() => {
               type Seg = {
                 text: string;
@@ -1670,13 +1670,18 @@ export default function LessonViewerPage() {
                 }>;
                 passingScore?: number;
               };
-              const dialogueContent = dialogue as unknown as
-                | { quiz?: QuizShape }
-                | undefined;
+              const hasDialogue = Boolean(
+                dialogue &&
+                  Array.isArray(
+                    (dialogue as unknown as { turns?: unknown[] }).turns
+                  )
+              );
+              const hasStory = Boolean(storySection && story);
               const storyContent = story as unknown as
                 | { quiz?: QuizShape }
                 | undefined;
-              const quiz = dialogueContent?.quiz || storyContent?.quiz;
+              if (hasDialogue || !hasStory) return null;
+              const quiz = storyContent?.quiz;
               if (
                 !quiz ||
                 !Array.isArray(quiz.items) ||
@@ -2418,14 +2423,14 @@ function LessonQuizView({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+        <div className="min-w-0">
           <h3 className="text-white font-semibold">Quiz</h3>
           <p className="text-white/70 text-xs">
             {items.length} questions • Choose the best answer
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {completed && (
             <span className="px-2 py-1 text-xs rounded bg-green-500/15 text-green-300 border border-green-500/30">
               Completed
@@ -2436,6 +2441,7 @@ function LessonQuizView({
             className={`px-2 py-1 text-xs rounded border ${showPinyin ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer`}
             type="button"
             aria-pressed={showPinyin}
+            aria-label={showPinyin ? "Hide pinyin" : "Show pinyin"}
           >
             Pinyin {showPinyin ? "On" : "Off"}
           </button>
@@ -2444,8 +2450,35 @@ function LessonQuizView({
             className={`px-2 py-1 text-xs rounded border ${showTranslation ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer`}
             type="button"
             aria-pressed={showTranslation}
+            aria-label={
+              showTranslation ? "Hide translations" : "Show translations"
+            }
           >
-            Translation {showTranslation ? "On" : "Off"}
+            <span className="sr-only">Translation</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 26 25"
+              fill="none"
+              aria-hidden="true"
+              className="inline-block align-middle"
+            >
+              <path
+                d="M1 3.46154H9.61539M9.61539 3.46154H15.1539M9.61539 3.46154V1M18.2308 3.46154H15.1539M15.1539 3.46154C14.144 6.82785 12.0292 10.01 9.61539 12.8066M9.61539 12.8066C7.61662 15.1223 5.41282 17.1737 3.46154 18.8462M9.61539 12.8066C8.38462 11.4615 6.41539 8.75385 5.92308 7.76923M9.61539 12.8066L13.3077 16.3846"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M15.1538 23.1538L16.5605 19.4615M16.5605 19.4615L20.0769 10.2307L23.5933 19.4615M16.5605 19.4615H23.5933M25 23.1538L23.5933 19.4615"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
         </div>
       </div>
@@ -2550,14 +2583,72 @@ function LessonQuizView({
 
       <div className="flex items-center justify-between pt-2">
         {completed ? (
-          <div className="text-sm font-semibold text-green-400">
-            Score: 100%
+          <div className="w-full">
+            <div className="relative overflow-hidden rounded-xl border border-green-500/40 bg-gradient-to-r from-green-600/20 via-green-500/15 to-emerald-500/15 p-4">
+              <div
+                className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-green-500/10 blur-2xl"
+                aria-hidden="true"
+              />
+              <div className="flex items-center gap-3 text-green-200">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-600/30 border border-green-500/40">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M9 12l2 2 4-4"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-lg font-bold tracking-tight text-green-300">
+                    Perfect score! Lesson completed
+                  </div>
+                  <div className="text-sm text-green-200/80">
+                    Score: 100% • Great job—quiz is now locked
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         ) : result ? (
-          <div
-            className={`text-sm font-semibold ${result.score === 100 ? "text-green-400" : "text-white/80"}`}
-          >
-            Score: {result.score}%
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${result.score === 100 ? "bg-green-500/15 text-green-300 border-green-500/40" : "bg-white/5 text-white/80 border-white/20"}`}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M21 10l-6-6M3 10l6-6m6 16l6-6M9 20l-6-6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span className="font-semibold">Score: {result.score}%</span>
+            </span>
           </div>
         ) : (
           <div className="text-white/70 text-xs">
