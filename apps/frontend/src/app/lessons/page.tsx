@@ -11,7 +11,6 @@ import {
   useLessonsGenerationStore,
   type ProgressKey,
 } from "@/lib/stores/lessons-generation-store";
-import { useCurrentLevel } from "@/lib/hooks/use-current-level";
 import { AnimatePresence, motion, LayoutGroup } from "framer-motion";
 
 export default function LessonsPage() {
@@ -33,13 +32,8 @@ export default function LessonsPage() {
   const myStoriesRef = useRef<HTMLDivElement | null>(null);
   const myDialoguesRef = useRef<HTMLDivElement | null>(null);
 
-  const { currentLevel } = useCurrentLevel();
   const [genLevel, setGenLevel] = useState<number | null>(null);
   const cardsPerPage = isMobile ? 4 : 9;
-  useEffect(() => {
-    if (currentLevel && !genLevel) setGenLevel(currentLevel);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentLevel]);
 
   useEffect(() => {
     const checkScreenSize = () => {

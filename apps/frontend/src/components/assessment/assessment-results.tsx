@@ -3,7 +3,6 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Trophy, Target, BookOpen, TrendingUp, ArrowRight } from "lucide-react";
-import { triggerLevelRefresh } from "@/lib/utils/level-refresh";
 
 interface AssessmentResultsProps {
   levelPlaced: number;
@@ -214,7 +213,6 @@ export const AssessmentResults: React.FC<AssessmentResultsProps> = ({
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
         <button
           onClick={() => {
-            triggerLevelRefresh();
             router.push("/dashboard");
           }}
           className="px-8 py-3 bg-[#4040f2] hover:bg-[#3636d9] text-white font-inter font-semibold rounded-xl transition-colors duration-200 shadow-lg shadow-blue-500/20 cursor-pointer"
