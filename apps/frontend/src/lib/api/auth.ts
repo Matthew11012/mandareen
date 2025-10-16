@@ -4,6 +4,7 @@ import { z } from "zod";
 // Base API configuration
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api",
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
@@ -148,24 +149,13 @@ export const authApi = {
   },
 };
 
-// Axios request interceptor to add auth token
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("auth-token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+// Remove token injection; rely on HttpOnly cookie via withCredentials
 
 // Axios response interceptor for auth errors
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Clear invalid token and redirect to login
-      localStorage.removeItem("auth-token");
-      window.location.href = "/auth/login";
-    }
+    // Do not auto-redirect on 401s globally; let callers decide.
     return Promise.reject(error);
   }
 );

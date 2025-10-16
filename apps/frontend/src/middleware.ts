@@ -14,9 +14,7 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Get token from cookies or authorization header
-  const token =
-    request.cookies.get("auth-token")?.value ||
-    request.headers.get("authorization")?.replace("Bearer ", "");
+  const token = request.cookies.get("auth-token")?.value;
 
   // Define protected routes that require authentication
   const protectedRoutes = [

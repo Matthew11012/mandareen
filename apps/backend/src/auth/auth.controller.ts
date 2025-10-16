@@ -22,21 +22,47 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  async register(@Body() registerDto: RegisterDto) {
-    return this.authService.register(registerDto);
+  async register(@Body() registerDto: RegisterDto, @Res() res: Response) {
+    const result = await this.authService.register(registerDto);
+    // Set HttpOnly auth cookie
+    res.cookie('auth-token', result.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+    return res.status(HttpStatus.CREATED).json({ user: result.user });
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(@Body() loginDto: LoginDto, @Res() res: Response) {
+    const result = await this.authService.login(loginDto);
+    // Set HttpOnly auth cookie
+    res.cookie('auth-token', result.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+    return res.status(HttpStatus.OK).json({ user: result.user });
   }
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async logout(@Req() req: AuthenticatedRequest): Promise<{ message: string }> {
-    return this.authService.logout(req.user.id);
+  async logout(@Req() req: AuthenticatedRequest, @Res() res: Response) {
+    await this.authService.logout(req.user.id);
+    // Clear HttpOnly auth cookie
+    res.clearCookie('auth-token', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+    });
+    return res.status(HttpStatus.OK).json({ message: 'Logged out' });
   }
 
   @Get('google')
@@ -57,9 +83,16 @@ export class AuthController {
         levelPlaced: req.user.levelPlaced ?? null,
       });
 
-      // Redirect to frontend with token
+      // Set HttpOnly auth cookie and redirect without exposing token
+      res.cookie('auth-token', result.token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 24 * 60 * 60 * 1000,
+      });
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-      res.redirect(`${frontendUrl}/auth/callback?token=${result.token}`);
+      res.redirect(`${frontendUrl}/auth/callback?success=1`);
     } catch {
       // Handle error appropriately
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
