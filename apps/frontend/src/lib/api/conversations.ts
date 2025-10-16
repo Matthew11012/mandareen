@@ -1,16 +1,5 @@
-import axios from "axios";
-
-const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api",
-  headers: { "Content-Type": "application/json" },
-});
-
-api.interceptors.request.use((config) => {
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+import { get, post } from "../http/http";
+import { getAuthToken } from "../http/auth";
 
 export interface Message {
   id: number;
@@ -54,33 +43,25 @@ export interface ConversationSummary {
 
 export const conversationsApi = {
   async list(): Promise<ConversationSummary[]> {
-    const res = await api.get<ConversationSummary[]>("/conversations");
-    return res.data;
+    return get<ConversationSummary[]>("conversations");
   },
   async start(): Promise<{ id: number }> {
-    const res = await api.post<{ id: number }>("/conversations", {});
-    return res.data;
+    return post<{ id: number }>("conversations", {});
   },
 
   async listMessages(id: number): Promise<Message[]> {
-    const res = await api.get<Message[]>(`/conversations/${id}/messages`);
-    return res.data;
+    return get<Message[]>(`conversations/${id}/messages`);
   },
 
   async send(id: number, hanzi: string): Promise<{ user: Message }> {
-    const res = await api.post<{ user: Message }>(
-      `/conversations/${id}/messages`,
-      { hanzi }
-    );
-    return res.data;
+    return post<{ user: Message }>(`conversations/${id}/messages`, { hanzi });
   },
   async sendAudio(id: number, audio: Blob): Promise<{ user: Message }> {
     const form = new FormData();
     form.append("audio", audio, "input.webm");
     const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
     const url = `${base.replace(/\/api$/, "")}/api/conversations/${id}/audio`;
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
+    const token = await getAuthToken();
     const res = await fetch(url, {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,

@@ -407,29 +407,16 @@ export default function LessonViewerPage() {
     vocab?: { pinyin?: string; definition?: string; hskLevel?: number }
   ) => {
     try {
-      await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"}/flashcards`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${
-              typeof window !== "undefined"
-                ? localStorage.getItem("auth-token")
-                : ""
-            }`,
-          },
-          body: JSON.stringify({
-            hanzi,
-            sentenceHanzi: context?.hanzi,
-            sentencePinyin: context?.pinyin,
-            sentenceTranslation: context?.translation,
-            vocabPinyin: vocab?.pinyin,
-            vocabDefinition: vocab?.definition,
-            vocabHskLevel: vocab?.hskLevel,
-          }),
-        }
-      );
+      const { post } = await import("@/lib/http/http");
+      await post("flashcards", {
+        hanzi,
+        sentenceHanzi: context?.hanzi,
+        sentencePinyin: context?.pinyin,
+        sentenceTranslation: context?.translation,
+        vocabPinyin: vocab?.pinyin,
+        vocabDefinition: vocab?.definition,
+        vocabHskLevel: vocab?.hskLevel,
+      });
       toast.success("Added to flashcards");
     } catch {
       toast.error("Failed to add to flashcards");
@@ -522,59 +509,45 @@ export default function LessonViewerPage() {
             translation: transSentences[chosenIdx],
           };
         }
-        await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"}/flashcards`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${
-                typeof window !== "undefined"
-                  ? localStorage.getItem("auth-token")
-                  : ""
-              }`,
-            },
-            body: JSON.stringify({
-              hanzi: w.text,
-              sentenceHanzi: sentenceCtx?.hanzi,
-              sentencePinyin: sentenceCtx?.pinyin,
-              sentenceTranslation: sentenceCtx?.translation,
-              vocabPinyin: w.pinyin,
-              vocabDefinition: (() => {
+        const { post } = await import("@/lib/http/http");
+        await post("flashcards", {
+          hanzi: w.text,
+          sentenceHanzi: sentenceCtx?.hanzi,
+          sentencePinyin: sentenceCtx?.pinyin,
+          sentenceTranslation: sentenceCtx?.translation,
+          vocabPinyin: w.pinyin,
+          vocabDefinition: (() => {
+            if (
+              typeof w.paraIndex === "number" &&
+              typeof w.tokenIndex === "number"
+            ) {
+              const seg = (segmentedParagraphs[w.paraIndex] || [])[
+                w.tokenIndex
+              ] as LessonToken | undefined;
+              if (seg) {
                 if (
-                  typeof w.paraIndex === "number" &&
-                  typeof w.tokenIndex === "number"
-                ) {
-                  const seg = (segmentedParagraphs[w.paraIndex] || [])[
-                    w.tokenIndex
-                  ] as LessonToken | undefined;
-                  if (seg) {
-                    if (
-                      Array.isArray(seg.definitions) &&
-                      seg.definitions.length > 0
-                    )
-                      return seg.definitions[0];
-                    if (seg.definition) return seg.definition;
-                  }
-                }
-                return undefined;
-              })(),
-              vocabHskLevel: (() => {
-                if (
-                  typeof w.paraIndex === "number" &&
-                  typeof w.tokenIndex === "number"
-                ) {
-                  const seg = (segmentedParagraphs[w.paraIndex] || [])[
-                    w.tokenIndex
-                  ] as LessonToken | undefined;
-                  if (seg && typeof seg.hskLevel === "number")
-                    return seg.hskLevel;
-                }
-                return undefined;
-              })(),
-            }),
-          }
-        );
+                  Array.isArray(seg.definitions) &&
+                  seg.definitions.length > 0
+                )
+                  return seg.definitions[0];
+                if (seg.definition) return seg.definition;
+              }
+            }
+            return undefined;
+          })(),
+          vocabHskLevel: (() => {
+            if (
+              typeof w.paraIndex === "number" &&
+              typeof w.tokenIndex === "number"
+            ) {
+              const seg = (segmentedParagraphs[w.paraIndex] || [])[
+                w.tokenIndex
+              ] as LessonToken | undefined;
+              if (seg && typeof seg.hskLevel === "number") return seg.hskLevel;
+            }
+            return undefined;
+          })(),
+        });
       }
       setSelectedWords({});
       setMultiSelect(false);

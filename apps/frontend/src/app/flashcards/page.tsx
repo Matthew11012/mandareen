@@ -105,29 +105,16 @@ export default function FlashcardsPage() {
     vocab?: { pinyin?: string; definition?: string; hskLevel?: number }
   ) => {
     try {
-      await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"}/flashcards`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${
-              typeof window !== "undefined"
-                ? localStorage.getItem("auth-token")
-                : ""
-            }`,
-          },
-          body: JSON.stringify({
-            hanzi,
-            sentenceHanzi: ctx?.hanzi,
-            sentencePinyin: ctx?.pinyin,
-            sentenceTranslation: ctx?.translation,
-            vocabPinyin: vocab?.pinyin,
-            vocabDefinition: vocab?.definition,
-            vocabHskLevel: vocab?.hskLevel,
-          }),
-        }
-      );
+      const { post } = await import("@/lib/http/http");
+      await post("flashcards", {
+        hanzi,
+        sentenceHanzi: ctx?.hanzi,
+        sentencePinyin: ctx?.pinyin,
+        sentenceTranslation: ctx?.translation,
+        vocabPinyin: vocab?.pinyin,
+        vocabDefinition: vocab?.definition,
+        vocabHskLevel: vocab?.hskLevel,
+      });
       toast.success("Added to flashcards");
     } catch {
       toast.error("Failed to add to flashcards");
