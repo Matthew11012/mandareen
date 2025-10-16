@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Toaster } from "sonner";
 import "./globals.css";
+import { Inter } from "next/font/google";
 
 export const metadata: Metadata = {
   title: "Mandareen - AI-Powered Mandarin Learning",
@@ -8,7 +9,10 @@ export const metadata: Metadata = {
     "Learn Mandarin with AI-powered lessons, real-time conversation practice, and adaptive assessment.",
   manifest: "/manifest.json",
   icons: {
-    icon: "/icons/icon-192x192.png",
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
+    ],
     apple: "/icons/icon-512x512.png",
   },
 };
@@ -18,6 +22,12 @@ export const viewport: Viewport = {
   initialScale: 1,
   themeColor: "#222831",
 };
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
 
 /**
  * Root Layout Component
@@ -34,11 +44,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="font-inter antialiased">
-        <link rel="icon" href="/favicon.ico" />
-        <link rel="icon" href="/icons/icon-192x192.png" sizes="192x192" />
-        <link rel="icon" href="/icons/icon-512x512.png" sizes="512x512" />
+    <html lang="en" className={inter.variable}>
+      <body className="antialiased">
         {children}
 
         {/* Global Toast Notifications */}

@@ -825,33 +825,19 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
                           ? popup.definitions[0]
                           : undefined),
                     };
-                    await fetch(
-                      `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"}/flashcards`,
-                      {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                          Authorization: `Bearer ${
-                            typeof window !== "undefined"
-                              ? localStorage.getItem("auth-token")
-                              : ""
-                          }`,
-                        },
-                        body: JSON.stringify({
-                          hanzi: popup.word,
-                          sentenceHanzi: ctx.hanzi,
-                          sentencePinyin: ctx.pinyin,
-                          sentenceTranslation: ctx.translation,
-                          vocabPinyin: popup.pinyin,
-                          vocabDefinition:
-                            Array.isArray(popup.definitions) &&
-                            popup.definitions.length > 0
-                              ? popup.definitions[0]
-                              : popup.definition,
-                          vocabHskLevel: popup.hskLevel,
-                        }),
-                      }
-                    );
+                    const { post } = await import("@/lib/http/http");
+                    await post("flashcards", {
+                      hanzi: popup.word,
+                      sentenceHanzi: ctx.hanzi,
+                      sentencePinyin: ctx.pinyin,
+                      sentenceTranslation: ctx.translation,
+                      vocabPinyin: popup.pinyin,
+                      vocabDefinition:
+                        Array.isArray(popup.definitions) &&
+                        popup.definitions.length > 0
+                          ? popup.definitions[0]
+                          : popup.definition,
+                    });
                     toast.success("Added to flashcards");
                   } catch {
                     toast.error("Failed to add to flashcards");
@@ -1102,33 +1088,19 @@ function ReadView({ content }: { content: ReadContent }) {
                           ? popup.definitions[0]
                           : undefined),
                     };
-                    await fetch(
-                      `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"}/flashcards`,
-                      {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                          Authorization: `Bearer ${
-                            typeof window !== "undefined"
-                              ? localStorage.getItem("auth-token")
-                              : ""
-                          }`,
-                        },
-                        body: JSON.stringify({
-                          hanzi: popup.word,
-                          sentenceHanzi: ctx.hanzi,
-                          sentencePinyin: ctx.pinyin,
-                          sentenceTranslation: ctx.translation,
-                          vocabPinyin: popup.pinyin,
-                          vocabDefinition:
-                            Array.isArray(popup.definitions) &&
-                            popup.definitions.length > 0
-                              ? popup.definitions[0]
-                              : popup.definition,
-                          vocabHskLevel: popup.hskLevel,
-                        }),
-                      }
-                    );
+                    const { post } = await import("@/lib/http/http");
+                    await post("flashcards", {
+                      hanzi: popup.word,
+                      sentenceHanzi: ctx.hanzi,
+                      sentencePinyin: ctx.pinyin,
+                      sentenceTranslation: ctx.translation,
+                      vocabPinyin: popup.pinyin,
+                      vocabDefinition:
+                        Array.isArray(popup.definitions) &&
+                        popup.definitions.length > 0
+                          ? popup.definitions[0]
+                          : popup.definition,
+                    });
                     toast.success("Added to flashcards");
                   } catch {
                     toast.error("Failed to add to flashcards");
@@ -1495,33 +1467,19 @@ function QuestionText({
                         ? popup.definitions[0]
                         : undefined),
                   };
-                  await fetch(
-                    `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"}/flashcards`,
-                    {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${
-                          typeof window !== "undefined"
-                            ? localStorage.getItem("auth-token")
-                            : ""
-                        }`,
-                      },
-                      body: JSON.stringify({
-                        hanzi: popup.word,
-                        sentenceHanzi: ctx.hanzi,
-                        sentencePinyin: ctx.pinyin,
-                        sentenceTranslation: ctx.translation,
-                        vocabPinyin: popup.pinyin,
-                        vocabDefinition:
-                          Array.isArray(popup.definitions) &&
-                          popup.definitions.length > 0
-                            ? popup.definitions[0]
-                            : popup.definition,
-                        vocabHskLevel: popup.hskLevel,
-                      }),
-                    }
-                  );
+                  const { post } = await import("@/lib/http/http");
+                  await post("flashcards", {
+                    hanzi: popup.word,
+                    sentenceHanzi: ctx.hanzi,
+                    sentencePinyin: ctx.pinyin,
+                    sentenceTranslation: ctx.translation,
+                    vocabPinyin: popup.pinyin,
+                    vocabDefinition:
+                      Array.isArray(popup.definitions) &&
+                      popup.definitions.length > 0
+                        ? popup.definitions[0]
+                        : popup.definition,
+                  });
                   toast.success("Added to flashcards");
                 } catch {
                   toast.error("Failed to add to flashcards");

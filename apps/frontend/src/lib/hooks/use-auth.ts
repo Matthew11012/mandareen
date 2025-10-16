@@ -27,9 +27,8 @@ export const useAuth = () => {
     try {
       await login(data);
 
-      // Force a page refresh to ensure middleware picks up the cookie
-      // This is more reliable than router.push for initial authentication
-      window.location.href = "/dashboard";
+      // Smooth client-side navigation; middleware runs on route change
+      router.replace("/dashboard");
     } catch {
       // Error is handled by the store, component can show it
     }

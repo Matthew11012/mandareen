@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { authApi } from "@/lib/api/auth";
 
 /**
  * Google OAuth Callback Handler
@@ -30,49 +31,19 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        // Extract token from URL parameters
-        const token = searchParams.get("token");
         const error = searchParams.get("error");
+        if (error) throw new Error(error);
 
-        if (error) {
-          throw new Error(error);
-        }
-
-        if (!token) {
-          throw new Error("No authentication token received");
-        }
-
-        // Store the token in both localStorage and cookies
-        localStorage.setItem("auth-token", token);
-        // Set cookie for middleware access (expires in 1 day)
-        document.cookie = `auth-token=${token}; path=/; max-age=86400; SameSite=Lax`;
-
-        // For Google OAuth, we need to fetch user data from the token
-        // Since the backend already validated and created/found the user,
-        // we can decode the JWT to get user info (or make an API call)
-
-        // Simple JWT decode (in production, consider using a proper JWT library)
-        const base64Url = token.split(".")[1];
-        const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-        // Add padding if needed
-        const paddedBase64 = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-        const payload = JSON.parse(window.atob(paddedBase64));
-
-        // Update auth state
-        const authState = {
-          user: {
-            id: payload.sub,
-            email: payload.email,
-          },
-          token,
+        // HttpOnly cookie is already set by backend; fetch current user
+        const me = await authApi.me();
+        useAuthStore.setState({
+          user: { id: me.id, email: me.email },
+          token: null,
           isAuthenticated: true,
-        };
-
-        // Update Zustand store
-        useAuthStore.setState(authState);
+        });
 
         toast.success("Successfully signed in with Google!");
-        router.push("/dashboard");
+        router.replace("/dashboard");
       } catch (error) {
         console.error("OAuth callback error:", error);
         toast.error("Authentication failed. Please try again.");

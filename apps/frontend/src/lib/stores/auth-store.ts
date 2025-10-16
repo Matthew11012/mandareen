@@ -1,11 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import {
-  authApi,
-  type AuthResponse,
-  type LoginData,
-  type RegisterData,
-} from "../api/auth";
+import { authApi, type LoginData, type RegisterData } from "../api/auth";
 
 interface User {
   id: number;
@@ -50,15 +45,12 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
 
         try {
-          const response: AuthResponse = await authApi.login(data);
-
-          // Store token in localStorage and cookies for persistence
-          localStorage.setItem("auth-token", response.token);
-          document.cookie = `auth-token=${response.token}; path=/; max-age=86400; SameSite=Lax`;
-
+          await authApi.login(data);
+          // After server sets cookie, fetch user profile
+          const me = await authApi.me();
           set({
-            user: response.user,
-            token: response.token,
+            user: { id: me.id, email: me.email },
+            token: null,
             isAuthenticated: true,
             isLoading: false,
             error: null,
@@ -88,15 +80,11 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
 
         try {
-          const response: AuthResponse = await authApi.register(data);
-
-          // Store token and auto-login after registration
-          localStorage.setItem("auth-token", response.token);
-          document.cookie = `auth-token=${response.token}; path=/; max-age=86400; SameSite=Lax`;
-
+          await authApi.register(data);
+          const me = await authApi.me();
           set({
-            user: response.user,
-            token: response.token,
+            user: { id: me.id, email: me.email },
+            token: null,
             isAuthenticated: true,
             isLoading: false,
             error: null,
@@ -132,10 +120,6 @@ export const useAuthStore = create<AuthState>()(
           console.warn("Backend logout failed:", error);
         } finally {
           // Always clear local auth state
-          localStorage.removeItem("auth-token");
-          // Clear cookie as well
-          document.cookie =
-            "auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
           set({
             user: null,
             token: null,
@@ -164,64 +148,25 @@ export const useAuthStore = create<AuthState>()(
        * Initialize auth state from stored token
        * Call this on app startup to restore authentication
        */
-      initialize: () => {
-        // Begin initialization; block redirects until we finish
+      initialize: async () => {
         set({ isLoading: true });
-        const token = localStorage.getItem("auth-token");
-        if (token) {
-          try {
-            // Decode JWT to extract user data
-            const base64Url = token.split(".")[1];
-            const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-            // Add padding if needed
-            const paddedBase64 =
-              base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-            const payload = JSON.parse(window.atob(paddedBase64));
-
-            // Check if token is expired
-            if (payload.exp && Date.now() >= payload.exp * 1000) {
-              // Token expired, clear it
-              localStorage.removeItem("auth-token");
-              document.cookie =
-                "auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-              set({
-                user: null,
-                token: null,
-                isAuthenticated: false,
-                isLoading: false,
-                error: null,
-              });
-              return;
-            }
-
-            // Set auth state with decoded user data
-            set({
-              user: {
-                id: payload.sub,
-                email: payload.email,
-              },
-              token,
-              isAuthenticated: true,
-              isLoading: false,
-              error: null,
-            });
-          } catch (error) {
-            // Invalid token, clear it
-            console.error("Invalid token:", error);
-            localStorage.removeItem("auth-token");
-            document.cookie =
-              "auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-            set({
-              user: null,
-              token: null,
-              isAuthenticated: false,
-              isLoading: false,
-              error: null,
-            });
-          }
-        } else {
-          // No token present; finish initialization
-          set({ isLoading: false, isAuthenticated: false });
+        try {
+          const me = await authApi.me();
+          set({
+            user: { id: me.id, email: me.email },
+            token: null,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+          });
+        } catch {
+          set({
+            user: null,
+            token: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: null,
+          });
         }
       },
     }),

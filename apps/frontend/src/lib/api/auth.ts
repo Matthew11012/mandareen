@@ -1,13 +1,7 @@
-import axios from "axios";
 import { z } from "zod";
+import { get, post } from "../http/http";
 
-// Base API configuration
-const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api",
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
+const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
 
 // Validation schemas matching backend DTOs
 export const registerSchema = z.object({
@@ -62,20 +56,8 @@ export const authApi = {
   register: async (data: RegisterData): Promise<AuthResponse> => {
     try {
       const validatedData = registerSchema.parse(data);
-      const response = await api.post<AuthResponse>(
-        "/auth/register",
-        validatedData
-      );
-      return response.data;
+      return post<AuthResponse>("auth/register", validatedData);
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const apiError: ApiError = {
-          message: error.response?.data?.message || "Registration failed",
-          statusCode: error.response?.status,
-          error: error.response?.data?.error,
-        };
-        throw apiError;
-      }
       throw error;
     }
   },
@@ -89,20 +71,8 @@ export const authApi = {
   login: async (data: LoginData): Promise<AuthResponse> => {
     try {
       const validatedData = loginSchema.parse(data);
-      const response = await api.post<AuthResponse>(
-        "/auth/login",
-        validatedData
-      );
-      return response.data;
+      return post<AuthResponse>("auth/login", validatedData);
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const apiError: ApiError = {
-          message: error.response?.data?.message || "Login failed",
-          statusCode: error.response?.status,
-          error: error.response?.data?.error,
-        };
-        throw apiError;
-      }
       throw error;
     }
   },
@@ -114,17 +84,8 @@ export const authApi = {
    */
   logout: async (): Promise<{ message: string }> => {
     try {
-      const response = await api.post<{ message: string }>("/auth/logout");
-      return response.data;
+      return post<{ message: string }>("auth/logout", {});
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const apiError: ApiError = {
-          message: error.response?.data?.message || "Logout failed",
-          statusCode: error.response?.status,
-          error: error.response?.data?.error,
-        };
-        throw apiError;
-      }
       throw error;
     }
   },
@@ -133,8 +94,7 @@ export const authApi = {
    * Get current authenticated user's profile
    */
   me: async (): Promise<MeResponse> => {
-    const response = await api.get<MeResponse>("/users/me");
-    return response.data;
+    return get<MeResponse>("users/me");
   },
 
   /**
@@ -142,32 +102,6 @@ export const authApi = {
    * @returns Google OAuth URL for redirection
    */
   getGoogleAuthUrl: (): string => {
-    const baseUrl =
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
     return `${baseUrl}/auth/google`;
   },
 };
-
-// Axios request interceptor to add auth token
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("auth-token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// Axios response interceptor for auth errors
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Clear invalid token and redirect to login
-      localStorage.removeItem("auth-token");
-      window.location.href = "/auth/login";
-    }
-    return Promise.reject(error);
-  }
-);
-
-export default api;

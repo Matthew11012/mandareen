@@ -24,6 +24,21 @@ export class JwtAuthGuard implements CanActivate {
     } else {
       // Allow token via query param for SSE/EventSource where headers aren't supported
       token = (request.query?.token as string | undefined) || undefined;
+      // Fallback: read from Cookie header (HttpOnly auth-token)
+      if (!token) {
+        const cookieHeader = request.headers['cookie'] as string | undefined;
+        if (cookieHeader) {
+          const cookies = Object.fromEntries(
+            cookieHeader.split(';').map((c: string) => {
+              const idx = c.indexOf('=');
+              const name = c.slice(0, idx).trim();
+              const val = decodeURIComponent(c.slice(idx + 1));
+              return [name, val];
+            }),
+          );
+          token = cookies['auth-token'];
+        }
+      }
     }
 
     if (!token) {

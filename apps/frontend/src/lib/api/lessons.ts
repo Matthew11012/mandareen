@@ -1,16 +1,4 @@
-import axios from "axios";
-
-const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api",
-  headers: { "Content-Type": "application/json" },
-});
-
-api.interceptors.request.use((config) => {
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+import { get, post } from "../http/http";
 
 export interface LessonListItem {
   id: number;
@@ -44,86 +32,66 @@ export const lessonsApi = {
     readTimeMinutes?: number;
     topic?: string;
   }) {
-    const res = await api.post<{ id: number }>("/lessons/generate", params);
-    return res.data;
+    return post<{ id: number }>("lessons/generate", params);
   },
   async list(params?: { level?: number; levels?: number[] }) {
-    const res = await api.get<LessonListItem[]>("/lessons", {
-      params: {
-        level: params?.level,
-        levels:
-          params?.levels && params.levels.length > 0
-            ? params.levels.join(",")
-            : undefined,
-      },
-    });
-    return res.data;
+    const qs = new URLSearchParams();
+    if (typeof params?.level === "number")
+      qs.set("level", String(params.level));
+    if (params?.levels && params.levels.length > 0)
+      qs.set("levels", params.levels.join(","));
+    const path = `lessons${qs.toString() ? `?${qs}` : ""}`;
+    return get<LessonListItem[]>(path);
   },
   async listMine(params?: { level?: number; levels?: number[] }) {
-    const res = await api.get<LessonListItem[]>("/lessons/mine", {
-      params: {
-        level: params?.level,
-        levels:
-          params?.levels && params.levels.length > 0
-            ? params.levels.join(",")
-            : undefined,
-      },
-    });
-    return res.data;
+    const qs = new URLSearchParams();
+    if (typeof params?.level === "number")
+      qs.set("level", String(params.level));
+    if (params?.levels && params.levels.length > 0)
+      qs.set("levels", params.levels.join(","));
+    const path = `lessons/mine${qs.toString() ? `?${qs}` : ""}`;
+    return get<LessonListItem[]>(path);
   },
   async getById(id: number) {
-    const res = await api.get<LessonDetail>(`/lessons/${id}`);
-    return res.data;
+    return get<LessonDetail>(`lessons/${id}`);
   },
   async finish(id: number) {
-    await api.post(`/lessons/${id}/finish`, {});
+    await post(`lessons/${id}/finish`, {});
   },
   async getProgressCount() {
-    const res = await api.get<{ finishedCount: number }>(
-      `/lessons/progress/count`
-    );
-    return res.data;
+    return get<{ finishedCount: number }>(`lessons/progress/count`);
   },
   async getFinishedIds() {
-    const res = await api.get<{ ids: number[] }>(`/lessons/progress/ids`);
-    return res.data;
+    return get<{ ids: number[] }>(`lessons/progress/ids`);
   },
   async getProgressByLevel() {
-    const res = await api.get<{ byLevel: Record<number, number> }>(
-      `/lessons/progress/by-level`
+    return get<{ byLevel: Record<number, number> }>(
+      `lessons/progress/by-level`
     );
-    return res.data;
   },
   async getStudyStreak() {
     const offsetMinutes =
       typeof window !== "undefined" ? -new Date().getTimezoneOffset() : 0;
-    const res = await api.get<{ streakDays: number }>(
-      `/lessons/progress/streak`,
-      { params: { offsetMinutes } }
-    );
-    return res.data;
+    const path = `lessons/progress/streak?offsetMinutes=${offsetMinutes}`;
+    return get<{ streakDays: number }>(path);
   },
   async getStudyStreakStatus() {
     const offsetMinutes =
       typeof window !== "undefined" ? -new Date().getTimezoneOffset() : 0;
-    const res = await api.get<{
+    const path = `lessons/progress/streak-status?offsetMinutes=${offsetMinutes}`;
+    return get<{
       todayContinued: boolean;
       streakDays: number;
       carryOverDays: number;
       lastActivityLocalDate: string | null;
-    }>(`/lessons/progress/streak-status`, { params: { offsetMinutes } });
-    return res.data;
+    }>(path);
   },
   async getWordsRead() {
-    const res = await api.get<{ readCount: number }>(
-      `/lessons/progress/words-read`
-    );
-    return res.data;
+    return get<{ readCount: number }>(`lessons/progress/words-read`);
   },
   async getWordsReadByHsk() {
-    const res = await api.get<{ byHsk: Record<string, number> }>(
-      `/lessons/progress/words-read-by-hsk`
+    return get<{ byHsk: Record<string, number> }>(
+      `lessons/progress/words-read-by-hsk`
     );
-    return res.data;
   },
 };
