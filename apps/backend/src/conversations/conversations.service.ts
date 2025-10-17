@@ -454,8 +454,15 @@ export class ConversationsService {
         } catch (e) {
           this.logger.error(
             'SSE streaming failed; attempting fallback',
-            e as any,
+            (e as any)?.stack || (e as any) || 'unknown error',
           );
+          // Surface an error event to the client for visibility
+          try {
+            subscriber.next({
+              event: 'error',
+              data: { message: (e as any)?.message || 'stream failed' },
+            });
+          } catch {}
           try {
             // Fallback: attempt non-stream single-shot reply without previous deltas
             const fallback = await (this.openai as any).chatChineseReply(hanzi);
@@ -570,8 +577,15 @@ export class ConversationsService {
           } catch (inner) {
             this.logger.error(
               'SSE fallback failed; emitting error message',
-              inner as any,
+              (inner as any)?.stack || (inner as any) || 'unknown error',
             );
+            // Emit error event so client can react
+            try {
+              subscriber.next({
+                event: 'error',
+                data: { message: (inner as any)?.message || 'fallback failed' },
+              });
+            } catch {}
             // Final fallback: emit an error message entry so UI clears placeholder
             const aiMsg = await this.prisma.message.create({
               data: {
@@ -592,7 +606,24 @@ export class ConversationsService {
             subscriber.complete();
           }
         }
-      })();
+      })().catch((err) => {
+        // Outer guard to ensure subscriber is completed and error is visible
+        try {
+          this.logger.error(
+            'streamReply unhandled failure',
+            (err as any)?.stack || (err as any) || 'unknown error',
+          );
+        } catch {}
+        try {
+          subscriber.next({
+            event: 'error',
+            data: { message: (err as any)?.message || 'stream crashed' },
+          });
+        } catch {}
+        try {
+          subscriber.complete();
+        } catch {}
+      });
     });
   }
 

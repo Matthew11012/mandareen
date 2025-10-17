@@ -1,5 +1,4 @@
 import { get, post } from "../http/http";
-import { getAuthToken } from "../http/auth";
 
 export interface Message {
   id: number;
@@ -59,25 +58,20 @@ export const conversationsApi = {
   async sendAudio(id: number, audio: Blob): Promise<{ user: Message }> {
     const form = new FormData();
     form.append("audio", audio, "input.webm");
-    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
-    const url = `${base.replace(/\/api$/, "")}/api/conversations/${id}/audio`;
-    const token = await getAuthToken();
+    const url = `/api/conversations/${id}/audio`;
     const res = await fetch(url, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      // Same-origin: cookies sent automatically
+      credentials: "include",
       body: form,
     });
     if (!res.ok) throw new Error("Audio upload failed");
     return res.json();
   },
   streamUrl(id: number, hanzi: string): string {
-    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("auth-token") : null;
-    const url = new URL(`${base}/conversations/${id}/stream`);
-    if (token) url.searchParams.set("token", token);
-    if (hanzi) url.searchParams.set("hanzi", hanzi);
-    // For SSE with body-less GET; we already POSTed user message with send().
-    return url.toString();
+    const params = new URLSearchParams();
+    if (hanzi) params.set("hanzi", hanzi);
+    // Same-origin SSE so httpOnly cookie is sent; no token appended
+    return `/api/conversations/${id}/stream?${params.toString()}`;
   },
 };

@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardLayout } from "@/components/layout";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { lessonsApi, type LessonListItem } from "@/lib/api/lessons";
-import { Plus, RefreshCw, MessageSquare, Check } from "lucide-react";
+import { Plus, RefreshCw, MessageSquare } from "lucide-react";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { useRouter } from "next/navigation";
-import {
-  useLessonsGenerationStore,
-  type ProgressKey,
-} from "@/lib/stores/lessons-generation-store";
-import { AnimatePresence, motion, LayoutGroup } from "framer-motion";
+import { useLessonsGenerationStore } from "@/lib/stores/lessons-generation-store";
+import { useLessonGenerationStream } from "@/lib/hooks/use-lesson-generation-stream";
+import { LayoutGroup } from "framer-motion";
+import { ProgressBanner } from "@/components/lessons/ProgressBanner";
+import { LessonCard } from "@/components/lessons/LessonCard";
+import { Carousel } from "@/components/lessons/Carousel";
 
 export default function LessonsPage() {
   const { isLoading: authLoading } = useRequireAuth();
@@ -106,236 +107,186 @@ export default function LessonsPage() {
 
   // Derived filtered data
 
-  const myIdSet = new Set(myItems.map((m) => m.id));
-  const myStoriesFiltered = myItems
-    .filter((i) => i.lessonType === "story")
-    .filter((i) => (myLevels.length > 0 ? myLevels.includes(i.level) : true))
-    .filter((i) =>
-      myStoriesStatus === "all"
-        ? true
-        : myStoriesStatus === "finished"
-          ? finishedIds.has(i.id)
-          : !finishedIds.has(i.id)
-    );
-  const myDialoguesFiltered = myItems
-    .filter((i) => i.lessonType === "dialogue")
-    .filter((i) => (myLevels.length > 0 ? myLevels.includes(i.level) : true))
-    .filter((i) =>
-      myDialoguesStatus === "all"
-        ? true
-        : myDialoguesStatus === "finished"
-          ? finishedIds.has(i.id)
-          : !finishedIds.has(i.id)
-    );
-  const storiesFiltered = allStories
-    .filter((i) => !myIdSet.has(i.id))
-    .filter((i) =>
-      storyLevels.length > 0 ? storyLevels.includes(i.level) : true
-    )
-    .filter((i) =>
-      storiesStatus === "all"
-        ? true
-        : storiesStatus === "finished"
-          ? finishedIds.has(i.id)
-          : !finishedIds.has(i.id)
-    );
-  const dialoguesFiltered = allDialogues
-    .filter((i) => !myIdSet.has(i.id))
-    .filter((i) =>
-      dialogueLevels.length > 0 ? dialogueLevels.includes(i.level) : true
-    )
-    .filter((i) =>
-      dialoguesStatus === "all"
-        ? true
-        : dialoguesStatus === "finished"
-          ? finishedIds.has(i.id)
-          : !finishedIds.has(i.id)
-    );
+  const myIdSet = useMemo(() => new Set(myItems.map((m) => m.id)), [myItems]);
+
+  const myStoriesFiltered = useMemo(
+    () =>
+      myItems
+        .filter((i) => i.lessonType === "story")
+        .filter((i) =>
+          myLevels.length > 0 ? myLevels.includes(i.level) : true
+        )
+        .filter((i) =>
+          myStoriesStatus === "all"
+            ? true
+            : myStoriesStatus === "finished"
+              ? finishedIds.has(i.id)
+              : !finishedIds.has(i.id)
+        ),
+    [myItems, myLevels, myStoriesStatus, finishedIds]
+  );
+
+  const myDialoguesFiltered = useMemo(
+    () =>
+      myItems
+        .filter((i) => i.lessonType === "dialogue")
+        .filter((i) =>
+          myLevels.length > 0 ? myLevels.includes(i.level) : true
+        )
+        .filter((i) =>
+          myDialoguesStatus === "all"
+            ? true
+            : myDialoguesStatus === "finished"
+              ? finishedIds.has(i.id)
+              : !finishedIds.has(i.id)
+        ),
+    [myItems, myLevels, myDialoguesStatus, finishedIds]
+  );
+
+  const storiesFiltered = useMemo(
+    () =>
+      allStories
+        .filter((i) => !myIdSet.has(i.id))
+        .filter((i) =>
+          storyLevels.length > 0 ? storyLevels.includes(i.level) : true
+        )
+        .filter((i) =>
+          storiesStatus === "all"
+            ? true
+            : storiesStatus === "finished"
+              ? finishedIds.has(i.id)
+              : !finishedIds.has(i.id)
+        ),
+    [allStories, myIdSet, storyLevels, storiesStatus, finishedIds]
+  );
+
+  const dialoguesFiltered = useMemo(
+    () =>
+      allDialogues
+        .filter((i) => !myIdSet.has(i.id))
+        .filter((i) =>
+          dialogueLevels.length > 0 ? dialogueLevels.includes(i.level) : true
+        )
+        .filter((i) =>
+          dialoguesStatus === "all"
+            ? true
+            : dialoguesStatus === "finished"
+              ? finishedIds.has(i.id)
+              : !finishedIds.has(i.id)
+        ),
+    [allDialogues, myIdSet, dialogueLevels, dialoguesStatus, finishedIds]
+  );
+
+  // date label is computed inside LessonCard; keep out of page renders
+
+  const paginateWithPadding = useCallback(
+    (items: LessonListItem[]): (LessonListItem | null)[][] => {
+      const perPage = cardsPerPage;
+      const pages: (LessonListItem | null)[][] = [];
+      for (let i = 0; i < items.length; i++) {
+        const pageIdx = Math.floor(i / perPage);
+        if (!pages[pageIdx]) pages[pageIdx] = [];
+        pages[pageIdx].push(items[i]);
+      }
+      for (let i = 0; i < pages.length; i++) {
+        const pad = Math.max(0, perPage - pages[i].length);
+        if (pad > 0) pages[i] = [...pages[i], ...Array(pad).fill(null)];
+      }
+      return pages;
+    },
+    [cardsPerPage]
+  );
+
+  const myStoriesPages = useMemo(
+    () => paginateWithPadding(myStoriesFiltered),
+    [paginateWithPadding, myStoriesFiltered]
+  );
+  const myDialoguesPages = useMemo(
+    () => paginateWithPadding(myDialoguesFiltered),
+    [paginateWithPadding, myDialoguesFiltered]
+  );
+  const storiesPages = useMemo(
+    () => paginateWithPadding(storiesFiltered),
+    [paginateWithPadding, storiesFiltered]
+  );
+  const dialoguesPages = useMemo(
+    () => paginateWithPadding(dialoguesFiltered),
+    [paginateWithPadding, dialoguesFiltered]
+  );
+
+  const { start: startStream, attach: attachStream } =
+    useLessonGenerationStream();
 
   const handleGenerate = async () => {
     setError(null);
     setGenerating(true);
     setProgressOpen(true);
-    genStore.start({
+    startStream({
       level: genLevel ?? null,
       topic: topic.trim() || undefined,
       readTimeMinutes: 10,
       type: "story",
     });
     try {
-      const base = (
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
-      ).replace(/\/$/, "");
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("auth-token")
-          : null;
-      if (!token) throw new Error("No auth token");
-      const params = new URLSearchParams({
-        token,
-        type: "story",
-        readTimeMinutes: String(10),
-      });
-      if (genLevel) params.set("level", String(genLevel));
-      if (topic.trim()) params.set("topic", topic.trim());
-      const url = `${base}/lessons/generate/stream?${params.toString()}`;
-
-      const es = new EventSource(url);
-      genStore.setAttached(true);
-      let streamFinished = false;
-      const markComplete = (key: string) => genStore.markCompleted(key);
-
-      const storyStepsOrder = [
-        "openai_generate_story",
-        "segment_story",
-        "openai_generate_grammar_notes",
-        "segment_grammar_notes_and_tips",
-        "persist_lesson",
-      ];
-
-      const handleStepPayload = (raw: unknown) => {
-        let payload: unknown = null;
-        try {
-          payload = typeof raw === "string" ? JSON.parse(raw) : raw;
-        } catch {}
-        const key =
-          ((payload as { key?: string } | null)?.key as string | undefined) ||
-          ((payload as { data?: { key?: string } } | null)?.data?.key as
-            | string
-            | undefined);
-        if (!key) return;
-        genStore.setStep(key as ProgressKey);
-        const idx = storyStepsOrder.indexOf(key);
-        if (idx > 0) {
-          for (let i = 0; i < idx; i++) markComplete(storyStepsOrder[i]);
-        }
-      };
-
-      es.onmessage = async (e) => {
-        const raw = (e as MessageEvent).data as unknown;
-        handleStepPayload(raw);
-        try {
-          let id: number | undefined = undefined;
-          if (typeof raw === "string" && raw.trim().length > 0) {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed.id === "number") id = parsed.id;
-          } else if (
-            raw &&
-            typeof raw === "object" &&
-            typeof (raw as { id?: unknown }).id === "number"
-          ) {
-            id = (raw as { id?: unknown }).id as number;
-          }
-          if (typeof id === "number" && !streamFinished) {
-            storyStepsOrder.forEach((k) => markComplete(k));
-            genStore.setStep("complete");
-            genStore.setLessonId(id);
-            streamFinished = true;
-            es.close();
-            await load();
-            setProgressOpen(false);
-            genStore.setLessonId(null);
-            genStore.finish();
-            router.push(`/lessons/${id}`);
-          }
-        } catch {}
-      };
-      es.addEventListener("queued", () => genStore.setStep("queued"));
-      es.addEventListener("started", () => genStore.setStep("started"));
-      es.addEventListener("step", (e: MessageEvent) =>
-        handleStepPayload(e.data)
-      );
-      es.addEventListener("heartbeat", () => {});
-      es.addEventListener("complete", async (e: MessageEvent) => {
-        try {
-          let id: number | undefined = undefined;
-          const raw = (e as MessageEvent).data as unknown;
-          if (typeof raw === "string" && raw.trim().length > 0) {
-            try {
-              const parsed = JSON.parse(raw);
-              id =
-                parsed && typeof parsed.id === "number" ? parsed.id : undefined;
-            } catch {
-              id = undefined;
-            }
-          } else if (
-            raw &&
-            typeof raw === "object" &&
-            typeof (raw as { id?: unknown }).id === "number"
-          ) {
-            id = (raw as { id?: unknown }).id as number;
-          }
-          storyStepsOrder.forEach((k) => markComplete(k));
-          genStore.setStep("complete");
-          streamFinished = true;
-          es.close();
+      await attachStream({
+        params: {
+          level: genLevel ?? null,
+          topic: topic.trim() || undefined,
+          readTimeMinutes: 10,
+          type: "story",
+        },
+        onComplete: async (id?: number) => {
           await load();
           setProgressOpen(false);
           if (id) {
             genStore.setLessonId(null);
+            genStore.finish();
             router.push(`/lessons/${id}`);
           }
-        } catch {
-          streamFinished = true;
+        },
+        onError: async () => {
           try {
-            es.close();
+            await load();
+            const startedAt = genStore.startedAt || Date.now();
+            const startedThreshold = startedAt - 60_000;
+            const recentMine = myItems
+              .filter((i) => i.lessonType === "story")
+              .filter(
+                (i) => new Date(i.createdAt).getTime() >= startedThreshold
+              )
+              .sort(
+                (a, b) =>
+                  new Date(b.createdAt).getTime() -
+                  new Date(a.createdAt).getTime()
+              );
+            if (recentMine.length > 0) {
+              setProgressOpen(false);
+              setGenerating(false);
+              genStore.finish();
+              router.push(`/lessons/${recentMine[0].id}`);
+              return;
+            }
           } catch {}
-          setProgressOpen(false);
-        } finally {
+          setError("Failed to generate lesson");
           setGenerating(false);
+          setProgressOpen(false);
           genStore.finish();
-        }
-      });
-      es.addEventListener("error", async () => {
-        if (streamFinished) return;
-        try {
-          es.close();
-        } catch {}
-        try {
-          await load();
-          const startedAt = genStore.startedAt || Date.now();
-          const startedThreshold = startedAt - 60_000;
-          const recentMine = myItems
-            .filter((i) => i.lessonType === "story")
-            .filter((i) => new Date(i.createdAt).getTime() >= startedThreshold)
-            .sort(
-              (a, b) =>
-                new Date(b.createdAt).getTime() -
-                new Date(a.createdAt).getTime()
-            );
-          if (recentMine.length > 0) {
-            streamFinished = true;
-            setProgressOpen(false);
-            setGenerating(false);
-            genStore.finish();
-            router.push(`/lessons/${recentMine[0].id}`);
-            return;
-          }
-        } catch {}
-        setError("Failed to generate lesson");
-        setGenerating(false);
-        setProgressOpen(false);
-        genStore.finish();
+        },
+        markAllComplete: () => {
+          [
+            "openai_generate_story",
+            "segment_story",
+            "openai_generate_grammar_notes",
+            "segment_grammar_notes_and_tips",
+            "persist_lesson",
+          ].forEach((k) => genStore.markCompleted(k));
+        },
       });
     } catch {
-      // Fallback to non-stream API
-      try {
-        const { id } = await lessonsApi.generate({
-          type: "story",
-          readTimeMinutes: 10,
-          level: genLevel ?? undefined,
-          topic: topic.trim() || undefined,
-        });
-        await load();
-        genStore.setLessonId(id);
-        router.push(`/lessons/${id}`);
-      } catch {
-        setError("Failed to generate lesson");
-      } finally {
-        setGenerating(false);
-        setProgressOpen(false);
-        genStore.finish();
-      }
+      setError("Failed to generate lesson");
+      setGenerating(false);
+      setProgressOpen(false);
+      genStore.finish();
     }
   };
 
@@ -356,195 +307,67 @@ export default function LessonsPage() {
     setError(null);
     setGenerating(true);
     setProgressOpen(true);
-    genStore.start({
+    startStream({
       level: genLevel ?? null,
       topic: topic.trim() || undefined,
       readTimeMinutes: 8,
       type: "dialogue",
     });
     try {
-      const base = (
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
-      ).replace(/\/$/, "");
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("auth-token")
-          : null;
-      if (!token) throw new Error("No auth token");
-      const params = new URLSearchParams({
-        token,
-        type: "dialogue",
-        readTimeMinutes: String(5),
-      });
-      if (genLevel) params.set("level", String(genLevel));
-      if (topic.trim()) params.set("topic", topic.trim());
-      const url = `${base}/lessons/generate/stream?${params.toString()}`;
-
-      const es = new EventSource(url);
-      genStore.setAttached(true);
-      let streamFinished = false; // guard to ignore spurious errors after completion
-      const markComplete = (key: string) => genStore.markCompleted(key);
-
-      const handleStepPayload = (raw: unknown) => {
-        let payload: unknown = null;
-        try {
-          payload = typeof raw === "string" ? JSON.parse(raw) : raw;
-        } catch {}
-        // Support { key } or { data: { key } }
-        const key =
-          ((payload as { key?: string } | null)?.key as string | undefined) ||
-          ((payload as { data?: { key?: string } } | null)?.data?.key as
-            | string
-            | undefined);
-        if (!key) return;
-        genStore.setStep(key as ProgressKey);
-        const idx = progressStepsOrder.indexOf(key);
-        if (idx > 0) {
-          for (let i = 0; i < idx; i++) markComplete(progressStepsOrder[i]);
-        }
-      };
-
-      // Support both typed events and default message events
-      es.onmessage = async (e) => {
-        const raw = (e as MessageEvent).data as unknown;
-        // First, try to handle as a step payload
-        handleStepPayload(raw);
-        // If not a step, also check if this looks like a completion payload
-        try {
-          let id: number | undefined = undefined;
-          if (typeof raw === "string" && raw.trim().length > 0) {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed.id === "number") id = parsed.id;
-          } else if (
-            raw &&
-            typeof raw === "object" &&
-            typeof (raw as { id?: unknown }).id === "number"
-          ) {
-            id = (raw as { id?: unknown }).id as number;
-          }
-          if (typeof id === "number" && !streamFinished) {
-            progressStepsOrder.forEach((k) => markComplete(k));
-            genStore.setStep("complete");
-            genStore.setLessonId(id);
-            streamFinished = true;
-            es.close();
-            await load();
-            setProgressOpen(false);
-            genStore.setLessonId(null);
-            genStore.finish();
-            router.push(`/lessons/${id}`);
-          }
-        } catch {
-          // ignore
-        }
-      };
-      es.addEventListener("queued", () => genStore.setStep("queued"));
-      es.addEventListener("started", () => genStore.setStep("started"));
-      es.addEventListener("step", (e: MessageEvent) =>
-        handleStepPayload(e.data)
-      );
-      es.addEventListener("heartbeat", () => {
-        // no-op, used to keep connection alive
-      });
-      es.addEventListener("complete", async (e: MessageEvent) => {
-        try {
-          let id: number | undefined = undefined;
-          const raw = (e as MessageEvent).data as unknown;
-          if (typeof raw === "string" && raw.trim().length > 0) {
-            try {
-              const parsed = JSON.parse(raw);
-              id =
-                parsed && typeof parsed.id === "number" ? parsed.id : undefined;
-            } catch {
-              id = undefined;
-            }
-          } else if (
-            raw &&
-            typeof raw === "object" &&
-            typeof (raw as { id?: unknown }).id === "number"
-          ) {
-            id = (raw as { id?: unknown }).id as number;
-          }
-          progressStepsOrder.forEach((k) => markComplete(k));
-          genStore.setStep("complete");
-          streamFinished = true;
-          es.close();
+      await attachStream({
+        params: {
+          level: genLevel ?? null,
+          topic: topic.trim() || undefined,
+          readTimeMinutes: 8,
+          type: "dialogue",
+        },
+        onComplete: async (id?: number) => {
           await load();
           setProgressOpen(false);
           if (id) {
             genStore.setLessonId(null);
             router.push(`/lessons/${id}`);
           }
-        } catch {
-          // Do not surface an error here; treat as completed without redirect
-          streamFinished = true;
-          try {
-            es.close();
-          } catch {}
-          setProgressOpen(false);
-        } finally {
           setGenerating(false);
           genStore.finish();
-        }
+        },
+        onError: async () => {
+          try {
+            await load();
+            const startedAt = genStore.startedAt || Date.now();
+            const startedThreshold = startedAt - 60_000;
+            const recentMine = myItems
+              .filter((i) => i.lessonType === "dialogue")
+              .filter(
+                (i) => new Date(i.createdAt).getTime() >= startedThreshold
+              )
+              .sort(
+                (a, b) =>
+                  new Date(b.createdAt).getTime() -
+                  new Date(a.createdAt).getTime()
+              );
+            if (recentMine.length > 0) {
+              setProgressOpen(false);
+              setGenerating(false);
+              genStore.finish();
+              router.push(`/lessons/${recentMine[0].id}`);
+              return;
+            }
+          } catch {}
+          setError("Generation failed");
+          setGenerating(false);
+          setProgressOpen(false);
+          genStore.finish();
+        },
+        markAllComplete: () => {
+          progressStepsOrder.forEach((k) => genStore.markCompleted(k));
+        },
       });
-      es.addEventListener("error", async () => {
-        if (streamFinished) return; // ignore errors after completion/close
-        try {
-          es.close();
-        } catch {}
-        // Fallback: try to locate the newly created lesson since backend may have completed successfully
-        try {
-          await load();
-          const startedAt = genStore.startedAt || Date.now();
-          const startedThreshold = startedAt - 60_000; // 1 minute grace
-          // Prefer my items and dialogues only
-          const recentMine = myItems
-            .filter((i) => i.lessonType === "dialogue")
-            .filter((i) => {
-              const ts = new Date(i.createdAt).getTime();
-              return ts >= startedThreshold;
-            })
-            .sort(
-              (a, b) =>
-                new Date(b.createdAt).getTime() -
-                new Date(a.createdAt).getTime()
-            );
-          if (recentMine.length > 0) {
-            streamFinished = true;
-            setProgressOpen(false);
-            setGenerating(false);
-            genStore.finish();
-            router.push(`/lessons/${recentMine[0].id}`);
-            return;
-          }
-        } catch {
-          // ignore and fall through to error UI
-        }
-        setError("Generation failed");
-        setGenerating(false);
-        setProgressOpen(false);
-        genStore.finish();
-      });
-
-      // Do not auto-close the SSE; let backend signal completion or error.
     } catch {
-      try {
-        const { id } = await lessonsApi.generate({
-          type: "dialogue",
-          readTimeMinutes: 5,
-          level: genLevel ?? undefined,
-          topic: topic.trim() || undefined,
-        });
-        await load();
-        genStore.setLessonId(id);
-        router.push(`/lessons/${id}`);
-      } catch {
-        setError("Failed to generate dialogue");
-      } finally {
-        setGenerating(false);
-        setProgressOpen(false);
-        genStore.finish();
-      }
+      setError("Generation failed");
+      setGenerating(false);
+      setProgressOpen(false);
+      genStore.finish();
     }
   };
 
@@ -600,6 +423,30 @@ export default function LessonsPage() {
     };
   }, [genStore, router]);
 
+  // rAF-throttled scroll handlers to reduce layout work
+  const myStoriesRaf = useRef<number | null>(null);
+  const myDialoguesRaf = useRef<number | null>(null);
+  const storiesRaf = useRef<number | null>(null);
+  const dialoguesRaf = useRef<number | null>(null);
+
+  const handleScrollPaged = useCallback(
+    (
+      ref: React.RefObject<HTMLDivElement | null>,
+      setPage: (n: number) => void,
+      rafRef: React.MutableRefObject<number | null>
+    ) => {
+      const el = ref.current;
+      if (!el) return;
+      if (rafRef.current != null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        const idx = Math.round(el.scrollLeft / el.clientWidth);
+        setPage(idx);
+      });
+    },
+    []
+  );
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#222831] flex items-center justify-center">
@@ -616,83 +463,12 @@ export default function LessonsPage() {
       <div className="p-6 pt-4 space-y-6">
         {/* Top progress box (non-blocking) */}
         {progressOpen && (
-          <div className="sticky top-2 z-30 mb-4">
-            <motion.div
-              className="relative rounded-xl px-4 py-3 text-white shadow-lg ring-1 ring-white/15 backdrop-blur-md"
-              style={{
-                background:
-                  "linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.06))",
-              }}
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-            >
-              <motion.div
-                aria-hidden
-                className="pointer-events-none absolute inset-0 rounded-xl"
-                style={{
-                  background:
-                    "radial-gradient(1200px 300px at -10% -50%, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 60%, transparent 80%)",
-                  maskImage:
-                    "linear-gradient(to bottom, black, transparent 85%)",
-                }}
-                animate={{ backgroundPosition: ["0% 0%", "120% 0%"] }}
-                transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-              />
-              <div className="relative flex items-center justify-between gap-3">
-                <div className="font-inter font-semibold">
-                  Generating lesson…
-                </div>
-                <div className="text-xs text-white/70">
-                  This can take up to several minutes
-                </div>
-              </div>
-              <ol className="relative mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {(genStore.params?.readTimeMinutes === 10
-                  ? [
-                      "openai_generate_story",
-                      "segment_story",
-                      "openai_generate_grammar_notes",
-                      "segment_grammar_notes_and_tips",
-                      "persist_lesson",
-                    ]
-                  : progressStepsOrder
-                ).map((k) => {
-                  const active = progressStep === k;
-                  const done = !!completedSteps[k];
-                  return (
-                    <li key={k} className="flex items-center gap-2 text-xs">
-                      <div
-                        className={`h-3 w-3 rounded-full border backdrop-blur-sm ${
-                          done
-                            ? "bg-emerald-400/80 border-emerald-300/60 shadow-[0_0_10px_rgba(74,222,128,0.6)]"
-                            : active
-                              ? "border-white/80 motion-safe:animate-pulse"
-                              : "border-white/30"
-                        }`}
-                      />
-                      <span>
-                        {k === "openai_generate_dialogue" &&
-                          "Generating dialogue"}
-                        {k === "openai_generate_story" && "Generating story"}
-                        {k === "segment_dialogue" &&
-                          "Analyzing & segmenting dialogue"}
-                        {k === "segment_story" &&
-                          "Analyzing & segmenting story"}
-                        {k === "rag_retrieve_context" &&
-                          "Retrieving grammar context"}
-                        {k === "openai_generate_grammar_notes" &&
-                          "Generating grammar notes"}
-                        {k === "segment_grammar_notes_and_tips" &&
-                          "Segmenting notes & tips"}
-                        {k === "persist_lesson" && "Saving lesson"}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ol>
-            </motion.div>
-          </div>
+          <ProgressBanner
+            readTimeMinutes={genStore.params?.readTimeMinutes || null}
+            progressStep={progressStep}
+            completedSteps={completedSteps}
+            dialogueSteps={progressStepsOrder}
+          />
         )}
         {/* Topic & Generation Options */}
         <div className="bg-[#2e323a] rounded-xl p-4 border border-[#404040] space-y-3">
@@ -839,9 +615,9 @@ export default function LessonsPage() {
             {/* My Lessons Section */}
             <div className="space-y-3">
               <div className="flex gap-2 flex-col md:flex-row md:items-center justify-between ">
-                <h3 className="text-white font-inter font-semibold">
+                <h2 className="text-white font-inter font-semibold">
                   My Lessons
-                </h3>
+                </h2>
                 <div className="flex items-center gap-1 sm:gap-2">
                   <span className="text-xs text-[#a6a6a6] mr-1 hidden sm:inline">
                     Filter by HSK:
@@ -937,167 +713,39 @@ export default function LessonsPage() {
                     ) : (
                       <div className="overflow-hidden py-2">
                         <LayoutGroup>
-                          <div
-                            ref={myStoriesRef}
-                            onScroll={() => {
-                              const el = myStoriesRef.current;
-                              if (!el) return;
-                              const idx = Math.round(
-                                el.scrollLeft / el.clientWidth
-                              );
-                              if (idx !== myStoriesPage) setMyStoriesPage(idx);
-                            }}
-                            className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide"
-                          >
-                            <AnimatePresence mode="popLayout">
-                              {myStoriesFiltered
-                                .reduce(
-                                  (
-                                    pages: LessonListItem[][],
-                                    item: LessonListItem,
-                                    idx: number
-                                  ) => {
-                                    const pageIdx = Math.floor(
-                                      idx / cardsPerPage
-                                    );
-                                    if (!pages[pageIdx]) pages[pageIdx] = [];
-                                    pages[pageIdx].push(item);
-                                    return pages;
-                                  },
-                                  []
-                                )
-                                .map((page, i) => {
-                                  const padCount = Math.max(
-                                    0,
-                                    cardsPerPage - page.length
-                                  );
-                                  const padded = [
-                                    ...page,
-                                    ...Array(padCount).fill(null),
-                                  ];
-                                  return (
-                                    <motion.div
-                                      key={i}
-                                      layout
-                                      className="min-w-full snap-start flex items-stretch"
-                                    >
-                                      <div
-                                        className={`${page.length >= (isMobile ? 4 : 9) ? "flex-none w-3 sm:w-4 md:w-5" : "flex-none w-0"}`}
-                                        aria-hidden="true"
-                                      />
-                                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
-                                        <AnimatePresence mode="popLayout">
-                                          {padded.map(
-                                            (l: LessonListItem | null, idx2) =>
-                                              l ? (
-                                                <motion.div
-                                                  key={l.id}
-                                                  layout
-                                                  initial={{
-                                                    opacity: 0,
-                                                    scale: 0.8,
-                                                    y: 20,
-                                                  }}
-                                                  animate={{
-                                                    opacity: 1,
-                                                    scale: 1,
-                                                    y: 0,
-                                                    borderColor: "#404040",
-                                                  }}
-                                                  exit={{
-                                                    opacity: 0,
-                                                    scale: 0.8,
-                                                    y: -20,
-                                                  }}
-                                                  transition={{
-                                                    duration: 0.3,
-                                                    delay: idx2 * 0.05,
-                                                    layout: { duration: 0.4 },
-                                                  }}
-                                                  className={`rounded-xl p-4 cursor-pointer ${
-                                                    finishedIds.has(l.id)
-                                                      ? "border border-green-500/50 bg-gradient-to-br from-green-900/20 to-green-800/10 shadow-lg ring-1 ring-green-500/30"
-                                                      : "border border-[#404040] bg-[#2e323a]"
-                                                  }`}
-                                                  onClick={() =>
-                                                    router.push(
-                                                      `/lessons/${l.id}`
-                                                    )
-                                                  }
-                                                  whileHover={{
-                                                    scale: 1.02,
-                                                    borderColor:
-                                                      finishedIds.has(l.id)
-                                                        ? "#20c997"
-                                                        : "#4040f2",
-                                                  }}
-                                                  whileTap={{ scale: 0.98 }}
-                                                >
-                                                  <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                      <span
-                                                        className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                      >
-                                                        HSK {l.level}
-                                                      </span>
-                                                      {finishedIds.has(l.id) ? (
-                                                        <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                                                          <Check className="w-3 h-3 text-green-400 mx-auto" />
-                                                          Finished
-                                                        </span>
-                                                      ) : (
-                                                        <span />
-                                                      )}
-                                                    </div>
-                                                    <p
-                                                      className="text-white font-inter font-semibold mt-2 truncate text-sm"
-                                                      title={
-                                                        (l.titleTranslation ||
-                                                          l.title ||
-                                                          `Lesson #${l.id}`) as string
-                                                      }
-                                                    >
-                                                      {l.titleTranslation ||
-                                                        l.title ||
-                                                        `Lesson #${l.id}`}
-                                                    </p>
-                                                    {l.title && (
-                                                      <p
-                                                        className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1"
-                                                        title={
-                                                          (l.title as string) ||
-                                                          undefined
-                                                        }
-                                                      >
-                                                        {l.title}
-                                                      </p>
-                                                    )}
-                                                    <div className="mt-2 pt-2 border-t border-[#404040] flex items-center justify-between text-[11px] text-[#8b949e]">
-                                                      <span>
-                                                        {new Date(l.createdAt)
-                                                          .toISOString()
-                                                          .slice(0, 10)}
-                                                      </span>
-                                                      <span className="text-[#a6a6a6]">
-                                                        My Story
-                                                      </span>
-                                                    </div>
-                                                  </div>
-                                                </motion.div>
-                                              ) : (
-                                                <div
-                                                  key={`pad-ms-${idx2}`}
-                                                  className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
-                                                />
-                                              )
-                                          )}
-                                        </AnimatePresence>
-                                      </div>
-                                    </motion.div>
-                                  );
-                                })}
-                            </AnimatePresence>
-                          </div>
+                          <Carousel
+                            containerRef={myStoriesRef}
+                            onScroll={() =>
+                              handleScrollPaged(
+                                myStoriesRef,
+                                setMyStoriesPage,
+                                myStoriesRaf
+                              )
+                            }
+                            pages={myStoriesPages}
+                            pageSize={cardsPerPage}
+                            padKeyPrefix="pad-ms"
+                            renderItem={(l: LessonListItem | null) =>
+                              l ? (
+                                <LessonCard
+                                  key={l.id}
+                                  id={l.id}
+                                  level={l.level}
+                                  title={l.title as string | undefined}
+                                  titleTranslation={
+                                    l.titleTranslation as string | undefined
+                                  }
+                                  createdAt={l.createdAt}
+                                  isFinished={finishedIds.has(l.id)}
+                                  typeLabel="My Story"
+                                  getLevelPillColor={getLevelPillColor}
+                                  onClick={() =>
+                                    router.push(`/lessons/${l.id}`)
+                                  }
+                                />
+                              ) : null
+                            }
+                          />
                         </LayoutGroup>
                         <div className="mt-2 flex items-center justify-center gap-2">
                           {(() => {
@@ -1225,168 +873,39 @@ export default function LessonsPage() {
                     ) : (
                       <div className="overflow-hidden py-2">
                         <LayoutGroup>
-                          <div
-                            ref={myDialoguesRef}
-                            onScroll={() => {
-                              const el = myDialoguesRef.current;
-                              if (!el) return;
-                              const idx = Math.round(
-                                el.scrollLeft / el.clientWidth
-                              );
-                              if (idx !== myDialoguesPage)
-                                setMyDialoguesPage(idx);
-                            }}
-                            className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide"
-                          >
-                            <AnimatePresence mode="popLayout">
-                              {myDialoguesFiltered
-                                .reduce(
-                                  (
-                                    pages: LessonListItem[][],
-                                    item: LessonListItem,
-                                    idx: number
-                                  ) => {
-                                    const pageIdx = Math.floor(
-                                      idx / cardsPerPage
-                                    );
-                                    if (!pages[pageIdx]) pages[pageIdx] = [];
-                                    pages[pageIdx].push(item);
-                                    return pages;
-                                  },
-                                  []
-                                )
-                                .map((page, i) => {
-                                  const padCount = Math.max(
-                                    0,
-                                    cardsPerPage - page.length
-                                  );
-                                  const padded = [
-                                    ...page,
-                                    ...Array(padCount).fill(null),
-                                  ];
-                                  return (
-                                    <motion.div
-                                      key={i}
-                                      layout
-                                      className="min-w-full snap-start flex items-stretch"
-                                    >
-                                      <div
-                                        className={`${page.length >= (isMobile ? 4 : 9) ? "flex-none w-3 sm:w-4 md:w-5" : "flex-none w-0"}`}
-                                        aria-hidden="true"
-                                      />
-                                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
-                                        <AnimatePresence mode="popLayout">
-                                          {padded.map(
-                                            (l: LessonListItem | null, idx2) =>
-                                              l ? (
-                                                <motion.div
-                                                  key={l.id}
-                                                  layout
-                                                  initial={{
-                                                    opacity: 0,
-                                                    scale: 0.8,
-                                                    y: 20,
-                                                  }}
-                                                  animate={{
-                                                    opacity: 1,
-                                                    scale: 1,
-                                                    y: 0,
-                                                    borderColor: "#404040",
-                                                  }}
-                                                  exit={{
-                                                    opacity: 0,
-                                                    scale: 0.8,
-                                                    y: -20,
-                                                  }}
-                                                  transition={{
-                                                    duration: 0.3,
-                                                    delay: idx2 * 0.05,
-                                                    layout: { duration: 0.4 },
-                                                  }}
-                                                  className={`rounded-xl p-4 cursor-pointer ${
-                                                    finishedIds.has(l.id)
-                                                      ? "border border-green-500/50 bg-gradient-to-br from-green-900/20 to-green-800/10 shadow-lg ring-1 ring-green-500/30"
-                                                      : "border border-[#404040] bg-[#2e323a]"
-                                                  }`}
-                                                  onClick={() =>
-                                                    router.push(
-                                                      `/lessons/${l.id}`
-                                                    )
-                                                  }
-                                                  whileHover={{
-                                                    scale: 1.02,
-                                                    borderColor:
-                                                      finishedIds.has(l.id)
-                                                        ? "#20c997"
-                                                        : "#4040f2",
-                                                  }}
-                                                  whileTap={{ scale: 0.98 }}
-                                                >
-                                                  <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                      <span
-                                                        className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                      >
-                                                        HSK {l.level}
-                                                      </span>
-                                                      {finishedIds.has(l.id) ? (
-                                                        <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                                                          <Check className="w-3 h-3 text-green-400 mx-auto" />
-                                                          Finished
-                                                        </span>
-                                                      ) : (
-                                                        <span />
-                                                      )}
-                                                    </div>
-                                                    <p
-                                                      className="text-white font-inter font-semibold mt-2 truncate text-sm"
-                                                      title={
-                                                        (l.titleTranslation ||
-                                                          l.title ||
-                                                          `Dialogue #${l.id}`) as string
-                                                      }
-                                                    >
-                                                      {l.titleTranslation ||
-                                                        l.title ||
-                                                        `Dialogue #${l.id}`}
-                                                    </p>
-                                                    {l.title && (
-                                                      <p
-                                                        className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1"
-                                                        title={
-                                                          (l.title as string) ||
-                                                          undefined
-                                                        }
-                                                      >
-                                                        {l.title}
-                                                      </p>
-                                                    )}
-                                                    <div className="mt-2 pt-2 border-t border-[#404040] flex items-center justify-between text-[11px] text-[#8b949e]">
-                                                      <span>
-                                                        {new Date(l.createdAt)
-                                                          .toISOString()
-                                                          .slice(0, 10)}
-                                                      </span>
-                                                      <span className="text-[#a6a6a6]">
-                                                        My Dialogue
-                                                      </span>
-                                                    </div>
-                                                  </div>
-                                                </motion.div>
-                                              ) : (
-                                                <div
-                                                  key={`pad-md-${idx2}`}
-                                                  className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
-                                                />
-                                              )
-                                          )}
-                                        </AnimatePresence>
-                                      </div>
-                                    </motion.div>
-                                  );
-                                })}
-                            </AnimatePresence>
-                          </div>
+                          <Carousel
+                            containerRef={myDialoguesRef}
+                            onScroll={() =>
+                              handleScrollPaged(
+                                myDialoguesRef,
+                                setMyDialoguesPage,
+                                myDialoguesRaf
+                              )
+                            }
+                            pages={myDialoguesPages}
+                            pageSize={cardsPerPage}
+                            padKeyPrefix="pad-md"
+                            renderItem={(l: LessonListItem | null) =>
+                              l ? (
+                                <LessonCard
+                                  key={l.id}
+                                  id={l.id}
+                                  level={l.level}
+                                  title={l.title as string | undefined}
+                                  titleTranslation={
+                                    l.titleTranslation as string | undefined
+                                  }
+                                  createdAt={l.createdAt}
+                                  isFinished={finishedIds.has(l.id)}
+                                  typeLabel="My Dialogue"
+                                  getLevelPillColor={getLevelPillColor}
+                                  onClick={() =>
+                                    router.push(`/lessons/${l.id}`)
+                                  }
+                                />
+                              ) : null
+                            }
+                          />
                         </LayoutGroup>
                         <div className="mt-2 flex items-center justify-center gap-2">
                           {(() => {
@@ -1557,160 +1076,37 @@ export default function LessonsPage() {
                   </p>
                 ) : (
                   <LayoutGroup>
-                    <div
-                      ref={storiesRef}
-                      onScroll={() => {
-                        const el = storiesRef.current;
-                        if (!el) return;
-                        const idx = Math.round(el.scrollLeft / el.clientWidth);
-                        if (idx !== storiesPage) setStoriesPage(idx);
-                      }}
-                      className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide"
-                    >
-                      <AnimatePresence mode="popLayout">
-                        {storiesFiltered
-                          .reduce(
-                            (
-                              pages: LessonListItem[][],
-                              item: LessonListItem,
-                              idx: number
-                            ) => {
-                              const pageIdx = Math.floor(idx / cardsPerPage);
-                              if (!pages[pageIdx]) pages[pageIdx] = [];
-                              pages[pageIdx].push(item);
-                              return pages;
-                            },
-                            []
-                          )
-                          .map((page, i) => {
-                            const padCount = Math.max(
-                              0,
-                              cardsPerPage - page.length
-                            );
-                            const padded = [
-                              ...page,
-                              ...Array(padCount).fill(null),
-                            ];
-                            return (
-                              <motion.div
-                                key={i}
-                                layout
-                                className="min-w-full snap-start flex items-stretch"
-                              >
-                                <div
-                                  className={`${page.length >= 9 ? "flex-none w-3 sm:w-4 md:w-5" : "flex-none w-0"}`}
-                                  aria-hidden="true"
-                                />
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
-                                  <AnimatePresence mode="popLayout">
-                                    {padded.map(
-                                      (l: LessonListItem | null, idx2) =>
-                                        l ? (
-                                          <motion.div
-                                            key={l.id}
-                                            layout
-                                            initial={{
-                                              opacity: 0,
-                                              scale: 0.8,
-                                              y: 20,
-                                            }}
-                                            animate={{
-                                              opacity: 1,
-                                              scale: 1,
-                                              y: 0,
-                                              borderColor: "#404040",
-                                            }}
-                                            exit={{
-                                              opacity: 0,
-                                              scale: 0.8,
-                                              y: -20,
-                                            }}
-                                            transition={{
-                                              duration: 0.3,
-                                              delay: idx2 * 0.05,
-                                              layout: { duration: 0.4 },
-                                            }}
-                                            className={`rounded-xl p-4 cursor-pointer ${
-                                              finishedIds.has(l.id)
-                                                ? "border border-green-500/50 bg-gradient-to-br from-green-900/20 to-green-800/10 shadow-lg ring-1 ring-green-500/30"
-                                                : "border border-[#404040] bg-[#2e323a]"
-                                            }`}
-                                            onClick={() =>
-                                              router.push(`/lessons/${l.id}`)
-                                            }
-                                            whileHover={{
-                                              scale: 1.02,
-                                              borderColor: finishedIds.has(l.id)
-                                                ? "#20c997"
-                                                : "#4040f2",
-                                            }}
-                                            whileTap={{ scale: 0.98 }}
-                                          >
-                                            <div className="flex-1 min-w-0">
-                                              <div className="flex items-center justify-between gap-2">
-                                                <span
-                                                  className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                                >
-                                                  HSK {l.level}
-                                                </span>
-                                                {finishedIds.has(l.id) ? (
-                                                  <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                                                    <Check className="w-3 h-3 text-green-400 mx-auto" />
-                                                    Finished
-                                                  </span>
-                                                ) : (
-                                                  <span />
-                                                )}
-                                              </div>
-                                              <p
-                                                className="text-white font-inter font-semibold mt-2 truncate text-sm"
-                                                title={
-                                                  (l.titleTranslation ||
-                                                    l.title ||
-                                                    `Lesson #${l.id}`) as string
-                                                }
-                                              >
-                                                {l.titleTranslation ||
-                                                  l.title ||
-                                                  `Lesson #${l.id}`}
-                                              </p>
-                                              {l.title && (
-                                                <p
-                                                  className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1"
-                                                  title={
-                                                    (l.title as string) ||
-                                                    undefined
-                                                  }
-                                                >
-                                                  {l.title}
-                                                </p>
-                                              )}
-                                              <div className="mt-2 pt-2 border-t border-[#404040] flex items-center justify-between text-[11px] text-[#8b949e]">
-                                                <span>
-                                                  {new Date(l.createdAt)
-                                                    .toISOString()
-                                                    .slice(0, 10)}
-                                                </span>
-                                                <span className="text-[#a6a6a6]">
-                                                  Story
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </motion.div>
-                                        ) : (
-                                          <div
-                                            key={`pad-s-${idx2}`}
-                                            className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
-                                          />
-                                        )
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-                              </motion.div>
-                            );
-                          })}
-                      </AnimatePresence>
-                    </div>
+                    <Carousel
+                      containerRef={storiesRef}
+                      onScroll={() =>
+                        handleScrollPaged(
+                          storiesRef,
+                          setStoriesPage,
+                          storiesRaf
+                        )
+                      }
+                      pages={storiesPages}
+                      pageSize={cardsPerPage}
+                      padKeyPrefix="pad-s"
+                      renderItem={(l: LessonListItem | null) =>
+                        l ? (
+                          <LessonCard
+                            key={l.id}
+                            id={l.id}
+                            level={l.level}
+                            title={l.title as string | undefined}
+                            titleTranslation={
+                              l.titleTranslation as string | undefined
+                            }
+                            createdAt={l.createdAt}
+                            isFinished={finishedIds.has(l.id)}
+                            typeLabel="Story"
+                            getLevelPillColor={getLevelPillColor}
+                            onClick={() => router.push(`/lessons/${l.id}`)}
+                          />
+                        ) : null
+                      }
+                    />
                   </LayoutGroup>
                 )}
                 {storiesFiltered.length > 0 && (
@@ -1869,162 +1265,37 @@ export default function LessonsPage() {
               </div>
               <div className="overflow-hidden py-2">
                 <LayoutGroup>
-                  <div
-                    ref={dialoguesRef}
-                    onScroll={() => {
-                      const el = dialoguesRef.current;
-                      if (!el) return;
-                      const idx = Math.round(el.scrollLeft / el.clientWidth);
-                      if (idx !== dialoguesPage) setDialoguesPage(idx);
-                    }}
-                    className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide"
-                  >
-                    <AnimatePresence mode="popLayout">
-                      {dialoguesFiltered
-                        .reduce(
-                          (
-                            pages: LessonListItem[][],
-                            item: LessonListItem,
-                            idx: number
-                          ) => {
-                            const pageIdx = Math.floor(
-                              idx / (isMobile ? 4 : 9)
-                            );
-                            if (!pages[pageIdx]) pages[pageIdx] = [];
-                            pages[pageIdx].push(item);
-                            return pages;
-                          },
-                          []
-                        )
-                        .map((page, i) => {
-                          const padCount = Math.max(
-                            0,
-                            (isMobile ? 4 : 9) - page.length
-                          );
-                          const padded = [
-                            ...page,
-                            ...Array(padCount).fill(null),
-                          ];
-                          return (
-                            <motion.div
-                              key={i}
-                              layout
-                              className="min-w-full snap-start flex items-stretch"
-                            >
-                              <div
-                                className={`${page.length >= (isMobile ? 4 : 9) ? "flex-none w-3 sm:w-4 md:w-5" : "flex-none w-0"}`}
-                                aria-hidden="true"
-                              />
-                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
-                                <AnimatePresence mode="popLayout">
-                                  {padded.map(
-                                    (l: LessonListItem | null, idx2) =>
-                                      l ? (
-                                        <motion.div
-                                          key={l.id}
-                                          layout
-                                          initial={{
-                                            opacity: 0,
-                                            scale: 0.8,
-                                            y: 20,
-                                          }}
-                                          animate={{
-                                            opacity: 1,
-                                            scale: 1,
-                                            y: 0,
-                                            borderColor: "#404040",
-                                          }}
-                                          exit={{
-                                            opacity: 0,
-                                            scale: 0.8,
-                                            y: -20,
-                                          }}
-                                          transition={{
-                                            duration: 0.3,
-                                            delay: idx2 * 0.05,
-                                            layout: { duration: 0.4 },
-                                          }}
-                                          className={`rounded-xl p-4 cursor-pointer ${
-                                            finishedIds.has(l.id)
-                                              ? "border border-green-500/50 bg-gradient-to-br from-green-900/20 to-green-800/10 shadow-lg ring-1 ring-green-500/30"
-                                              : "border border-[#404040] bg-[#2e323a]"
-                                          }`}
-                                          onClick={() =>
-                                            router.push(`/lessons/${l.id}`)
-                                          }
-                                          whileHover={{
-                                            scale: 1.02,
-                                            borderColor: finishedIds.has(l.id)
-                                              ? "#20c997"
-                                              : "#4040f2",
-                                          }}
-                                          whileTap={{ scale: 0.98 }}
-                                        >
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between gap-2">
-                                              <span
-                                                className={`px-2 py-0.5 rounded-full text-xs font-inter whitespace-nowrap inline-flex items-center ${getLevelPillColor(l.level)}`}
-                                              >
-                                                HSK {l.level}
-                                              </span>
-                                              {finishedIds.has(l.id) ? (
-                                                <span className="inline-flex items-center gap-1 text-emerald-500 text-[11px] font-inter bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                                                  <Check className="w-3 h-3 text-green-400 mx-auto" />
-                                                  Finished
-                                                </span>
-                                              ) : (
-                                                <span />
-                                              )}
-                                            </div>
-                                            <p
-                                              className="text-white font-inter font-semibold mt-1 truncate text-sm"
-                                              title={
-                                                (l.titleTranslation ||
-                                                  l.title ||
-                                                  `Dialogue #${l.id}`) as string
-                                              }
-                                            >
-                                              {l.titleTranslation ||
-                                                l.title ||
-                                                `Dialogue #${l.id}`}
-                                            </p>
-                                            {l.title && (
-                                              <p
-                                                className="text-[#a6a6a6] font-inter text-xs truncate line-clamp-1 mt-1"
-                                                title={
-                                                  (l.title as string) ||
-                                                  undefined
-                                                }
-                                              >
-                                                {l.title}
-                                              </p>
-                                            )}
-                                            <div className="mt-2 pt-2 border-t border-[#404040] flex items-center justify-between text-[11px] text-[#8b949e]">
-                                              <span>
-                                                {new Date(l.createdAt)
-                                                  .toISOString()
-                                                  .slice(0, 10)}
-                                              </span>
-                                              <span className="text-[#a6a6a6]">
-                                                Dialogue
-                                              </span>
-                                            </div>
-                                          </div>
-                                        </motion.div>
-                                      ) : (
-                                        <div
-                                          key={`pad-d-${idx2}`}
-                                          className="invisible bg-[#2e323a] rounded-xl p-4 border border-[#404040]"
-                                        />
-                                      )
-                                  )}
-                                </AnimatePresence>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                    </AnimatePresence>
-                  </div>
+                  <Carousel
+                    containerRef={dialoguesRef}
+                    onScroll={() =>
+                      handleScrollPaged(
+                        dialoguesRef,
+                        setDialoguesPage,
+                        dialoguesRaf
+                      )
+                    }
+                    pages={dialoguesPages}
+                    pageSize={cardsPerPage}
+                    padKeyPrefix="pad-d"
+                    renderItem={(l: LessonListItem | null) =>
+                      l ? (
+                        <LessonCard
+                          key={l.id}
+                          id={l.id}
+                          level={l.level}
+                          title={l.title as string | undefined}
+                          titleTranslation={
+                            l.titleTranslation as string | undefined
+                          }
+                          createdAt={l.createdAt}
+                          isFinished={finishedIds.has(l.id)}
+                          typeLabel="Dialogue"
+                          getLevelPillColor={getLevelPillColor}
+                          onClick={() => router.push(`/lessons/${l.id}`)}
+                        />
+                      ) : null
+                    }
+                  />
                 </LayoutGroup>
                 {dialoguesFiltered.length > 0 && (
                   <div className="mt-2 flex items-center justify-center gap-2">
