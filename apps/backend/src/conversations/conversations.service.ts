@@ -462,7 +462,11 @@ export class ConversationsService {
               event: 'error',
               data: { message: (e as any)?.message || 'stream failed' },
             });
-          } catch {}
+          } catch {
+            this.logger.debug(
+              'Failed to emit SSE error event; client may have disconnected',
+            );
+          }
           try {
             // Fallback: attempt non-stream single-shot reply without previous deltas
             const fallback = await (this.openai as any).chatChineseReply(hanzi);
@@ -585,7 +589,11 @@ export class ConversationsService {
                 event: 'error',
                 data: { message: (inner as any)?.message || 'fallback failed' },
               });
-            } catch {}
+            } catch {
+              this.logger.debug(
+                'Failed to emit SSE fallback error event; client may have disconnected',
+              );
+            }
             // Final fallback: emit an error message entry so UI clears placeholder
             const aiMsg = await this.prisma.message.create({
               data: {
@@ -613,16 +621,28 @@ export class ConversationsService {
             'streamReply unhandled failure',
             (err as any)?.stack || (err as any) || 'unknown error',
           );
-        } catch {}
+        } catch {
+          this.logger.debug(
+            'Failed to log unhandled SSE failure (logger error)',
+          );
+        }
         try {
           subscriber.next({
             event: 'error',
             data: { message: (err as any)?.message || 'stream crashed' },
           });
-        } catch {}
+        } catch {
+          this.logger.debug(
+            'Failed to emit outer SSE error event; client may have disconnected',
+          );
+        }
         try {
           subscriber.complete();
-        } catch {}
+        } catch {
+          this.logger.debug(
+            'Failed to complete SSE stream; client may have disconnected',
+          );
+        }
       });
     });
   }
