@@ -71,7 +71,13 @@ export const conversationsApi = {
   streamUrl(id: number, hanzi: string): string {
     const params = new URLSearchParams();
     if (hanzi) params.set("hanzi", hanzi);
-    // Same-origin SSE so httpOnly cookie is sent; no token appended
-    return `/api/conversations/${id}/stream?${params.toString()}`;
+    // Build absolute backend URL to avoid Next.js proxy buffering and ensure cookies are sent
+    const rawBase =
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "http://localhost:3000";
+    const trimmed = rawBase.replace(/\/$/, "");
+    const apiBase = trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
+    return `${apiBase}/conversations/${id}/stream?${params.toString()}`;
   },
 };

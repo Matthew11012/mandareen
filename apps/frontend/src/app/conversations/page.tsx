@@ -319,7 +319,7 @@ export default function ConversationsPage() {
       });
       // Start SSE stream
       const url = conversationsApi.streamUrl(conversationId, text);
-      const es = new EventSource(url);
+      const es = new EventSource(url, { withCredentials: true });
       const aiMsgId = Date.now() + 1;
       const createdAt = new Date().toISOString();
       setMessages((prev) => [
@@ -346,43 +346,50 @@ export default function ConversationsPage() {
                   : m
               )
             );
+          } else if (
+            payload &&
+            typeof payload === "object" &&
+            payload.id &&
+            (payload.translation !== undefined || payload.segments)
+          ) {
+            // Some servers emit a plain user-update object on the default channel
+            const data = payload as {
+              id: number;
+              pinyin?: string;
+              translation?: string;
+              segments?: Array<{
+                text: string;
+                startIndex: number;
+                endIndex: number;
+                isWord: boolean;
+                hskLevel?: number;
+                pinyin?: string;
+                definition?: string;
+                definitions?: string[];
+              }>;
+            };
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.role === "user" && m.id === data.id
+                  ? {
+                      ...m,
+                      pinyin:
+                        typeof data.pinyin === "string"
+                          ? data.pinyin
+                          : m.pinyin,
+                      translation:
+                        typeof data.translation === "string"
+                          ? data.translation
+                          : m.translation,
+                      segments: Array.isArray(data.segments)
+                        ? data.segments
+                        : m.segments,
+                    }
+                  : m
+              )
+            );
           } else if (payload.type === "user-update" && payload.data) {
-            try {
-              const data = JSON.parse(payload.data);
-              const notesCamel = data?.notes
-                ? {
-                    grammarNotes:
-                      data.notes.grammarNotes ||
-                      data.notes.grammar_notes ||
-                      undefined,
-                    tipsRich:
-                      data.notes.tipsRich || data.notes.tips_rich || undefined,
-                  }
-                : undefined;
-              setMessages((prev) => {
-                const next = prev.map((m) =>
-                  m.id === data.id
-                    ? {
-                        ...m,
-                        pinyin:
-                          typeof data.pinyin === "string"
-                            ? data.pinyin
-                            : m.pinyin,
-                        translation:
-                          typeof data.translation === "string"
-                            ? data.translation
-                            : m.translation,
-                        segments: Array.isArray(data.segments)
-                          ? data.segments
-                          : undefined,
-                        notes: notesCamel !== undefined ? notesCamel : m.notes,
-                      }
-                    : m
-                );
-                return next;
-              });
-              // Avoid destructive refetch during SSE; keep AI placeholder intact
-            } catch {}
+            // Ignore here to prevent double-processing; rely on named 'user-update' listener below
           } else if (payload.type === "final" && payload.data) {
             const data = JSON.parse(payload.data);
             const notesCamel = data?.notes
@@ -400,7 +407,6 @@ export default function ConversationsPage() {
                 m.id === aiMsgId
                   ? {
                       ...m,
-                      id: data.id ?? m.id,
                       hanzi: data.hanzi || m.hanzi,
                       pinyin: data.pinyin || "",
                       translation: data.translation || "",
@@ -408,11 +414,51 @@ export default function ConversationsPage() {
                       audioUrl: data.audioUrl || undefined,
                       segments: Array.isArray(data.segments)
                         ? data.segments
-                        : undefined,
+                        : buildFallbackSegments(
+                            data.hanzi || m.hanzi,
+                            data.pinyin || ""
+                          ),
                     }
                   : m
               )
             );
+            // If final payload still lacks toggles data, hydrate from server
+            const needsHydrate =
+              (!data.pinyin || data.pinyin.trim().length === 0) &&
+              (!data.translation || data.translation.trim().length === 0) &&
+              (!Array.isArray(data.segments) || data.segments.length === 0);
+            if (needsHydrate && conversationId) {
+              void (async () => {
+                try {
+                  const list =
+                    await conversationsApi.listMessages(conversationId);
+                  const latestAi = list
+                    .slice()
+                    .reverse()
+                    .find((m) => m.role === "ai");
+                  if (latestAi) {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === aiMsgId
+                          ? {
+                              ...m,
+                              hanzi: latestAi.hanzi || m.hanzi,
+                              pinyin: latestAi.pinyin || m.pinyin,
+                              translation:
+                                latestAi.translation || m.translation,
+                              audioUrl: latestAi.audioUrl || m.audioUrl,
+                              segments: Array.isArray(latestAi.segments)
+                                ? latestAi.segments
+                                : m.segments,
+                              notes: latestAi.notes || m.notes,
+                            }
+                          : m
+                      )
+                    );
+                  }
+                } catch {}
+              })();
+            }
             es.close();
           }
         } catch {}
@@ -422,8 +468,8 @@ export default function ConversationsPage() {
           const data = JSON.parse(
             (e as unknown as MessageEvent).data as string
           );
-          setMessages((prev) => {
-            const next = prev.map((m) =>
+          setMessages((prev) =>
+            prev.map((m) =>
               m.id === data.id
                 ? {
                     ...m,
@@ -438,11 +484,68 @@ export default function ConversationsPage() {
                       : undefined,
                   }
                 : m
-            );
-            return next;
-          });
+            )
+          );
           // Avoid destructive refetch during SSE; keep AI placeholder intact
         } catch {}
+      });
+      es.addEventListener("error", (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(
+            (e as unknown as MessageEvent).data as string
+          );
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === data.id
+                ? {
+                    ...m,
+                    pinyin:
+                      typeof data.pinyin === "string" ? data.pinyin : m.pinyin,
+                    translation:
+                      typeof data.translation === "string"
+                        ? data.translation
+                        : m.translation,
+                    segments: Array.isArray(data.segments)
+                      ? data.segments
+                      : m.segments,
+                  }
+                : m
+            )
+          );
+        } catch {}
+        // Hydrate AI message if no final arrived
+        if (conversationId) {
+          void (async () => {
+            try {
+              const list = await conversationsApi.listMessages(conversationId);
+              const latestAi = list
+                .slice()
+                .reverse()
+                .find((m) => m.role === "ai");
+              if (latestAi) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.role === "ai" &&
+                    (m.pinyin?.length === 0 || m.translation?.length === 0)
+                      ? {
+                          ...m,
+                          hanzi: latestAi.hanzi || m.hanzi,
+                          pinyin: latestAi.pinyin || m.pinyin,
+                          translation: latestAi.translation || m.translation,
+                          audioUrl: latestAi.audioUrl || m.audioUrl,
+                          segments: Array.isArray(latestAi.segments)
+                            ? latestAi.segments
+                            : m.segments,
+                          notes: latestAi.notes || m.notes,
+                        }
+                      : m
+                  )
+                );
+              }
+            } catch {}
+          })();
+        }
+        es.close();
       });
       es.addEventListener("final", (e: MessageEvent) => {
         try {
@@ -464,14 +567,17 @@ export default function ConversationsPage() {
               m.id === aiMsgId
                 ? {
                     ...m,
-                    id: data.id ?? m.id,
                     hanzi: data.hanzi || m.hanzi,
                     pinyin: data.pinyin || "",
                     translation: data.translation || "",
-                    notes: notesCamel ?? m.notes,
+                    notes: notesCamel || m.notes,
+                    audioUrl: data.audioUrl || undefined,
                     segments: Array.isArray(data.segments)
                       ? data.segments
-                      : undefined,
+                      : buildFallbackSegments(
+                          data.hanzi || m.hanzi,
+                          data.pinyin || ""
+                        ),
                   }
                 : m
             )
@@ -480,6 +586,37 @@ export default function ConversationsPage() {
         es.close();
       });
       es.onerror = () => {
+        // Hydrate AI message if stream ended without explicit final
+        if (conversationId) {
+          void (async () => {
+            try {
+              const list = await conversationsApi.listMessages(conversationId);
+              const latestAi = list
+                .slice()
+                .reverse()
+                .find((m) => m.role === "ai");
+              if (latestAi) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMsgId
+                      ? {
+                          ...m,
+                          hanzi: latestAi.hanzi || m.hanzi,
+                          pinyin: latestAi.pinyin || m.pinyin,
+                          translation: latestAi.translation || m.translation,
+                          audioUrl: latestAi.audioUrl || m.audioUrl,
+                          segments: Array.isArray(latestAi.segments)
+                            ? latestAi.segments
+                            : m.segments,
+                          notes: latestAi.notes || m.notes,
+                        }
+                      : m
+                  )
+                );
+              }
+            } catch {}
+          })();
+        }
         es.close();
       };
     } catch {
@@ -568,7 +705,7 @@ export default function ConversationsPage() {
             conversationId,
             user.hanzi || ""
           );
-          const es = new EventSource(url);
+          const es = new EventSource(url, { withCredentials: true });
           const aiMsgId = Date.now() + 1;
           const createdAt = new Date().toISOString();
           setMessages((prev) => [
@@ -590,6 +727,47 @@ export default function ConversationsPage() {
                   prev.map((m) =>
                     m.id === aiMsgId
                       ? { ...m, hanzi: (m.hanzi || "") + payload.hanziDelta }
+                      : m
+                  )
+                );
+              } else if (
+                payload &&
+                typeof payload === "object" &&
+                payload.id &&
+                (payload.translation !== undefined || payload.segments)
+              ) {
+                const data = payload as {
+                  id: number;
+                  pinyin?: string;
+                  translation?: string;
+                  segments?: Array<{
+                    text: string;
+                    startIndex: number;
+                    endIndex: number;
+                    isWord: boolean;
+                    hskLevel?: number;
+                    pinyin?: string;
+                    definition?: string;
+                    definitions?: string[];
+                  }>;
+                };
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.role === "user" && m.id === data.id
+                      ? {
+                          ...m,
+                          pinyin:
+                            typeof data.pinyin === "string"
+                              ? data.pinyin
+                              : m.pinyin,
+                          translation:
+                            typeof data.translation === "string"
+                              ? data.translation
+                              : m.translation,
+                          segments: Array.isArray(data.segments)
+                            ? data.segments
+                            : m.segments,
+                        }
                       : m
                   )
                 );
@@ -634,7 +812,6 @@ export default function ConversationsPage() {
                     m.id === aiMsgId
                       ? {
                           ...m,
-                          id: data.id ?? m.id,
                           hanzi: data.hanzi || m.hanzi,
                           pinyin: data.pinyin || "",
                           translation: data.translation || "",
@@ -642,7 +819,10 @@ export default function ConversationsPage() {
                           audioUrl: data.audioUrl || undefined,
                           segments: Array.isArray(data.segments)
                             ? data.segments
-                            : undefined,
+                            : buildFallbackSegments(
+                                data.hanzi || m.hanzi,
+                                data.pinyin || ""
+                              ),
                         }
                       : m
                   )
@@ -658,7 +838,7 @@ export default function ConversationsPage() {
               );
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === data.id
+                  m.id === aiMsgId || m.id === data.id
                     ? {
                         ...m,
                         pinyin:
@@ -677,6 +857,67 @@ export default function ConversationsPage() {
                 )
               );
             } catch {}
+          });
+          es.addEventListener("error", (e: MessageEvent) => {
+            try {
+              const data = JSON.parse(
+                (e as unknown as MessageEvent).data as string
+              );
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === aiMsgId || m.id === data.id
+                    ? {
+                        ...m,
+                        pinyin:
+                          typeof data.pinyin === "string"
+                            ? data.pinyin
+                            : m.pinyin,
+                        translation:
+                          typeof data.translation === "string"
+                            ? data.translation
+                            : m.translation,
+                        segments: Array.isArray(data.segments)
+                          ? data.segments
+                          : m.segments,
+                      }
+                    : m
+                )
+              );
+            } catch {}
+            // Hydrate AI message if no final arrived
+            if (conversationId) {
+              void (async () => {
+                try {
+                  const list =
+                    await conversationsApi.listMessages(conversationId);
+                  const latestAi = list
+                    .slice()
+                    .reverse()
+                    .find((m) => m.role === "ai");
+                  if (latestAi) {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === aiMsgId
+                          ? {
+                              ...m,
+                              hanzi: latestAi.hanzi || m.hanzi,
+                              pinyin: latestAi.pinyin || m.pinyin,
+                              translation:
+                                latestAi.translation || m.translation,
+                              audioUrl: latestAi.audioUrl || m.audioUrl,
+                              segments: Array.isArray(latestAi.segments)
+                                ? latestAi.segments
+                                : m.segments,
+                              notes: latestAi.notes || m.notes,
+                            }
+                          : m
+                      )
+                    );
+                  }
+                } catch {}
+              })();
+            }
+            es.close();
           });
           es.addEventListener("final", (e: MessageEvent) => {
             try {
@@ -698,7 +939,6 @@ export default function ConversationsPage() {
                   m.id === aiMsgId
                     ? {
                         ...m,
-                        id: data.id ?? m.id,
                         hanzi: data.hanzi || m.hanzi,
                         pinyin: data.pinyin || "",
                         translation: data.translation || "",
@@ -706,7 +946,10 @@ export default function ConversationsPage() {
                         audioUrl: data.audioUrl || undefined,
                         segments: Array.isArray(data.segments)
                           ? data.segments
-                          : undefined,
+                          : buildFallbackSegments(
+                              data.hanzi || m.hanzi,
+                              data.pinyin || ""
+                            ),
                       }
                     : m
                 )
@@ -715,6 +958,39 @@ export default function ConversationsPage() {
             es.close();
           });
           es.onerror = () => {
+            // Hydrate AI message if stream ended without explicit final
+            if (conversationId) {
+              void (async () => {
+                try {
+                  const list =
+                    await conversationsApi.listMessages(conversationId);
+                  const latestAi = list
+                    .slice()
+                    .reverse()
+                    .find((m) => m.role === "ai");
+                  if (latestAi) {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === aiMsgId
+                          ? {
+                              ...m,
+                              hanzi: latestAi.hanzi || m.hanzi,
+                              pinyin: latestAi.pinyin || m.pinyin,
+                              translation:
+                                latestAi.translation || m.translation,
+                              audioUrl: latestAi.audioUrl || m.audioUrl,
+                              segments: Array.isArray(latestAi.segments)
+                                ? latestAi.segments
+                                : m.segments,
+                              notes: latestAi.notes || m.notes,
+                            }
+                          : m
+                      )
+                    );
+                  }
+                } catch {}
+              })();
+            }
             es.close();
           };
         } catch {
@@ -1315,7 +1591,7 @@ export default function ConversationsPage() {
           >
             {messages.map((m) => (
               <div
-                key={m.id}
+                key={`${m.id}-${m.role}`}
                 className={m.role === "user" ? "ml-auto" : "mr-auto"}
               >
                 <div
