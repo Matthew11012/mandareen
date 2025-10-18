@@ -33,6 +33,11 @@ export interface Message {
     definition?: string;
     definitions?: string[];
   }>;
+  // Loading flags for progressive SSE events
+  _loadingPinyin?: boolean;
+  _loadingTranslation?: boolean;
+  _loadingAudio?: boolean;
+  _loadingNotes?: boolean;
 }
 
 export interface ConversationSummary {

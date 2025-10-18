@@ -319,69 +319,7 @@ export class ConversationsService {
           // Build per-character array aligned to hanzi for segment pinyin filling
           const charPinyinArray =
             await this.computeSentencePinyinArray(finalHanzi);
-          // Request only translation for assistant message to reduce latency
-          let assistantTranslation = '';
-          try {
-            const analyzedAssistant = await (
-              this.openai as any
-            ).analyzeChineseSentence(finalHanzi);
-            assistantTranslation = analyzedAssistant?.translation || '';
-          } catch {
-            assistantTranslation = '';
-          }
-          let aiMsg = await this.prisma.message.create({
-            data: {
-              conversationId,
-              role: 'ai',
-              hanzi: finalHanzi,
-              pinyin: pinyinPerChar || '',
-              translation: assistantTranslation,
-            },
-          });
-          // Generate grounded grammar notes if enabled
-          try {
-            const ctx = await this.rag.retrieveForConversation(
-              userId,
-              finalHanzi,
-              hanzi,
-            );
-            const profile = await this.rag.getUserProfile(userId);
-            const notes = await (this.openai as any).generateGrammarNotes(
-              finalHanzi,
-              {
-                level: profile.level,
-                strugglingWords: profile.strugglingWords,
-                contextText: ctx?.contextText,
-              },
-            );
-            // Enrich tutor notes with segmentation for clickable pinyin-above-hanzi in UI
-            const enrichedNotes = await this.enrichNotesWithSegments(
-              notes as any,
-            );
-            // Also enrich tips into tipsRich with segments
-            if (Array.isArray((enrichedNotes as any).tips)) {
-              const tipsRich = [] as Array<{
-                zh: string;
-                en?: string;
-                segments?: any[];
-              }>;
-              for (const t of (enrichedNotes as any).tips) {
-                if (t && typeof t.zh === 'string') {
-                  const segs = await this.enrichTextWithSegments(t.zh);
-                  tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
-                }
-              }
-              (enrichedNotes as any).tipsRich = tipsRich;
-            }
-            aiMsg = await this.prisma.message.update({
-              where: { id: aiMsg.id },
-              data: { notes: enrichedNotes as any },
-            });
-          } catch (err) {
-            this.logger.warn('Grammar notes generation skipped', err as any);
-          }
-          // Attach segments so the frontend can show popups like in lessons
-          // Enrich segmentation with model-annotated vocabulary to capture multi-word phrases
+
           let vocabExtras: Array<{
             text: string;
             pinyin?: string;
@@ -423,33 +361,100 @@ export class ConversationsService {
               definitions: s.definitions,
             };
           });
-          // Generate TTS audio and persist file, then update message.audioUrl
-          try {
-            const { audioBuffer, fileExtension } = await (
-              this.openai as any
-            ).synthesizeSpeech(finalHanzi);
-            const fs = await import('fs');
-            const path = await import('path');
-            const baseDir = path.resolve(process.cwd(), 'uploads', 'audio');
-            await fs.promises.mkdir(baseDir, { recursive: true });
-            const fileName = `conv-${conversationId}-msg-${aiMsg.id}-${Date.now()}.${fileExtension}`;
-            const filePath = path.join(baseDir, fileName);
-            await fs.promises.writeFile(filePath, audioBuffer);
-            const publicUrl = `/media/audio/${fileName}`;
-            aiMsg = await this.prisma.message.update({
-              where: { id: aiMsg.id },
-              data: { audioUrl: publicUrl },
-            });
-          } catch (err) {
-            this.logger.warn('TTS synthesis failed (stream final)', err as any);
-          }
-          const payloadData = JSON.stringify({ ...aiMsg, segments });
-          // Default event for clients listening onmessage
+
           subscriber.next({
-            data: JSON.stringify({ type: 'final', data: payloadData }),
+            data: JSON.stringify({
+              type: 'ai-enrichment',
+              conversationId,
+              pinyin: pinyinPerChar,
+              segments,
+            }),
           });
-          // Named event for clients listening to 'final'
-          subscriber.next({ event: 'final', data: payloadData });
+
+          let assistantTranslation = '';
+          try {
+            const analyzedAssistant = await (
+              this.openai as any
+            ).analyzeChineseSentence(finalHanzi);
+            assistantTranslation = analyzedAssistant?.translation || '';
+          } catch {
+            assistantTranslation = '';
+          }
+
+          subscriber.next({
+            data: JSON.stringify({
+              type: 'ai-translation',
+              conversationId,
+              translation: assistantTranslation,
+            }),
+          });
+
+          // Create DB message now (with pinyin + translation, notes pending)
+          const aiMsg = await this.prisma.message.create({
+            data: {
+              conversationId,
+              role: 'ai',
+              hanzi: finalHanzi,
+              pinyin: pinyinPerChar || '',
+              translation: assistantTranslation,
+            },
+          });
+
+          // Emit ai-audio when TTS completes
+          const audioPromise = this.generateAndSaveAudio(
+            finalHanzi,
+            conversationId,
+            aiMsg.id,
+          )
+            .then((audioUrl) => {
+              subscriber.next({
+                data: JSON.stringify({
+                  type: 'ai-audio',
+                  conversationId,
+                  audioUrl,
+                }),
+              });
+            })
+            .catch((err) => {
+              this.logger.warn(
+                'TTS synthesis failed (progressive)',
+                err as any,
+              );
+            });
+
+          // Emit ai-notes when RAG + generation completes
+          const notesPromise = this.generateEnrichedNotes(
+            userId,
+            finalHanzi,
+            hanzi,
+            conversationId,
+            aiMsg.id,
+          )
+            .then((enrichedNotes) => {
+              subscriber.next({
+                data: JSON.stringify({
+                  type: 'ai-notes',
+                  conversationId,
+                  notes: enrichedNotes,
+                }),
+              });
+            })
+            .catch((err) => {
+              this.logger.warn(
+                'Grammar notes generation skipped (progressive)',
+                err as any,
+              );
+            });
+
+          // Wait for all parallel tasks, then emit final
+          await Promise.all([audioPromise, notesPromise]);
+          subscriber.next({
+            data: JSON.stringify({
+              type: 'final',
+              conversationId,
+              complete: true,
+            }),
+          });
           subscriber.complete();
         } catch (e) {
           this.logger.error(
@@ -517,7 +522,7 @@ export class ConversationsService {
                 definitions: s.definitions,
               };
             });
-            let aiMsg = await this.prisma.message.create({
+            const aiMsg = await this.prisma.message.create({
               data: {
                 conversationId,
                 role: 'ai',
@@ -526,57 +531,76 @@ export class ConversationsService {
                 translation: fallback.translation || '',
               },
             });
-            // Attempt TTS so audioUrl is included in final payload as well
-            try {
-              const { audioBuffer, fileExtension } = await (
-                this.openai as any
-              ).synthesizeSpeech(finalHanziFallback);
-              const fs = await import('fs');
-              const path = await import('path');
-              const baseDir = path.resolve(process.cwd(), 'uploads', 'audio');
-              await fs.promises.mkdir(baseDir, { recursive: true });
-              const fileName = `conv-${conversationId}-msg-${aiMsg.id}-${Date.now()}.${fileExtension}`;
-              const filePath = path.join(baseDir, fileName);
-              await fs.promises.writeFile(filePath, audioBuffer);
-              const publicUrl = `/media/audio/${fileName}`;
-              aiMsg = await this.prisma.message.update({
-                where: { id: aiMsg.id },
-                data: { audioUrl: publicUrl },
-              });
-            } catch (err) {
-              this.logger.warn('TTS synthesis failed (fallback)', err as any);
-            }
-            // Grounded notes (fallback path)
-            try {
-              const ctx2 = await this.rag.retrieveForConversation(
-                userId,
-                finalHanziFallback,
-                hanzi,
-              );
-              const profile2 = await this.rag.getUserProfile(userId);
-              const notes2 = await (this.openai as any).generateGrammarNotes(
-                finalHanziFallback,
-                {
-                  level: profile2.level,
-                  strugglingWords: profile2.strugglingWords,
-                  contextText: ctx2?.contextText,
-                },
-              );
-              aiMsg = await this.prisma.message.update({
-                where: { id: aiMsg.id },
-                data: { notes: notes2 as any },
-              });
-            } catch (err) {
-              this.logger.warn('Grammar notes generation skipped', err as any);
-            }
-            const payloadData2 = JSON.stringify({
-              ...aiMsg,
-              segments: segments2,
-            });
+
             subscriber.next({
-              data: JSON.stringify({ type: 'final', data: payloadData2 }),
+              data: JSON.stringify({
+                type: 'ai-enrichment',
+                conversationId,
+                pinyin: pinyinPerChar,
+                segments: segments2,
+              }),
             });
-            subscriber.next({ event: 'final', data: payloadData2 });
+
+            subscriber.next({
+              data: JSON.stringify({
+                type: 'ai-translation',
+                conversationId,
+                translation: fallback.translation || '',
+              }),
+            });
+
+            // Emit ai-audio when TTS completes
+            const audioPromise2 = this.generateAndSaveAudio(
+              finalHanziFallback,
+              conversationId,
+              aiMsg.id,
+            )
+              .then((audioUrl) => {
+                subscriber.next({
+                  data: JSON.stringify({
+                    type: 'ai-audio',
+                    conversationId,
+                    audioUrl,
+                  }),
+                });
+              })
+              .catch((err) => {
+                this.logger.warn('TTS synthesis failed (fallback)', err as any);
+              });
+
+            // Emit ai-notes when RAG + generation completes
+            const notesPromise2 = this.generateEnrichedNotes(
+              userId,
+              finalHanziFallback,
+              hanzi,
+              conversationId,
+              aiMsg.id,
+            )
+              .then((enrichedNotes) => {
+                subscriber.next({
+                  data: JSON.stringify({
+                    type: 'ai-notes',
+                    conversationId,
+                    notes: enrichedNotes,
+                  }),
+                });
+              })
+              .catch((err) => {
+                this.logger.warn(
+                  'Grammar notes generation skipped (fallback)',
+                  err as any,
+                );
+              });
+
+            // Wait for all parallel tasks, then emit final
+            await Promise.all([audioPromise2, notesPromise2]);
+            subscriber.next({
+              data: JSON.stringify({
+                type: 'final',
+                conversationId,
+                complete: true,
+              }),
+            });
             subscriber.complete();
           } catch (inner) {
             this.logger.error(
@@ -763,5 +787,76 @@ export class ConversationsService {
       }
     }
     return notes;
+  }
+
+  private async generateAndSaveAudio(
+    finalHanzi: string,
+    conversationId: number,
+    messageId: number,
+  ): Promise<string> {
+    const { audioBuffer, fileExtension } = await (
+      this.openai as any
+    ).synthesizeSpeech(finalHanzi);
+    const fs = await import('fs');
+    const path = await import('path');
+    const baseDir = path.resolve(process.cwd(), 'uploads', 'audio');
+    await fs.promises.mkdir(baseDir, { recursive: true });
+    const fileName = `conv-${conversationId}-msg-${messageId}-${Date.now()}.${fileExtension}`;
+    const filePath = path.join(baseDir, fileName);
+    await fs.promises.writeFile(filePath, audioBuffer);
+    const publicUrl = `/media/audio/${fileName}`;
+
+    // Update the message with audio URL
+    await this.prisma.message.update({
+      where: { id: messageId },
+      data: { audioUrl: publicUrl },
+    });
+
+    return publicUrl;
+  }
+
+  private async generateEnrichedNotes(
+    userId: number,
+    finalHanzi: string,
+    userHanzi: string,
+    conversationId: number,
+    messageId: number,
+  ): Promise<any> {
+    const ctx = await this.rag.retrieveForConversation(
+      userId,
+      finalHanzi,
+      userHanzi,
+    );
+    const profile = await this.rag.getUserProfile(userId);
+    const notes = await (this.openai as any).generateGrammarNotes(finalHanzi, {
+      level: profile.level,
+      strugglingWords: profile.strugglingWords,
+      contextText: ctx?.contextText,
+    });
+    // Enrich tutor notes with segmentation for clickable pinyin-above-hanzi in UI
+    const enrichedNotes = await this.enrichNotesWithSegments(notes as any);
+    // Also enrich tips into tipsRich with segments
+    if (Array.isArray((enrichedNotes as any).tips)) {
+      const tipsRich = [] as Array<{
+        zh: string;
+        en?: string;
+        segments?: any[];
+      }>;
+      for (const t of (enrichedNotes as any).tips) {
+        if (t && typeof t.zh === 'string') {
+          const segs = await this.enrichTextWithSegments(t.zh);
+          tipsRich.push({ zh: t.zh, en: t.en, segments: segs });
+        }
+      }
+      (enrichedNotes as any).tipsRich = tipsRich;
+    }
+
+    // Update the message with notes
+    await this.prisma.message.update({
+      where: { id: messageId },
+      data: { notes: enrichedNotes as any },
+    });
+
+    return enrichedNotes;
   }
 }
