@@ -82,26 +82,17 @@ export class ConversationsController {
     return result;
   }
 
+  @UseGuards(JwtAuthGuard)
   @Sse(':id/stream')
   stream(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
   ): Observable<{ data: string } | { event: string; data: any }> {
-    // Verify token from query param for SSE (EventSource cannot send headers)
-    const token = (req as any)?.query?.token as string | undefined;
-    if (!token) {
+    // JwtAuthGuard supports Authorization header, query token, or cookie
+    const userId = Number((req as any)?.user?.id);
+    if (!userId) {
       throw new Error('Unauthorized');
     }
-    let userId: number | undefined;
-    try {
-      const payload = this._jwtService.verify(token, {
-        secret: process.env.JWT_SECRET as string,
-      }) as any;
-      userId = Number(payload?.sub || payload?.id);
-    } catch {
-      throw new Error('Unauthorized');
-    }
-    if (!userId) throw new Error('Unauthorized');
     const hanzi = ((req as any)?.query?.hanzi as string | undefined) || '';
     return this._service.streamReply({
       conversationId: Number(id),

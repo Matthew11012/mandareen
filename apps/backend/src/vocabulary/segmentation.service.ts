@@ -12,6 +12,13 @@ export interface SegmentResult {
   definitions?: string[];
 }
 
+interface DictEntry {
+  hskLevel?: number;
+  pinyin?: string;
+  definition?: string;
+  definitions?: string[];
+}
+
 @Injectable()
 export class SegmentationService {
   constructor(private prisma: PrismaService) {
@@ -22,6 +29,7 @@ export class SegmentationService {
   private readonly logger = new Logger(SegmentationService.name);
   private mode: 'preload' | 'db' =
     (process.env.SEGMENTATION_MODE as any) === 'db' ? 'db' : 'preload';
+  private bmmEnabled = process.env.SEGMENTATION_BMM_ENABLED !== 'false';
   // Simple bounded LRU structures (only used in DB mode)
   private cacheCapacity = 10000;
   private cache = new Map<string, any>();
@@ -37,6 +45,357 @@ export class SegmentationService {
   >();
   private maxTokenLength = 6;
   private firstCharSet = new Set<string>();
+
+  // Domain sets for heuristics
+  private readonly conjunctionChars = new Set<string>([
+    '和',
+    '与',
+    '跟',
+    '及',
+    '并',
+    '且',
+  ]);
+  private readonly timeUnits = new Set<string>([
+    '分钟',
+    '分',
+    '秒',
+    '秒钟',
+    '小时',
+    '点',
+    '点钟',
+    '天',
+    '日',
+    '周',
+    '星期',
+    '月',
+    '个月',
+    '年',
+  ]);
+  private readonly chineseNumeralChars = new Set<string>([
+    '零',
+    '一',
+    '二',
+    '三',
+    '四',
+    '五',
+    '六',
+    '七',
+    '八',
+    '九',
+    '十',
+    '百',
+    '千',
+    '万',
+    '亿',
+    '两',
+    '几',
+    '半',
+  ]);
+
+  // Lookup wrapper that reuses preload map OR DB + LRU cache
+  private async lookupEntry(
+    token: string,
+    localDict: Map<string, DictEntry>,
+  ): Promise<DictEntry | null> {
+    // Check localDict first (includes extraEntries)
+    const localEntry = localDict.get(token);
+    if (localEntry !== undefined) {
+      return localEntry;
+    }
+
+    // If in DB mode, use cache and DB lookup
+    if (this.mode === 'db') {
+      const cached = this.getFromCache(token);
+      if (cached !== undefined) {
+        return cached || null;
+      }
+
+      const found = await this.prisma.vocabularyItem.findFirst({
+        where: { hanzi: token },
+        select: {
+          hskLevel: true,
+          pinyin: true,
+          definition: true,
+        },
+      });
+
+      if (found) {
+        const entry: DictEntry = {
+          hskLevel: found.hskLevel ?? undefined,
+          pinyin: (found.pinyin || '').toLowerCase() || undefined,
+          definition: found.definition || undefined,
+        };
+        this.setInCache(token, entry);
+        return entry;
+      } else {
+        this.setInCache(token, null); // negative cache
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  // Forward Maximum Matching for a run (relative indices within run)
+  private async fmmSegmentRun(
+    runText: string,
+    localDict: Map<string, DictEntry>,
+    maxLen: number,
+  ): Promise<
+    Array<{ word: string; start: number; end: number; entry: DictEntry | null }>
+  > {
+    const tokens: Array<{
+      word: string;
+      start: number;
+      end: number;
+      entry: DictEntry | null;
+    }> = [];
+    const runLength = runText.length;
+    let i = 0;
+
+    while (i < runLength) {
+      let matched = false;
+      const maxTokenLen = Math.min(maxLen, runLength - i);
+
+      for (let len = maxTokenLen; len >= 1; len--) {
+        const substring = runText.substring(i, i + len);
+        const entry = await this.lookupEntry(substring, localDict);
+
+        if (entry) {
+          tokens.push({
+            word: substring,
+            start: i,
+            end: i + len,
+            entry: entry,
+          });
+          i += len;
+          matched = true;
+          break;
+        }
+      }
+
+      if (!matched) {
+        // Fallback: single character as unknown word
+        tokens.push({
+          word: runText.charAt(i),
+          start: i,
+          end: i + 1,
+          entry: null,
+        });
+        i += 1;
+      }
+    }
+
+    return tokens;
+  }
+
+  // Backward Maximum Matching for a run (relative indices within run)
+  private async bmmSegmentRun(
+    runText: string,
+    localDict: Map<string, DictEntry>,
+    maxLen: number,
+  ): Promise<
+    Array<{ word: string; start: number; end: number; entry: DictEntry | null }>
+  > {
+    const tokens: Array<{
+      word: string;
+      start: number;
+      end: number;
+      entry: DictEntry | null;
+    }> = [];
+    const runLength = runText.length;
+    let i = runLength;
+
+    while (i > 0) {
+      let matched = false;
+      const maxTokenLen = Math.min(maxLen, i);
+
+      for (let len = maxTokenLen; len >= 1; len--) {
+        const substring = runText.substring(i - len, i);
+        const entry = await this.lookupEntry(substring, localDict);
+
+        if (entry) {
+          tokens.unshift({
+            word: substring,
+            start: i - len,
+            end: i,
+            entry: entry,
+          });
+          i -= len;
+          matched = true;
+          break;
+        }
+      }
+
+      if (!matched) {
+        // Fallback: single character as unknown word
+        tokens.unshift({
+          word: runText.charAt(i - 1),
+          start: i - 1,
+          end: i,
+          entry: null,
+        });
+        i -= 1;
+      }
+    }
+
+    return tokens;
+  }
+
+  // Heuristic scoring for a segmentation
+  private scoreSegmentation(
+    seg: Array<{
+      word: string;
+      start: number;
+      end: number;
+      entry: DictEntry | null;
+    }>,
+    runText: string,
+    localDict: Map<string, DictEntry>,
+  ): number {
+    let score = 0;
+
+    for (let i = 0; i < seg.length; i++) {
+      const token = seg[i];
+      const word = token.word;
+
+      // +2 for token length >= 2
+      if (word.length >= 2) {
+        score += 2;
+      }
+
+      // -1 for single-character tokens (but 0 if conjunction)
+      if (word.length === 1) {
+        if (!this.conjunctionChars.has(word)) {
+          score -= 1;
+        }
+      }
+
+      // +3 for time units
+      if (this.timeUnits.has(word)) {
+        score += 3;
+      }
+
+      // +2 if token enables a longer following token
+      if (i < seg.length - 1) {
+        const nextToken = seg[i + 1];
+        if (nextToken.word.length > 1) {
+          score += 2;
+        }
+      }
+
+      // -2 penalty for conjunction chars that swallow next character
+      if (word.length === 2 && this.conjunctionChars.has(word.charAt(0))) {
+        const followingWord = runText.substring(token.end);
+        // Check if there's a valid 2+ char word starting at the next character
+        for (let len = 2; len <= Math.min(4, followingWord.length); len++) {
+          const candidate = followingWord.substring(0, len);
+          if (localDict.has(candidate)) {
+            score -= 2;
+            break;
+          }
+        }
+      }
+    }
+
+    return score;
+  }
+
+  // Decide between two segmentations using simple, fast heuristics
+  private chooseSegmentation(
+    a: Array<{
+      word: string;
+      start: number;
+      end: number;
+      entry: DictEntry | null;
+    }>,
+    b: Array<{
+      word: string;
+      start: number;
+      end: number;
+      entry: DictEntry | null;
+    }>,
+    runText: string,
+    localDict: Map<string, DictEntry>,
+  ): 'a' | 'b' {
+    // Primary: fewer tokens wins
+    if (a.length !== b.length) {
+      return a.length < b.length ? 'a' : 'b';
+    }
+
+    // Secondary: fewer single-character tokens wins
+    const aSingleChars = a.filter((token) => token.word.length === 1).length;
+    const bSingleChars = b.filter((token) => token.word.length === 1).length;
+    if (aSingleChars !== bSingleChars) {
+      return aSingleChars < bSingleChars ? 'a' : 'b';
+    }
+
+    // Tertiary: scoreSegmentation comparison
+    const aScore = this.scoreSegmentation(a, runText, localDict);
+    const bScore = this.scoreSegmentation(b, runText, localDict);
+    if (aScore !== bScore) {
+      return aScore > bScore ? 'a' : 'b';
+    }
+
+    // If still tied, prefer BMM (empirically helps with right-headed compounds)
+    return 'b';
+  }
+
+  // Segment one contiguous Chinese run using FMM and BMM, then choose
+  private async segmentChineseRunWithFmmBmm(
+    runText: string,
+    runOffset: number, // absolute index of run start in the original text
+    localDict: Map<string, DictEntry>,
+    maxLen: number,
+  ): Promise<SegmentResult[]> {
+    // Run both FMM and BMM
+    const fmmTokens = await this.fmmSegmentRun(runText, localDict, maxLen);
+    const bmmTokens = await this.bmmSegmentRun(runText, localDict, maxLen);
+
+    // Choose the better segmentation
+    const chosen = this.chooseSegmentation(
+      fmmTokens,
+      bmmTokens,
+      runText,
+      localDict,
+    );
+    const selectedTokens = chosen === 'a' ? fmmTokens : bmmTokens;
+
+    // Debug logging
+    // this.logger.debug?.(
+    //   `FMM+BMM segmentation: chosen=${chosen}, fmmTokens=${fmmTokens.length}, bmmTokens=${bmmTokens.length}, ` +
+    //     `fmmSingleChars=${fmmTokens.filter((t) => t.word.length === 1).length}, ` +
+    //     `bmmSingleChars=${bmmTokens.filter((t) => t.word.length === 1).length}, ` +
+    //     `fmmScore=${this.scoreSegmentation(fmmTokens, runText, localDict)}, ` +
+    //     `bmmScore=${this.scoreSegmentation(bmmTokens, runText, localDict)}, ` +
+    //     `mode=${this.mode}`,
+    // );
+
+    // Convert to SegmentResult with absolute indices
+    return selectedTokens.map((token) => ({
+      word: token.word,
+      startIndex: runOffset + token.start,
+      endIndex: runOffset + token.end,
+      isWord: token.entry !== null,
+      hskLevel: token.entry?.hskLevel,
+      pinyin: token.entry?.pinyin,
+      definition: token.entry?.definition,
+      definitions: token.entry?.definitions,
+    }));
+  }
+
+  // Optionally inject small time-unit lexemes into localDict if missing
+  private augmentTimeUnits(localDict: Map<string, DictEntry>): void {
+    for (const timeUnit of this.timeUnits) {
+      if (!localDict.has(timeUnit)) {
+        localDict.set(timeUnit, {
+          hskLevel: undefined,
+          pinyin: undefined,
+          definition: undefined,
+        });
+      }
+    }
+  }
 
   private async initializeDictionary(): Promise<void> {
     if (this.initialized) {
@@ -56,7 +415,7 @@ export class SegmentationService {
           // Fallback if table is empty or value is invalid
           this.maxTokenLength = 6;
         }
-      } catch (e) {
+      } catch {
         // Fallback on error
         this.maxTokenLength = 6;
       }
@@ -157,14 +516,15 @@ export class SegmentationService {
   ): Promise<SegmentResult[]> {
     await this.initializeDictionary();
 
-    // Metrics (DB mode only)
-    let cacheHits = 0;
-    let cacheMisses = 0;
-    let dbHits = 0;
-    let dbMisses = 0;
-
     // Local dictionary for this text that prioritizes provided phrases/words
-    const localDict = new Map(this.dictionary);
+    const localDict = new Map<string, DictEntry>();
+
+    // Copy from main dictionary
+    for (const [key, value] of this.dictionary) {
+      localDict.set(key, value);
+    }
+
+    // Add extra entries
     if (extraEntries && extraEntries.length > 0) {
       for (const e of extraEntries) {
         if (!e?.text) continue;
@@ -176,6 +536,9 @@ export class SegmentationService {
         this.maxTokenLength = Math.max(this.maxTokenLength, e.text.length);
       }
     }
+
+    // Augment with time units if missing
+    this.augmentTimeUnits(localDict);
 
     const segments: SegmentResult[] = [];
     const textLength = text.length;
@@ -199,17 +562,64 @@ export class SegmentationService {
         continue;
       }
 
+      // Find the end of the contiguous Chinese run
+      let j = i;
+      while (j < textLength && this.isChinese(text.charAt(j))) {
+        j++;
+      }
+
+      // Segment the Chinese run using FMM+BMM or fallback to old greedy
+      const runText = text.substring(i, j);
+      const maxRunLen = Math.min(this.maxTokenLength, runText.length);
+
+      if (this.bmmEnabled) {
+        const runSegments = await this.segmentChineseRunWithFmmBmm(
+          runText,
+          i,
+          localDict,
+          maxRunLen,
+        );
+        segments.push(...runSegments);
+      } else {
+        // Fallback to old greedy approach
+        const runSegments = await this.segmentChineseRunGreedy(
+          runText,
+          i,
+          localDict,
+          maxRunLen,
+        );
+        segments.push(...runSegments);
+      }
+
+      i = j;
+    }
+
+    return segments;
+  }
+
+  // Fallback greedy segmentation for Chinese runs (old logic)
+  private async segmentChineseRunGreedy(
+    runText: string,
+    runOffset: number,
+    localDict: Map<string, DictEntry>,
+    maxLen: number,
+  ): Promise<SegmentResult[]> {
+    const segments: SegmentResult[] = [];
+    const runLength = runText.length;
+    let i = 0;
+
+    while (i < runLength) {
+      const char = runText.charAt(i);
       let matched = false;
-      const maxLen = Math.min(this.maxTokenLength, textLength - i);
 
       // Fast path (preload mode only): if first character cannot start any known word, emit single char
       if (this.mode === 'preload' && !this.firstCharSet.has(char)) {
-        const chEntry = this.dictionary.get(char);
+        const chEntry = await this.lookupEntry(char, localDict);
         segments.push({
           word: char,
-          startIndex: i,
-          endIndex: i + 1,
-          isWord: true,
+          startIndex: runOffset + i,
+          endIndex: runOffset + i + 1,
+          isWord: chEntry !== null,
           hskLevel: chEntry?.hskLevel,
           pinyin: chEntry?.pinyin,
           definition: chEntry?.definition,
@@ -219,50 +629,21 @@ export class SegmentationService {
         continue;
       }
 
-      for (let len = maxLen; len >= 1; len--) {
-        const substring = text.substring(i, i + len);
-        let dictEntry = localDict.get(substring);
-        if (!dictEntry && this.mode === 'db') {
-          // DB-backed lookup with LRU cache
-          const cached = this.getFromCache(substring);
-          if (cached !== undefined) {
-            dictEntry = cached || undefined;
-            cacheHits++;
-          } else {
-            cacheMisses++;
-            const found = await this.prisma.vocabularyItem.findFirst({
-              where: { hanzi: substring },
-              select: {
-                hskLevel: true,
-                pinyin: true,
-                definition: true,
-              },
-            });
-            if (found) {
-              dbHits++;
-              dictEntry = {
-                hskLevel: found.hskLevel ?? undefined,
-                pinyin: (found.pinyin || '').toLowerCase() || undefined,
-                definition: found.definition || undefined,
-              };
-              this.setInCache(substring, dictEntry);
-            } else {
-              dbMisses++;
-              this.setInCache(substring, null); // negative cache
-            }
-          }
-        }
+      const maxTokenLen = Math.min(maxLen, runLength - i);
+      for (let len = maxTokenLen; len >= 1; len--) {
+        const substring = runText.substring(i, i + len);
+        const entry = await this.lookupEntry(substring, localDict);
 
-        if (dictEntry) {
+        if (entry) {
           segments.push({
             word: substring,
-            startIndex: i,
-            endIndex: i + len,
+            startIndex: runOffset + i,
+            endIndex: runOffset + i + len,
             isWord: true,
-            hskLevel: dictEntry.hskLevel,
-            pinyin: dictEntry.pinyin,
-            definition: dictEntry.definition,
-            definitions: dictEntry.definitions,
+            hskLevel: entry.hskLevel,
+            pinyin: entry.pinyin,
+            definition: entry.definition,
+            definitions: entry.definitions,
           });
           i += len;
           matched = true;
@@ -272,37 +653,12 @@ export class SegmentationService {
 
       if (!matched) {
         // Fallback: single Chinese character as a word segment
-        let chEntry = localDict.get(char);
-        if (!chEntry && this.mode === 'db') {
-          const cached = this.getFromCache(char);
-          if (cached !== undefined) {
-            chEntry = cached || undefined;
-            cacheHits++;
-          } else {
-            cacheMisses++;
-            const found = await this.prisma.vocabularyItem.findFirst({
-              where: { hanzi: char },
-              select: { hskLevel: true, pinyin: true, definition: true },
-            });
-            if (found) {
-              dbHits++;
-              chEntry = {
-                hskLevel: found.hskLevel ?? undefined,
-                pinyin: (found.pinyin || '').toLowerCase() || undefined,
-                definition: found.definition || undefined,
-              };
-              this.setInCache(char, chEntry);
-            } else {
-              dbMisses++;
-              this.setInCache(char, null);
-            }
-          }
-        }
+        const chEntry = await this.lookupEntry(char, localDict);
         segments.push({
           word: char,
-          startIndex: i,
-          endIndex: i + 1,
-          isWord: true,
+          startIndex: runOffset + i,
+          endIndex: runOffset + i + 1,
+          isWord: chEntry !== null,
           hskLevel: chEntry?.hskLevel,
           pinyin: chEntry?.pinyin,
           definition: chEntry?.definition,
@@ -312,10 +668,6 @@ export class SegmentationService {
       }
     }
 
-    // Debug-level stats to avoid noisy logs
-    this.logger.debug?.(
-      `Segmentation stats: cacheHits=${cacheHits} cacheMisses=${cacheMisses} dbHits=${dbHits} dbMisses=${dbMisses} textLen=${text.length} mode=${this.mode}`,
-    );
     return segments;
   }
 

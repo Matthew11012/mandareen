@@ -308,6 +308,9 @@ export default function ConversationsPage() {
       pinyin: "",
       translation: "",
       createdAt: new Date().toISOString(),
+      // Add loading flags for progressive SSE events
+      _loadingPinyin: true,
+      _loadingTranslation: true,
     };
     setMessages((prev) => [...prev, tempUser]);
     try {
@@ -319,7 +322,10 @@ export default function ConversationsPage() {
       });
       // Start SSE stream
       const url = conversationsApi.streamUrl(conversationId, text);
-      const es = new EventSource(url);
+      const es = new EventSource(url, { withCredentials: true });
+
+      // Flag to track if we've received the final event
+      let isStreamComplete = false;
       const aiMsgId = Date.now() + 1;
       const createdAt = new Date().toISOString();
       setMessages((prev) => [
@@ -333,6 +339,11 @@ export default function ConversationsPage() {
           createdAt,
           // mark streaming state so toggles can be hidden until final
           segments: undefined,
+          // Add loading flags for progressive SSE events
+          _loadingPinyin: true,
+          _loadingTranslation: true,
+          _loadingAudio: true,
+          _loadingNotes: true,
         } as Message,
       ]);
       es.onmessage = (e) => {
@@ -346,74 +357,156 @@ export default function ConversationsPage() {
                   : m
               )
             );
-          } else if (payload.type === "user-update" && payload.data) {
-            try {
-              const data = JSON.parse(payload.data);
-              const notesCamel = data?.notes
-                ? {
-                    grammarNotes:
-                      data.notes.grammarNotes ||
-                      data.notes.grammar_notes ||
-                      undefined,
-                    tipsRich:
-                      data.notes.tipsRich || data.notes.tips_rich || undefined,
+          } else if (
+            payload.type === "ai-enrichment" &&
+            payload.conversationId === conversationId
+          ) {
+            setMessages((prev) => {
+              // Find the latest AI message (most recent by creation time)
+              const aiMessages = prev.filter((m) => m.role === "ai");
+              const latestAiMessage = aiMessages[aiMessages.length - 1];
+
+              if (latestAiMessage) {
+                return prev.map((m) => {
+                  if (m.id === latestAiMessage.id) {
+                    return {
+                      ...m,
+                      pinyin: payload.pinyin || m.pinyin,
+                      segments: payload.segments || m.segments,
+                      _loadingPinyin: false,
+                    };
                   }
-                : undefined;
-              setMessages((prev) => {
-                const next = prev.map((m) =>
-                  m.id === data.id
-                    ? {
-                        ...m,
-                        pinyin:
-                          typeof data.pinyin === "string"
-                            ? data.pinyin
-                            : m.pinyin,
-                        translation:
-                          typeof data.translation === "string"
-                            ? data.translation
-                            : m.translation,
-                        segments: Array.isArray(data.segments)
-                          ? data.segments
-                          : undefined,
-                        notes: notesCamel !== undefined ? notesCamel : m.notes,
-                      }
-                    : m
-                );
-                return next;
-              });
-              // Avoid destructive refetch during SSE; keep AI placeholder intact
-            } catch {}
-          } else if (payload.type === "final" && payload.data) {
-            const data = JSON.parse(payload.data);
-            const notesCamel = data?.notes
+                  return m;
+                });
+              }
+              return prev;
+            });
+          } else if (
+            payload.type === "ai-translation" &&
+            payload.conversationId === conversationId
+          ) {
+            setMessages((prev) => {
+              // Find the latest AI message (most recent by creation time)
+              const aiMessages = prev.filter((m) => m.role === "ai");
+              const latestAiMessage = aiMessages[aiMessages.length - 1];
+
+              if (latestAiMessage) {
+                return prev.map((m) => {
+                  if (m.id === latestAiMessage.id) {
+                    return {
+                      ...m,
+                      translation: payload.translation || m.translation,
+                      _loadingTranslation: false,
+                    };
+                  }
+                  return m;
+                });
+              }
+              return prev;
+            });
+          } else if (
+            payload.type === "ai-audio" &&
+            payload.conversationId === conversationId
+          ) {
+            setMessages((prev) => {
+              // Find the latest AI message (most recent by creation time)
+              const aiMessages = prev.filter((m) => m.role === "ai");
+              const latestAiMessage = aiMessages[aiMessages.length - 1];
+
+              if (latestAiMessage) {
+                return prev.map((m) => {
+                  if (m.id === latestAiMessage.id) {
+                    return {
+                      ...m,
+                      audioUrl: payload.audioUrl || m.audioUrl,
+                      _loadingAudio: false,
+                    };
+                  }
+                  return m;
+                });
+              }
+              return prev;
+            });
+          } else if (
+            payload.type === "ai-notes" &&
+            payload.conversationId === conversationId
+          ) {
+            const notesCamel = payload.notes
               ? {
                   grammarNotes:
-                    data.notes.grammarNotes ||
-                    data.notes.grammar_notes ||
-                    undefined,
-                  tipsRich:
-                    data.notes.tipsRich || data.notes.tips_rich || undefined,
+                    payload.notes.grammarNotes || payload.notes.grammar_notes,
+                  tipsRich: payload.notes.tipsRich || payload.notes.tips_rich,
                 }
               : undefined;
+            setMessages((prev) => {
+              // Find the latest AI message (most recent by creation time)
+              const aiMessages = prev.filter((m) => m.role === "ai");
+              const latestAiMessage = aiMessages[aiMessages.length - 1];
+
+              if (latestAiMessage) {
+                return prev.map((m) => {
+                  if (m.id === latestAiMessage.id) {
+                    return {
+                      ...m,
+                      notes: notesCamel || m.notes,
+                      _loadingNotes: false,
+                    };
+                  }
+                  return m;
+                });
+              }
+              return prev;
+            });
+          } else if (
+            payload &&
+            typeof payload === "object" &&
+            payload.id &&
+            (payload.translation !== undefined || payload.segments)
+          ) {
+            // Some servers emit a plain user-update object on the default channel
+            const data = payload as {
+              id: number;
+              pinyin?: string;
+              translation?: string;
+              segments?: Array<{
+                text: string;
+                startIndex: number;
+                endIndex: number;
+                isWord: boolean;
+                hskLevel?: number;
+                pinyin?: string;
+                definition?: string;
+                definitions?: string[];
+              }>;
+            };
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === aiMsgId
+                m.role === "user" && m.id === data.id
                   ? {
                       ...m,
-                      id: data.id ?? m.id,
-                      hanzi: data.hanzi || m.hanzi,
-                      pinyin: data.pinyin || "",
-                      translation: data.translation || "",
-                      notes: notesCamel ?? m.notes,
-                      audioUrl: data.audioUrl || undefined,
+                      pinyin:
+                        typeof data.pinyin === "string"
+                          ? data.pinyin
+                          : m.pinyin,
+                      translation:
+                        typeof data.translation === "string"
+                          ? data.translation
+                          : m.translation,
                       segments: Array.isArray(data.segments)
                         ? data.segments
-                        : undefined,
+                        : m.segments,
                     }
                   : m
               )
             );
-            es.close();
+          } else if (payload.type === "user-update" && payload.data) {
+            // Ignore here to prevent double-processing; rely on named 'user-update' listener below
+          } else if (payload.type === "final" && payload.data) {
+            isStreamComplete = true;
+            // Close the connection gracefully
+            if (es.readyState === EventSource.OPEN) {
+              es.close();
+            }
           }
         } catch {}
       };
@@ -422,8 +515,8 @@ export default function ConversationsPage() {
           const data = JSON.parse(
             (e as unknown as MessageEvent).data as string
           );
-          setMessages((prev) => {
-            const next = prev.map((m) =>
+          setMessages((prev) =>
+            prev.map((m) =>
               m.id === data.id
                 ? {
                     ...m,
@@ -436,51 +529,83 @@ export default function ConversationsPage() {
                     segments: Array.isArray(data.segments)
                       ? data.segments
                       : undefined,
+                    // Clear loading flags when user enrichment arrives
+                    _loadingPinyin: false,
+                    _loadingTranslation: false,
                   }
                 : m
-            );
-            return next;
-          });
+            )
+          );
           // Avoid destructive refetch during SSE; keep AI placeholder intact
         } catch {}
       });
-      es.addEventListener("final", (e: MessageEvent) => {
+      es.addEventListener("error", (e: MessageEvent) => {
         try {
           const data = JSON.parse(
             (e as unknown as MessageEvent).data as string
           );
-          const notesCamel = data?.notes
-            ? {
-                grammarNotes:
-                  data.notes.grammarNotes ||
-                  data.notes.grammar_notes ||
-                  undefined,
-                tipsRich:
-                  data.notes.tipsRich || data.notes.tips_rich || undefined,
-              }
-            : undefined;
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === aiMsgId
+              m.id === data.id
                 ? {
                     ...m,
-                    id: data.id ?? m.id,
-                    hanzi: data.hanzi || m.hanzi,
-                    pinyin: data.pinyin || "",
-                    translation: data.translation || "",
-                    notes: notesCamel ?? m.notes,
+                    pinyin:
+                      typeof data.pinyin === "string" ? data.pinyin : m.pinyin,
+                    translation:
+                      typeof data.translation === "string"
+                        ? data.translation
+                        : m.translation,
                     segments: Array.isArray(data.segments)
                       ? data.segments
-                      : undefined,
+                      : m.segments,
                   }
                 : m
             )
           );
         } catch {}
+        // Hydrate AI message if no final arrived
+        if (conversationId) {
+          void (async () => {
+            try {
+              const list = await conversationsApi.listMessages(conversationId);
+              const latestAi = list
+                .slice()
+                .reverse()
+                .find((m) => m.role === "ai");
+              if (latestAi) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.role === "ai" &&
+                    (m.pinyin?.length === 0 || m.translation?.length === 0)
+                      ? {
+                          ...m,
+                          hanzi: latestAi.hanzi || m.hanzi,
+                          pinyin: latestAi.pinyin || m.pinyin,
+                          translation: latestAi.translation || m.translation,
+                          audioUrl: latestAi.audioUrl || m.audioUrl,
+                          segments: Array.isArray(latestAi.segments)
+                            ? latestAi.segments
+                            : m.segments,
+                          notes: latestAi.notes || m.notes,
+                        }
+                      : m
+                  )
+                );
+              }
+            } catch {}
+          })();
+        }
         es.close();
       });
       es.onerror = () => {
-        es.close();
+        // Only log if this is an actual error, not a normal closure
+        if (isStreamComplete || es.readyState === EventSource.CLOSED) {
+          // Stream closed normally, no logging needed
+        } else {
+          console.warn("SSE stream ended unexpectedly");
+        }
+        // Don't try to hydrate if we already have progressive data
+        // The progressive events should have already updated the message
       };
     } catch {
       toast.error("Failed to send message");
@@ -568,7 +693,7 @@ export default function ConversationsPage() {
             conversationId,
             user.hanzi || ""
           );
-          const es = new EventSource(url);
+          const es = new EventSource(url, { withCredentials: true });
           const aiMsgId = Date.now() + 1;
           const createdAt = new Date().toISOString();
           setMessages((prev) => [
@@ -580,6 +705,11 @@ export default function ConversationsPage() {
               pinyin: "",
               translation: "",
               createdAt,
+              // Add loading flags for progressive SSE events
+              _loadingPinyin: true,
+              _loadingTranslation: true,
+              _loadingAudio: true,
+              _loadingNotes: true,
             } as Message,
           ]);
           es.onmessage = (e) => {
@@ -590,6 +720,47 @@ export default function ConversationsPage() {
                   prev.map((m) =>
                     m.id === aiMsgId
                       ? { ...m, hanzi: (m.hanzi || "") + payload.hanziDelta }
+                      : m
+                  )
+                );
+              } else if (
+                payload &&
+                typeof payload === "object" &&
+                payload.id &&
+                (payload.translation !== undefined || payload.segments)
+              ) {
+                const data = payload as {
+                  id: number;
+                  pinyin?: string;
+                  translation?: string;
+                  segments?: Array<{
+                    text: string;
+                    startIndex: number;
+                    endIndex: number;
+                    isWord: boolean;
+                    hskLevel?: number;
+                    pinyin?: string;
+                    definition?: string;
+                    definitions?: string[];
+                  }>;
+                };
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.role === "user" && m.id === data.id
+                      ? {
+                          ...m,
+                          pinyin:
+                            typeof data.pinyin === "string"
+                              ? data.pinyin
+                              : m.pinyin,
+                          translation:
+                            typeof data.translation === "string"
+                              ? data.translation
+                              : m.translation,
+                          segments: Array.isArray(data.segments)
+                            ? data.segments
+                            : m.segments,
+                        }
                       : m
                   )
                 );
@@ -634,7 +805,6 @@ export default function ConversationsPage() {
                     m.id === aiMsgId
                       ? {
                           ...m,
-                          id: data.id ?? m.id,
                           hanzi: data.hanzi || m.hanzi,
                           pinyin: data.pinyin || "",
                           translation: data.translation || "",
@@ -642,7 +812,10 @@ export default function ConversationsPage() {
                           audioUrl: data.audioUrl || undefined,
                           segments: Array.isArray(data.segments)
                             ? data.segments
-                            : undefined,
+                            : buildFallbackSegments(
+                                data.hanzi || m.hanzi,
+                                data.pinyin || ""
+                              ),
                         }
                       : m
                   )
@@ -658,7 +831,7 @@ export default function ConversationsPage() {
               );
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === data.id
+                  m.id === aiMsgId || m.id === data.id
                     ? {
                         ...m,
                         pinyin:
@@ -678,43 +851,101 @@ export default function ConversationsPage() {
               );
             } catch {}
           });
-          es.addEventListener("final", (e: MessageEvent) => {
+          es.addEventListener("error", (e: MessageEvent) => {
             try {
               const data = JSON.parse(
                 (e as unknown as MessageEvent).data as string
               );
-              const notesCamel = data?.notes
-                ? {
-                    grammarNotes:
-                      data.notes.grammarNotes ||
-                      data.notes.grammar_notes ||
-                      undefined,
-                    tipsRich:
-                      data.notes.tipsRich || data.notes.tips_rich || undefined,
-                  }
-                : undefined;
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === aiMsgId
+                  m.id === aiMsgId || m.id === data.id
                     ? {
                         ...m,
-                        id: data.id ?? m.id,
-                        hanzi: data.hanzi || m.hanzi,
-                        pinyin: data.pinyin || "",
-                        translation: data.translation || "",
-                        notes: notesCamel || m.notes,
-                        audioUrl: data.audioUrl || undefined,
+                        pinyin:
+                          typeof data.pinyin === "string"
+                            ? data.pinyin
+                            : m.pinyin,
+                        translation:
+                          typeof data.translation === "string"
+                            ? data.translation
+                            : m.translation,
                         segments: Array.isArray(data.segments)
                           ? data.segments
-                          : undefined,
+                          : m.segments,
                       }
                     : m
                 )
               );
             } catch {}
+            // Hydrate AI message if no final arrived
+            if (conversationId) {
+              void (async () => {
+                try {
+                  const list =
+                    await conversationsApi.listMessages(conversationId);
+                  const latestAi = list
+                    .slice()
+                    .reverse()
+                    .find((m) => m.role === "ai");
+                  if (latestAi) {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === aiMsgId
+                          ? {
+                              ...m,
+                              hanzi: latestAi.hanzi || m.hanzi,
+                              pinyin: latestAi.pinyin || m.pinyin,
+                              translation:
+                                latestAi.translation || m.translation,
+                              audioUrl: latestAi.audioUrl || m.audioUrl,
+                              segments: Array.isArray(latestAi.segments)
+                                ? latestAi.segments
+                                : m.segments,
+                              notes: latestAi.notes || m.notes,
+                            }
+                          : m
+                      )
+                    );
+                  }
+                } catch {}
+              })();
+            }
             es.close();
           });
           es.onerror = () => {
+            // Hydrate AI message if stream ended without explicit final
+            if (conversationId) {
+              void (async () => {
+                try {
+                  const list =
+                    await conversationsApi.listMessages(conversationId);
+                  const latestAi = list
+                    .slice()
+                    .reverse()
+                    .find((m) => m.role === "ai");
+                  if (latestAi) {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === aiMsgId
+                          ? {
+                              ...m,
+                              hanzi: latestAi.hanzi || m.hanzi,
+                              pinyin: latestAi.pinyin || m.pinyin,
+                              translation:
+                                latestAi.translation || m.translation,
+                              audioUrl: latestAi.audioUrl || m.audioUrl,
+                              segments: Array.isArray(latestAi.segments)
+                                ? latestAi.segments
+                                : m.segments,
+                              notes: latestAi.notes || m.notes,
+                            }
+                          : m
+                      )
+                    );
+                  }
+                } catch {}
+              })();
+            }
             es.close();
           };
         } catch {
@@ -1315,7 +1546,7 @@ export default function ConversationsPage() {
           >
             {messages.map((m) => (
               <div
-                key={m.id}
+                key={`${m.id}-${m.role}`}
                 className={m.role === "user" ? "ml-auto" : "mr-auto"}
               >
                 <div
@@ -1324,79 +1555,120 @@ export default function ConversationsPage() {
                   }`}
                 >
                   {m.role === "ai" && m.audioUrl ? (
-                    <>
-                      <audio
-                        id={`audio-${m.id}`}
-                        src={resolveMediaUrl(m.audioUrl)}
-                        preload="none"
-                      />
+                    <audio
+                      id={`audio-${m.id}`}
+                      src={resolveMediaUrl(m.audioUrl)}
+                      preload="none"
+                    />
+                  ) : null}
+                  {/* Always show toggles, disable + spinner if loading */}
+                  <>
+                    {/* Audio toggle (AI only) */}
+                    {m.role === "ai" && (
                       <button
+                        type="button"
+                        disabled={m._loadingAudio}
                         onClick={() => {
-                          const el = document.getElementById(
-                            `audio-${m.id}`
-                          ) as HTMLAudioElement | null;
-                          if (!el) return;
-                          if (el.paused) {
-                            void el.play();
-                            setPlaying((s) => ({ ...s, [m.id]: true }));
-                            el.onended = () =>
+                          if (!m._loadingAudio) {
+                            const el = document.getElementById(
+                              `audio-${m.id}`
+                            ) as HTMLAudioElement | null;
+                            if (!el) return;
+                            if (el.paused) {
+                              void el.play();
+                              setPlaying((s) => ({ ...s, [m.id]: true }));
+                              el.onended = () =>
+                                setPlaying((s) => ({ ...s, [m.id]: false }));
+                            } else {
+                              el.pause();
                               setPlaying((s) => ({ ...s, [m.id]: false }));
-                          } else {
-                            el.pause();
-                            setPlaying((s) => ({ ...s, [m.id]: false }));
+                            }
                           }
                         }}
                         className={`px-2 py-1 text-xs rounded border cursor-pointer ${
-                          playing[m.id]
-                            ? "border-[#4040f2] text-[#9aa6ff]"
-                            : "border-[#404040] text-[#a6a6a6]"
+                          m._loadingAudio
+                            ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
+                            : playing[m.id]
+                              ? "border-[#4040f2] text-[#9aa6ff]"
+                              : "border-[#404040] text-[#a6a6a6]"
                         }`}
-                        title={playing[m.id] ? "Pause audio" : "Play audio"}
+                        title={
+                          m._loadingAudio
+                            ? "Generating audio..."
+                            : playing[m.id]
+                              ? "Pause audio"
+                              : "Play audio"
+                        }
                       >
                         <div className="flex items-center gap-1">
+                          {m._loadingAudio && (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          )}
                           <Volume2 className="w-4 h-4" />
                         </div>
                       </button>
-                    </>
-                  ) : null}
-                  {(Array.isArray(m.segments) && m.segments.length > 0) ||
-                  (m.pinyin && m.pinyin.trim().length > 0) ||
-                  (m.translation && m.translation.trim().length > 0) ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAiShowPinyin((s) => ({ ...s, [m.id]: !s[m.id] }))
-                        }
-                        className={`px-2 py-1 text-xs rounded border ${
-                          aiShowPinyin[m.id]
+                    )}
+
+                    {/* Pinyin toggle */}
+                    <button
+                      type="button"
+                      disabled={m._loadingPinyin}
+                      onClick={() =>
+                        !m._loadingPinyin &&
+                        setAiShowPinyin((s) => ({ ...s, [m.id]: !s[m.id] }))
+                      }
+                      className={`px-2 py-1 text-xs rounded border ${
+                        m._loadingPinyin
+                          ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
+                          : aiShowPinyin[m.id]
                             ? "border-[#4040f2] text-[#9aa6ff]"
                             : "border-[#404040] text-[#a6a6a6]"
-                        } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
-                        aria-pressed={!!aiShowPinyin[m.id]}
-                        aria-label={
-                          aiShowPinyin[m.id] ? "Hide pinyin" : "Show pinyin"
-                        }
-                      >
-                        Pinyin {aiShowPinyin[m.id] ? "On" : "Off"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAiShowTrans((s) => ({ ...s, [m.id]: !s[m.id] }))
-                        }
-                        className={`px-2 py-1 text-xs rounded border ${
-                          aiShowTrans[m.id]
+                      } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
+                      aria-pressed={!!aiShowPinyin[m.id]}
+                      aria-label={
+                        m._loadingPinyin
+                          ? "Loading pinyin..."
+                          : aiShowPinyin[m.id]
+                            ? "Hide pinyin"
+                            : "Show pinyin"
+                      }
+                    >
+                      <div className="flex items-center gap-1">
+                        {m._loadingPinyin && (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        )}
+                        <span>Pinyin {aiShowPinyin[m.id] ? "On" : "Off"}</span>
+                      </div>
+                    </button>
+
+                    {/* Translation toggle */}
+                    <button
+                      type="button"
+                      disabled={m._loadingTranslation}
+                      onClick={() =>
+                        !m._loadingTranslation &&
+                        setAiShowTrans((s) => ({ ...s, [m.id]: !s[m.id] }))
+                      }
+                      className={`px-2 py-1 text-xs rounded border ${
+                        m._loadingTranslation
+                          ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
+                          : aiShowTrans[m.id]
                             ? "border-[#4040f2] text-[#9aa6ff]"
                             : "border-[#404040] text-[#a6a6a6]"
-                        } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
-                        aria-pressed={!!aiShowTrans[m.id]}
-                        aria-label={
-                          aiShowTrans[m.id]
+                      } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
+                      aria-pressed={!!aiShowTrans[m.id]}
+                      aria-label={
+                        m._loadingTranslation
+                          ? "Loading translation..."
+                          : aiShowTrans[m.id]
                             ? "Hide translation"
                             : "Show translation"
-                        }
-                      >
+                      }
+                    >
+                      <div className="flex items-center gap-1">
+                        {m._loadingTranslation && (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        )}
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           width="16"
@@ -1420,39 +1692,46 @@ export default function ConversationsPage() {
                             strokeLinejoin="round"
                           />
                         </svg>
-                      </button>
-                      {m.role === "ai" && m.notes?.grammarNotes?.length ? (
+                      </div>
+                    </button>
+
+                    {/* Notes toggle (AI only, show if notes exist or loading) */}
+                    {m.role === "ai" &&
+                      (m._loadingNotes || m.notes?.grammarNotes?.length) && (
                         <button
                           type="button"
+                          disabled={m._loadingNotes}
                           onClick={() =>
+                            !m._loadingNotes &&
                             setAiShowNotes((s) => ({ ...s, [m.id]: !s[m.id] }))
                           }
                           className={`px-2 py-1 text-xs rounded border ${
-                            aiShowNotes[m.id]
-                              ? "border-[#4040f2] text-[#9aa6ff]"
-                              : "border-[#404040] text-[#a6a6a6]"
+                            m._loadingNotes
+                              ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
+                              : aiShowNotes[m.id]
+                                ? "border-[#4040f2] text-[#9aa6ff]"
+                                : "border-[#404040] text-[#a6a6a6]"
                           } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
                           aria-pressed={!!aiShowNotes[m.id]}
                           aria-label={
-                            aiShowNotes[m.id] ? "Hide notes" : "Show notes"
+                            m._loadingNotes
+                              ? "Generating notes..."
+                              : aiShowNotes[m.id]
+                                ? "Hide notes"
+                                : "Show notes"
                           }
                         >
-                          Notes {aiShowNotes[m.id] ? "On" : "Off"}
+                          <div className="flex items-center gap-1">
+                            {m._loadingNotes && (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            )}
+                            <span>
+                              Notes {aiShowNotes[m.id] ? "On" : "Off"}
+                            </span>
+                          </div>
                         </button>
-                      ) : null}
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-2 text-[10px] text-[#a6a6a6] px-2 py-1 border border-dashed border-[#404040] rounded">
-                      <span className="relative inline-flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4040f2] opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-[#4040f2]"></span>
-                      </span>
-                      <span>
-                        Processing… pinyin, translation, audio and notes will
-                        appear shortly
-                      </span>
-                    </div>
-                  )}
+                      )}
+                  </>
                 </div>
                 <div
                   className={`max-w-[85%] w-fit rounded-lg px-3 py-2 border ${
