@@ -16,6 +16,8 @@ export class LessonsStreamController {
     @Query('readTimeMinutes') readTimeMinutes?: string,
     @Query('topic') topic?: string,
     @Query('requestId') requestId?: string,
+    @Query('timeframe')
+    timeframe?: 'modern' | 'mythic' | 'imperial' | 'pre_modern' | 'futuristic',
   ) {
     // Prefer using the cookie-based auth; JwtAuthGuard has already validated the token
     // We still extract the cookie value to reuse the existing service method
@@ -47,6 +49,7 @@ export class LessonsStreamController {
         : undefined,
       topic,
       requestId,
+      timeframe,
     });
   }
 }

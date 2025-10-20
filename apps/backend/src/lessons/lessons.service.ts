@@ -14,6 +14,7 @@ interface GenerateOptions {
   readTimeMinutes?: number;
   topic?: string;
   requestId?: string;
+  timeframe?: 'modern' | 'mythic' | 'imperial' | 'pre_modern' | 'futuristic';
 }
 
 @Injectable()
@@ -235,6 +236,7 @@ export class LessonsService {
             options.readTimeMinutes ?? (type === 'dialogue' ? 10 : 15);
           const topic = options.topic?.trim();
           const requestId = (options.requestId || '').trim();
+          const timeframe = options.timeframe ?? 'modern';
 
           // Idempotency: if requestId provided, check if we already have a lesson persisted recently for this user+requestId
           if (requestId.length > 0) {
@@ -267,11 +269,13 @@ export class LessonsService {
                   level,
                   readTimeMinutes,
                   topic,
+                  timeframe,
                 })
               : await this.openaiGenerateStoryLesson({
                   level,
                   readTimeMinutes,
                   topic,
+                  timeframe,
                 });
 
           if (type === 'dialogue') {
@@ -495,6 +499,7 @@ export class LessonsService {
                           ? tipsRichOut
                           : undefined) as any,
                         quiz: quizOut,
+                        timeframe,
                       },
                     },
                   ],
@@ -714,6 +719,7 @@ export class LessonsService {
                         ? tipsRichOut2
                         : undefined) as any,
                       quiz: quizOut2,
+                      timeframe,
                     },
                   },
                 ],
@@ -761,6 +767,7 @@ export class LessonsService {
     const type = options.type ?? 'story';
     const readTimeMinutes = options.readTimeMinutes ?? 10;
     const topic = options.topic?.trim();
+    const timeframe = options.timeframe ?? 'modern';
 
     const generated =
       type === 'dialogue'
@@ -768,11 +775,13 @@ export class LessonsService {
             level,
             readTimeMinutes,
             topic,
+            timeframe,
           })
         : await this.openaiGenerateStoryLesson({
             level,
             readTimeMinutes,
             topic,
+            timeframe,
           });
 
     // Persist lesson
@@ -983,6 +992,7 @@ export class LessonsService {
                     ? tipsRichOut
                     : undefined) as any,
                   quiz: quizOut,
+                  timeframe,
                 },
               },
             ],
@@ -1186,6 +1196,7 @@ export class LessonsService {
                     ? tipsRichOut2
                     : undefined) as any,
                   quiz: quizOut2,
+                  timeframe,
                 },
               },
             ],
@@ -1674,6 +1685,35 @@ export class LessonsService {
     return { todayContinued, streakDays, carryOverDays, lastActivityLocalDate };
   }
 
+  private getTimeframeConditioning(
+    timeframe: 'modern' | 'mythic' | 'imperial' | 'pre_modern' | 'futuristic',
+  ): string {
+    switch (timeframe) {
+      case 'mythic':
+        return `- **Temporal Constraints:**
+            - Set the story strictly in a mythic/legendary era. No anachronisms or modern references.
+            - Avoid: internet/互联网, 网络, 手机/phone, 社交媒体, AI/人工智能, 机器人, Wi-Fi, 电脑, 视频平台, 抖音/TikTok, 微信/WeChat, 品牌/brand names, 电影/现代影视 when used as current phenomena, 新冠/COVID, NFT/加密货币, 网红/influencer, 直播/live stream, etc.
+            - Restrict namedEntities.kind to: person|title|location|event|festival|phrase (no brand/org).`;
+      case 'imperial':
+      case 'pre_modern':
+        return `- **Temporal Constraints:**
+            - Set the story in pre-industrial historical setting (e.g., imperial bureaucracy, agrarian life).
+            - No modern brands/tech/politics. Allow period-appropriate artifacts (科举, 官衔, 马车, 布匹, 城墙).
+            - Restrict namedEntities.kind to: person|title|location|event|festival|phrase (no brand/org).`;
+      case 'modern':
+        return `- **Content Requirements:**
+            - If possible, infuse the story with inspiration from current events, trends, or recent cultural happenings (news, pop culture, popular activities, contemporary issues) relevant to the topic and appropriate for the specified HSK level.`;
+      case 'futuristic':
+        return `- **Temporal Constraints:**
+            - Set the story in a speculative future setting. Encourage futuristic tech/culture.
+            - Avoid grounding in today's specific real events unless explicitly requested.
+            - Restrict namedEntities.kind to: person|title|location|event|festival|phrase|brand|org (futuristic context).`;
+      default:
+        return `- **Content Requirements:**
+            - If possible, infuse the story with inspiration from current events, trends, or recent cultural happenings (news, pop culture, popular activities, contemporary issues) relevant to the topic and appropriate for the specified HSK level.`;
+    }
+  }
+
   private async resolveUserLevel(userId: number): Promise<number> {
     const latest = await this.prismaService.assessment.findFirst({
       where: { userId },
@@ -1687,10 +1727,12 @@ export class LessonsService {
     level,
     readTimeMinutes,
     topic,
+    timeframe,
   }: {
     level: number;
     readTimeMinutes: number;
     topic?: string;
+    timeframe: 'modern' | 'mythic' | 'imperial' | 'pre_modern' | 'futuristic';
   }) {
     const preferredModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const client = (this.openAIService as any)
@@ -1699,6 +1741,7 @@ export class LessonsService {
     const topicLine = topic
       ? `\nTOPIC (mandatory): ${topic}\n.You MUST center the entire story on this TOPIC. The title MUST include at least one keyword from the topic. Use domain-specific vocabulary related to the topic and include those items in the vocabulary list.`
       : `\nNo topic provided: choose a fresh everyday-life theme distinct from generic themes. Avoid those unless explicitly requested.`;
+    const timeframeConditioning = this.getTimeframeConditioning(timeframe);
     const messages = [
       {
         role: 'system' as const,
@@ -1706,8 +1749,8 @@ export class LessonsService {
           
           - **Content Requirements:**
             - Embed the entire story around the user-supplied TOPIC.
-            - If possible, infuse the story with inspiration from current events, trends, or recent cultural happenings (news, pop culture, popular activities, contemporary issues) relevant to the topic and appropriate for the specified HSK level.
-            - The story must progress at a pace suited to the specified HSK level, introducing and reinforcing level-appropriate vocabulary and grammar, but with occasional inclusion of a few “stretch” words/structures.
+            ${timeframeConditioning}
+            - The story must progress at a pace suited to the specified HSK level, introducing and reinforcing level-appropriate vocabulary and grammar, but with occasional inclusion of a few "stretch" words/structures.
             - Promote gradual learning by organizing the story in a way that helps learners follow and understand (logical sequence, appropriate complexity for HSK level).
             - Be creative and use storytelling techniques that engage learners emotionally and intellectually (e.g., character motivation, some conflict/resolution, surprise, or humor if suited)`,
       },
@@ -1746,10 +1789,12 @@ export class LessonsService {
     level,
     readTimeMinutes,
     topic,
+    timeframe,
   }: {
     level: number;
     readTimeMinutes: number;
     topic?: string;
+    timeframe: 'modern' | 'mythic' | 'imperial' | 'pre_modern' | 'futuristic';
   }) {
     const preferredModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const client = (this.openAIService as any)
@@ -1761,6 +1806,7 @@ export class LessonsService {
     const topicLine = topic
       ? `\nTOPIC (mandatory): ${topic}\n.Use realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC. Include topic-specific vocabulary in the vocabulary list.`
       : `\nNo topic provided: choose a practical everyday-life scenario (not generic).`;
+    const timeframeConditioning = this.getTimeframeConditioning(timeframe);
     const messages = [
       {
         role: 'system' as const,
@@ -1768,7 +1814,7 @@ export class LessonsService {
           
           - **Topicality & Engagement**:
             - The entire dialogue must revolve around and deeply explore the TOPIC. Keep the flow realistic and practical.
-            - If possible, incorporate current events, trends, pop culture, or recent news relevant to the TOPIC and suitable for the HSK level.
+            ${timeframeConditioning}
             - Ensure the dialogue is contextually engaging—use light conflict, diverse opinions, practical needs, humor, or surprise if suited to the topic and learners' level.
             
           - **Quality and Pedagogy**:

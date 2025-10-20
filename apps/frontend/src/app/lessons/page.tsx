@@ -13,6 +13,13 @@ import { LayoutGroup } from "framer-motion";
 import { ProgressBanner } from "@/components/lessons/ProgressBanner";
 import { LessonCard } from "@/components/lessons/LessonCard";
 import { Carousel } from "@/components/lessons/Carousel";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function LessonsPage() {
   const { isLoading: authLoading } = useRequireAuth();
@@ -34,6 +41,9 @@ export default function LessonsPage() {
   const myDialoguesRef = useRef<HTMLDivElement | null>(null);
 
   const [genLevel, setGenLevel] = useState<number | null>(null);
+  const [timeframe, setTimeframe] = useState<
+    "modern" | "mythic" | "imperial" | "pre_modern" | "futuristic"
+  >("modern");
   const cardsPerPage = isMobile ? 4 : 9;
 
   useEffect(() => {
@@ -226,6 +236,7 @@ export default function LessonsPage() {
       topic: topic.trim() || undefined,
       readTimeMinutes: 10,
       type: "story",
+      timeframe,
     });
     try {
       await attachStream({
@@ -234,6 +245,7 @@ export default function LessonsPage() {
           topic: topic.trim() || undefined,
           readTimeMinutes: 10,
           type: "story",
+          timeframe,
         },
         onComplete: async (id?: number) => {
           await load();
@@ -312,6 +324,7 @@ export default function LessonsPage() {
       topic: topic.trim() || undefined,
       readTimeMinutes: 8,
       type: "dialogue",
+      timeframe,
     });
     try {
       await attachStream({
@@ -320,6 +333,7 @@ export default function LessonsPage() {
           topic: topic.trim() || undefined,
           readTimeMinutes: 8,
           type: "dialogue",
+          timeframe,
         },
         onComplete: async (id?: number) => {
           await load();
@@ -500,38 +514,89 @@ export default function LessonsPage() {
             />
           </div>
           <div className="pt-1">
-            <div className="text-white font-inter font-semibold mb-2 text-sm">
-              HSK Level
-            </div>
-            <div className="flex flex-wrap gap-1 sm:gap-2">
-              {Array.from({ length: 7 }).map((_, idx) => {
-                const lvl = idx + 1;
-                const active = genLevel === lvl;
-                return (
-                  <button
-                    key={lvl}
-                    onClick={() => setGenLevel(active ? null : lvl)}
-                    className={`px-2 py-1 sm:px-3 rounded-full text-xs sm:text-xs font-inter border ${
-                      active
-                        ? "border-[#4040f2] text-[#9aa6ff]"
-                        : "border-[#404040] text-[#a6a6a6]"
-                    } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#2e323a]`}
-                    type="button"
-                    aria-pressed={active}
-                    aria-label={`Set HSK level ${lvl}`}
-                  >
-                    HSK {lvl}
-                  </button>
-                );
-              })}
-              <button
-                onClick={() => setGenLevel(null)}
-                className="px-2 py-1 sm:px-3 rounded-full text-xs sm:text-xs font-inter border border-[#404040] text-[#a6a6a6] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#2e323a]"
-                type="button"
-                aria-label="Use auto level (my level)"
-              >
-                Auto (my level)
-              </button>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-white font-inter font-semibold mb-2 text-sm">
+                  HSK Level
+                </div>
+                <Select
+                  value={genLevel?.toString() || "auto"}
+                  onValueChange={(value) =>
+                    setGenLevel(value === "auto" ? null : parseInt(value))
+                  }
+                >
+                  <SelectTrigger className="w-full bg-transparent border-[#404040] text-white">
+                    <SelectValue placeholder="Select HSK level" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#2e323a] border-[#404040]">
+                    <SelectItem
+                      value="auto"
+                      className="text-white hover:bg-[#404040]"
+                    >
+                      Auto (my level)
+                    </SelectItem>
+                    {Array.from({ length: 7 }).map((_, idx) => {
+                      const lvl = idx + 1;
+                      return (
+                        <SelectItem
+                          key={lvl}
+                          value={lvl.toString()}
+                          className="text-white hover:bg-[#404040]"
+                        >
+                          HSK {lvl}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <div className="text-white font-inter font-semibold mb-2 text-sm">
+                  Timeframe
+                </div>
+                <Select
+                  value={timeframe}
+                  onValueChange={(value) =>
+                    setTimeframe(value as typeof timeframe)
+                  }
+                >
+                  <SelectTrigger className="w-full bg-transparent border-[#404040] text-white">
+                    <SelectValue placeholder="Select timeframe" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#2e323a] border-[#404040]">
+                    <SelectItem
+                      value="modern"
+                      className="text-white hover:bg-[#404040]"
+                    >
+                      Modern
+                    </SelectItem>
+                    <SelectItem
+                      value="mythic"
+                      className="text-white hover:bg-[#404040]"
+                    >
+                      Mythic
+                    </SelectItem>
+                    <SelectItem
+                      value="imperial"
+                      className="text-white hover:bg-[#404040]"
+                    >
+                      Imperial
+                    </SelectItem>
+                    <SelectItem
+                      value="pre_modern"
+                      className="text-white hover:bg-[#404040]"
+                    >
+                      Pre-modern
+                    </SelectItem>
+                    <SelectItem
+                      value="futuristic"
+                      className="text-white hover:bg-[#404040]"
+                    >
+                      Futuristic
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </div>
