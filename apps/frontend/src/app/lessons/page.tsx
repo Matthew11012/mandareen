@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardLayout } from "@/components/layout";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { lessonsApi, type LessonListItem } from "@/lib/api/lessons";
-import { Plus, RefreshCw, MessageSquare } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { useRouter } from "next/navigation";
 import { useLessonsGenerationStore } from "@/lib/stores/lessons-generation-store";
@@ -70,6 +70,7 @@ export default function LessonsPage() {
   };
 
   const [topic, setTopic] = useState("");
+  const [outputMode, setOutputMode] = useState<"story" | "dialogue">("story");
   const suggestions = [
     "At the market",
     "First day at university",
@@ -80,6 +81,57 @@ export default function LessonsPage() {
   ];
 
   const [finishedIds, setFinishedIds] = useState<Set<number>>(new Set());
+
+  // LocalStorage persistence (no URL params)
+  const LS_KEYS = {
+    mode: "mandareen.lessons.mode.v1",
+    hsk: "mandareen.lessons.hsk.v1",
+    time: "mandareen.lessons.time.v1",
+  } as const;
+
+  type TimeframeKey = typeof timeframe;
+  const isValidTimeframe = (v: string | null): v is TimeframeKey =>
+    v === "modern" ||
+    v === "mythic" ||
+    v === "imperial" ||
+    v === "pre_modern" ||
+    v === "futuristic";
+
+  // Hydrate once on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const m = localStorage.getItem(LS_KEYS.mode);
+      if (m === "story" || m === "dialogue") setOutputMode(m);
+      const h = localStorage.getItem(LS_KEYS.hsk);
+      if (h === "auto" || h === null) {
+        // keep null (auto)
+      } else if (!Number.isNaN(parseInt(h))) {
+        setGenLevel(parseInt(h));
+      }
+      const t = localStorage.getItem(LS_KEYS.time);
+      if (isValidTimeframe(t)) setTimeframe(t);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Debounced save on change
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const id = window.setTimeout(() => {
+      try {
+        localStorage.setItem(LS_KEYS.mode, outputMode);
+        localStorage.setItem(
+          LS_KEYS.hsk,
+          genLevel == null ? "auto" : String(genLevel)
+        );
+        localStorage.setItem(LS_KEYS.time, timeframe);
+      } catch {}
+    }, 250);
+    return () => window.clearTimeout(id);
+    // we intentionally omit LS_KEYS refs to keep stable keys
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outputMode, genLevel, timeframe]);
 
   // Per-section finished status filters
   type StatusFilter = "all" | "finished" | "unfinished";
@@ -108,6 +160,8 @@ export default function LessonsPage() {
       setLoading(false);
     }
   };
+
+  // URL params removed by request; state is now local-only
 
   const getLevelPillColor = (level: number) => getHSKPillClasses(level);
 
@@ -385,6 +439,11 @@ export default function LessonsPage() {
     }
   };
 
+  const onGenerate = () => {
+    if (outputMode === "story") return handleGenerate();
+    return handleGenerateDialogue();
+  };
+
   // Reattach on mount if generation is underway: avoid starting a new SSE; poll for completion
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
@@ -487,14 +546,18 @@ export default function LessonsPage() {
         {/* Topic & Generation Options */}
         <div className="bg-[#2e323a] rounded-xl p-4 border border-[#404040] space-y-3">
           <div className="text-white font-inter font-semibold">
-            Choose a topic (optional)
+            Generate New Lesson
           </div>
           <div className="flex flex-wrap gap-2">
-            {suggestions.map((s) => (
+            {(isMobile ? suggestions.slice(0, 4) : suggestions).map((s) => (
               <button
                 key={s}
                 onClick={() => setTopic(s)}
-                className={`px-3 py-1 rounded-full text-xs font-inter border ${topic === s ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#2e323a]`}
+                className={`px-3 py-1 rounded-full text-sm font-inter border min-h-[44px] sm:min-h-[24px] ${
+                  topic === s
+                    ? "border-[#4040f2] text-[#9aa6ff] bg-[#4040f2]/10"
+                    : "border-[#404040] text-[#c9c9c9] hover:bg-[#4040f2]/10"
+                } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#2e323a]`}
                 type="button"
                 aria-pressed={topic === s}
                 aria-label={`Use topic ${s}`}
@@ -504,19 +567,82 @@ export default function LessonsPage() {
             ))}
           </div>
           <div className="flex items-center gap-3">
-            <input
-              className="flex-1 bg-transparent border border-[#404040] rounded-lg px-3 py-2 text-white placeholder-[#777] focus:outline-none focus:border-[#4040f2]"
-              placeholder="Or type your own detailed topic or prompt..."
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              name="lesson-topic"
-              autoComplete="off"
-            />
+            <label htmlFor="lesson-topic" className="sr-only">
+              Topic
+            </label>
+            <div className="relative flex-1">
+              <input
+                id="lesson-topic"
+                className="w-full bg-transparent border border-[#404040] rounded-lg px-3 py-2 pr-9 text-white placeholder-[#888] focus:outline-none min-h-[44px]"
+                placeholder="Type your topic..."
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onGenerate();
+                }}
+                name="lesson-topic"
+                autoComplete="off"
+              />
+              {topic && (
+                <button
+                  type="button"
+                  onClick={() => setTopic("")}
+                  aria-label="Clear topic"
+                  className="absolute inset-y-0 right-0 px-3 text-[#c9c9c9] hover:text-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#2e323a]"
+                >
+                  ×
+                </button>
+              )}
+            </div>
           </div>
           <div className="pt-1">
-            <div className="grid grid-cols-2 gap-4">
+            <fieldset
+              className="grid grid-cols-2 gap-4 md:grid-cols-3"
+              aria-labelledby="gen-options-legend"
+            >
+              <legend id="gen-options-legend" className="sr-only">
+                Generation Options
+              </legend>
+              {/* Lesson Type select - desktop in-row; mobile spans full width row 2 */}
+              <div className="col-span-2 md:col-span-1">
+                <div
+                  id="label-lesson-type"
+                  className="text-white font-inter font-semibold mb-2 text-sm"
+                >
+                  Lesson Type
+                </div>
+                <Select
+                  value={outputMode}
+                  onValueChange={(v) => setOutputMode(v as typeof outputMode)}
+                >
+                  <SelectTrigger
+                    id="trigger-lesson-type"
+                    aria-labelledby="label-lesson-type"
+                    className="w-full bg-transparent border-[#404040] text-white min-h-[44px] focus-visible:ring-orange-400"
+                  >
+                    <SelectValue placeholder="Select lesson type" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#2e323a] border-[#404040]">
+                    <SelectItem
+                      value="story"
+                      className="text-white hover:bg-[#404040]"
+                    >
+                      Story
+                    </SelectItem>
+                    <SelectItem
+                      value="dialogue"
+                      className="text-white hover:bg-[#404040]"
+                    >
+                      Dialogue
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
-                <div className="text-white font-inter font-semibold mb-2 text-sm">
+                <div
+                  id="label-hsk"
+                  className="text-white font-inter font-semibold mb-2 text-sm"
+                >
                   HSK Level
                 </div>
                 <Select
@@ -525,7 +651,12 @@ export default function LessonsPage() {
                     setGenLevel(value === "auto" ? null : parseInt(value))
                   }
                 >
-                  <SelectTrigger className="w-full bg-transparent border-[#404040] text-white">
+                  <SelectTrigger
+                    id="trigger-hsk"
+                    aria-labelledby="label-hsk"
+                    aria-describedby="help-hsk"
+                    className="w-full bg-transparent border-[#404040] text-white min-h-[44px] focus-visible:ring-orange-400"
+                  >
                     <SelectValue placeholder="Select HSK level" />
                   </SelectTrigger>
                   <SelectContent className="bg-[#2e323a] border-[#404040]">
@@ -551,7 +682,10 @@ export default function LessonsPage() {
                 </Select>
               </div>
               <div>
-                <div className="text-white font-inter font-semibold mb-2 text-sm">
+                <div
+                  id="label-timeframe"
+                  className="text-white font-inter font-semibold mb-2 text-sm"
+                >
                   Timeframe
                 </div>
                 <Select
@@ -560,7 +694,11 @@ export default function LessonsPage() {
                     setTimeframe(value as typeof timeframe)
                   }
                 >
-                  <SelectTrigger className="w-full bg-transparent border-[#404040] text-white">
+                  <SelectTrigger
+                    id="trigger-timeframe"
+                    aria-labelledby="label-timeframe"
+                    className="w-full bg-transparent border-[#404040] text-white min-h-[44px] focus-visible:ring-orange-400"
+                  >
                     <SelectValue placeholder="Select timeframe" />
                   </SelectTrigger>
                   <SelectContent className="bg-[#2e323a] border-[#404040]">
@@ -597,57 +735,75 @@ export default function LessonsPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </fieldset>
+          </div>
+          <div className="pt-2">
+            <button
+              onClick={onGenerate}
+              disabled={generating}
+              className="w-full sm:w-auto px-3 py-2 sm:px-4 bg-orange-500/70 text-white rounded-lg hover:bg-orange-600/70 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#2e323a] min-h-[44px]"
+              type="button"
+              aria-label={`Generate ${outputMode}`}
+            >
+              <div className="flex items-center gap-2 justify-center">
+                {generating ? (
+                  <div
+                    className="h-4 w-4 rounded-full border-2 border-white border-t-transparent motion-safe:animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="w-4 h-4 md:w-5 md:h-5 shrink-0"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M15.5 10C15.5 10 15.7332 12.9028 16.9152 14.0848C18.0972 15.2668 21 15.5 21 15.5C21 15.5 18.0972 15.7332 16.9152 16.9152C15.7332 18.0972 15.5 21 15.5 21C15.5 21 15.2668 18.0972 14.0848 16.9152C12.9028 15.7332 10 15.5 10 15.5C10 15.5 12.9028 15.2668 14.0848 14.0848C15.2668 12.9028 15.5 10 15.5 10Z"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M6.5 5C6.5 5 6.64838 6.84721 7.40059 7.59942C8.15279 8.35162 10 8.5 10 8.5C10 8.5 8.15279 8.64838 7.40059 9.40059C6.64838 10.1528 6.5 12 6.5 12C6.5 12 6.35162 10.1528 5.59942 9.40059C4.84721 8.64838 3 8.5 3 8.5C3 8.5 4.84721 8.35162 5.59942 7.59942C6.35162 6.84721 6.5 5 6.5 5Z"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M15.5 3C15.5 3 15.5636 3.79166 15.886 4.11404C16.2083 4.43641 17 4.5 17 4.5C17 4.5 16.2083 4.56359 15.886 4.88597C15.5636 5.20834 15.5 6 15.5 6C15.5 6 15.4364 5.20834 15.114 4.88597C14.7917 4.56359 14 4.5 14 4.5C14 4.5 14.7917 4.43641 15.114 4.11404C15.4364 3.79166 15.5 3 15.5 3Z"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
+                <span className="font-inter text-sm sm:text-base">
+                  Generate
+                </span>
+              </div>
+            </button>
+            <div className="sr-only" aria-live="polite">
+              {generating
+                ? outputMode === "story"
+                  ? "Generating story…"
+                  : "Generating dialogue…"
+                : ""}
             </div>
           </div>
         </div>
 
-        <div className="flex flex-row items-start sm:items-center gap-3 justify-between">
-          <div className="flex flex-row items-start sm:items-center gap-2 sm:gap-3">
-            <button
-              onClick={handleGenerate}
-              disabled={generating}
-              className="px-3 py-2 sm:px-4 bg-orange-500/70 text-white rounded-lg hover:bg-orange-600/70 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#222831]"
-              type="button"
-              aria-label="Generate story lesson"
-            >
-              <div className="flex items-center gap-2 justify-center sm:justify-start">
-                <Plus className="hidden sm:block w-4 h-4" aria-hidden="true" />
-                <span className="font-inter text-sm sm:text-base">
-                  Generate Story
-                </span>
-              </div>
-            </button>
-            <button
-              onClick={handleGenerateDialogue}
-              disabled={generating}
-              className="px-3 py-2 sm:px-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-purple-400 focus-visible:ring-offset-[#222831]"
-              type="button"
-              aria-label="Generate dialogue lesson"
-            >
-              <div className="flex items-center gap-2 justify-center sm:justify-start">
-                <MessageSquare
-                  className="hidden sm:block w-4 h-4"
-                  aria-hidden="true"
-                />
-                <span className="font-inter text-sm sm:text-base">
-                  Generate Dialogue
-                </span>
-              </div>
-            </button>
-            <button
-              onClick={() => setTopic("")}
-              disabled={generating}
-              className="px-3 py-2 sm:px-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-teal-400 focus-visible:ring-offset-[#222831]"
-              type="button"
-              aria-label="Clear topic"
-            >
-              <span className="font-inter text-sm sm:text-base">Clear</span>
-            </button>
-          </div>
+        <div className="flex flex-row items-center justify-end">
           <button
             onClick={load}
             disabled={loading}
-            className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed sm:ml-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#222831]"
+            className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#222831]"
             title="Refresh"
             type="button"
             aria-label="Refresh lessons"
@@ -673,7 +829,7 @@ export default function LessonsPage() {
           allDialogues.length === 0 &&
           myItems.length === 0 ? (
           <div className="text-[#a6a6a6] font-inter text-sm">
-            No lessons yet. Click &quot;Generate Story&quot; to create one.
+            No lessons yet. Click &quot;Generate&quot; to create one.
           </div>
         ) : (
           <div className="space-y-8">
