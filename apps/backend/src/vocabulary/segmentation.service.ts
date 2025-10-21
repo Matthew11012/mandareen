@@ -404,24 +404,11 @@ export class SegmentationService {
     }
 
     if (this.mode === 'db') {
-      // DB-backed mode: compute max token length from DB (max hanzi char length)
-      try {
-        const rows: any[] = await (this.prisma as any)
-          .$queryRaw`SELECT MAX(char_length("VocabularyItem"."hanzi"))::int AS max FROM "VocabularyItem";`;
-        const val = Array.isArray(rows) ? rows[0]?.max : undefined;
-        if (typeof val === 'number' && val > 0) {
-          this.maxTokenLength = val;
-        } else {
-          // Fallback if table is empty or value is invalid
-          this.maxTokenLength = 6;
-        }
-      } catch {
-        // Fallback on error
-        this.maxTokenLength = 6;
-      }
+      // DB-backed mode: use a fixed upper bound 
+      this.maxTokenLength = 16;
       this.initialized = true;
       this.logger.debug?.(
-        `SegmentationService initialized (mode=db), maxTokenLength=${this.maxTokenLength}`,
+        `SegmentationService initialized (mode=db), maxTokenLength=${this.maxTokenLength} (fixed)`,
       );
       return;
     }

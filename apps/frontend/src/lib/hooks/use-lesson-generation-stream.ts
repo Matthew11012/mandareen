@@ -11,6 +11,7 @@ type StartParams = {
   topic?: string;
   readTimeMinutes: number;
   type: "story" | "dialogue";
+  timeframe?: "modern" | "mythic" | "imperial" | "pre_modern" | "futuristic";
 };
 
 export function useLessonGenerationStream() {
@@ -39,6 +40,7 @@ export function useLessonGenerationStream() {
       });
       if (params.level) qs.set("level", String(params.level));
       if (params.topic) qs.set("topic", params.topic);
+      if (params.timeframe) qs.set("timeframe", params.timeframe);
       const url = `${base}/lessons/generate/stream?${qs.toString()}`;
 
       const storyStepsOrder = [

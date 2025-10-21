@@ -16,6 +16,7 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
+  ArrowRight,
 } from "lucide-react";
 import * as React from "react";
 
@@ -26,6 +27,7 @@ type LessonStatus = "completed" | "available" | "pending";
 type LessonWithStatus = CurriculumLesson & {
   status: LessonStatus;
   percentCompleted: number;
+  latestQuizScore?: number | null;
 };
 
 type Params = { unit: string };
@@ -92,6 +94,7 @@ export default function UnitDetailPage({
         ...lesson,
         status,
         percentCompleted: lesson.completed ? 100 : 0,
+        latestQuizScore: lesson.latestQuizScore,
       };
     });
   }, [unitData?.lessons]);
@@ -117,18 +120,25 @@ export default function UnitDetailPage({
 
     const getCardClasses = () => {
       if (isCompleted) {
-        return "flex flex-col gap-4 rounded-2xl border border-green-500/40 bg-gradient-to-br from-green-900/20 to-green-800/10 p-4 transition-all duration-200 hover:border-green-500/60 shadow-lg ring-1 ring-green-500/20";
+        return "flex flex-col gap-4 rounded-2xl border border-green-500/40 bg-gradient-to-br from-green-900/20 to-green-800/10 p-4 transition-all duration-200 hover:border-green-500/60 hover:shadow-xl hover:scale-[1.02] shadow-lg ring-1 ring-green-500/20 hover:from-green-900/30 hover:to-green-800/20";
       } else {
-        return "flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#2e323a] p-4 transition-colors duration-200 hover:border-white/20 shadow-md";
+        return "flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#2e323a] p-4 transition-all duration-200 hover:border-[#4040f2] hover:shadow-xl hover:scale-[1.02] shadow-md hover:bg-gradient-to-br hover:from-[#2e323a] hover:to-[#3a3f4a]";
       }
     };
 
     const getBadge = () => {
       if (isCompleted) {
         return (
-          <span className="inline-flex items-center gap-1 rounded-full border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs font-inter text-green-300">
-            <CheckCircle2 className="h-3.5 w-3.5" /> Done
-          </span>
+          <div className="flex flex-col items-end gap-3">
+            <span className="inline-flex items-center gap-1 rounded-full border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs font-inter text-green-300">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Done
+            </span>
+            {typeof lesson.latestQuizScore === "number" && (
+              <span className="text-xs font-inter text-green-400 font-semibold">
+                Latest: {lesson.latestQuizScore}%
+              </span>
+            )}
+          </div>
         );
       } else if (isAvailable) {
         return (
@@ -149,8 +159,14 @@ export default function UnitDetailPage({
       <Link
         key={lesson.id}
         href={`/curriculum/${unitId}/${lesson.id}`}
-        className={getCardClasses()}
-        aria-label={`${lesson.title} - ${isCompleted ? "Completed" : isAvailable ? "Available" : "Pending"}`}
+        className={`${getCardClasses()} group`}
+        aria-label={`${lesson.title} - ${
+          isCompleted
+            ? `Completed${typeof lesson.latestQuizScore === "number" ? ` with ${lesson.latestQuizScore}% score` : ""}`
+            : isAvailable
+              ? "Available - Start Lesson"
+              : "Pending"
+        }`}
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -161,10 +177,10 @@ export default function UnitDetailPage({
                   const [, number, rest] = match;
                   return (
                     <>
-                      <span className="text-xl font-bold text-white/90">
-                        {number}{" "}
+                      <span className="text-2xl font-bold text-white mr-2">
+                        {number}
                       </span>
-                      <span>{rest}</span>
+                      <span className="text-base">{rest}</span>
                     </>
                   );
                 }
@@ -172,10 +188,14 @@ export default function UnitDetailPage({
               })()}
             </h3>
           </div>
-          {getBadge()}
-        </div>
-        <div className="flex items-center gap-3 text-xs font-inter text-white/50">
-          <span>Lesson order {lesson.order}</span>
+          <div className="flex flex-col items-end gap-3">
+            {getBadge()}
+            {isAvailable && (
+              <span className="inline-flex items-center gap-1 text-sm font-inter font-semibold text-white group-hover:text-blue-300 transition-colors duration-200">
+                Start Lesson <ArrowRight className="h-4 w-4" />
+              </span>
+            )}
+          </div>
         </div>
       </Link>
     );
@@ -217,13 +237,22 @@ export default function UnitDetailPage({
         <section className="grid gap-4 md:grid-cols-[2fr_1fr]">
           <div className="rounded-2xl border border-amber-500/40 bg-gradient-to-br from-amber-900/20 to-amber-800/10 p-6 transition-all duration-200 hover:border-amber-500/60 shadow-lg ring-1 ring-amber-500/20">
             <h2 className="text-lg font-inter font-semibold text-white">
-              {unitData?.title ?? "Unit"}
+              {(() => {
+                const title = unitData?.title ?? "Unit";
+                const match = title.match(/^(\d+)\s+(.+)$/);
+                if (match) {
+                  const [, number, rest] = match;
+                  return `Unit ${number}: ${rest}`;
+                }
+                return title;
+              })()}
             </h2>
-            {unitData?.description && (
-              <p className="mt-2 text-sm font-inter text-white/60">
-                {unitData.description}
-              </p>
-            )}
+            {unitData?.description &&
+              !/^Chapter\s*\d+:/i.test(unitData.description) && (
+                <p className="mt-2 text-sm font-inter text-white/60">
+                  {unitData.description}
+                </p>
+              )}
             <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-inter text-amber-300">
               <BookMarked className="h-4 w-4" /> {enrichedLessons.length}{" "}
               lessons
@@ -231,9 +260,20 @@ export default function UnitDetailPage({
           </div>
           <div className="rounded-2xl border border-white/10 bg-[#2e323a] p-6 shadow-md">
             <h3 className="text-sm font-inter text-amber-300">Completion</h3>
-            <p className="mt-1 text-2xl font-inter font-semibold text-white">
-              {completedCount} / {enrichedLessons.length}
-            </p>
+            <div className="mt-1 flex items-baseline gap-2">
+              <p
+                className="text-3xl font-inter font-bold text-white"
+                aria-label="Completion percentage"
+              >
+                {enrichedLessons.length > 0
+                  ? Math.round((completedCount / enrichedLessons.length) * 100)
+                  : 0}
+                %
+              </p>
+              <p className="text-base font-inter text-white/60">
+                {completedCount} / {enrichedLessons.length}
+              </p>
+            </div>
             <div className="mt-3 h-2 rounded-full bg-white/10">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-[#f59e0b] to-[#fbbf24] transition-all duration-500"
@@ -271,40 +311,76 @@ export default function UnitDetailPage({
 
         {/* Unit Navigation */}
         {navigation && (navigation.previous || navigation.next) && (
-          <div className="flex items-center justify-between pt-6 border-t border-white/10">
-            {navigation.previous ? (
-              <Link
-                href={`/curriculum/${navigation.previous.id}`}
-                className="inline-flex items-center gap-2 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                <div className="text-left">
-                  <div className="text-xs text-white/60">Previous Unit</div>
-                  <div className="text-sm font-medium truncate max-w-[200px]">
-                    {navigation.previous.title}
+          <div className="pt-6 border-t border-white/10">
+            {/* Desktop: side-by-side */}
+            <div className="hidden md:flex items-center justify-between">
+              {navigation.previous ? (
+                <Link
+                  href={`/curriculum/${navigation.previous.id}`}
+                  className="inline-flex items-center gap-3 px-5 py-3 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                  <div className="text-left">
+                    <div className="text-sm text-white/60">Previous Unit</div>
+                    <div className="text-base font-medium truncate max-w-[200px]">
+                      {navigation.previous.title}
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ) : (
-              <div></div>
-            )}
+                </Link>
+              ) : (
+                <div></div>
+              )}
 
-            {navigation.next ? (
-              <Link
-                href={`/curriculum/${navigation.next.id}`}
-                className="inline-flex items-center gap-2 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
-              >
-                <div className="text-right">
-                  <div className="text-xs text-white/60">Next Unit</div>
-                  <div className="text-sm font-medium truncate max-w-[200px]">
-                    {navigation.next.title}
+              {navigation.next ? (
+                <Link
+                  href={`/curriculum/${navigation.next.id}`}
+                  className="inline-flex items-center gap-3 px-5 py-3 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+                >
+                  <div className="text-right">
+                    <div className="text-sm text-white/60">Next Unit</div>
+                    <div className="text-base font-medium truncate max-w-[200px]">
+                      {navigation.next.title}
+                    </div>
                   </div>
-                </div>
-                <ChevronRight className="w-4 h-4" />
-              </Link>
-            ) : (
-              <div></div>
-            )}
+                  <ChevronRight className="w-5 h-5" />
+                </Link>
+              ) : (
+                <div></div>
+              )}
+            </div>
+
+            {/* Mobile: stacked with Next first */}
+            <div className="flex flex-col gap-3 md:hidden">
+              {navigation.next && (
+                <Link
+                  href={`/curriculum/${navigation.next.id}`}
+                  className="inline-flex items-center justify-between gap-3 px-5 py-3 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+                >
+                  <div className="text-left min-w-0 flex-1">
+                    <div className="text-sm text-white/60">Next Unit</div>
+                    <div className="text-base font-medium truncate">
+                      {navigation.next.title}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 flex-shrink-0" />
+                </Link>
+              )}
+
+              {navigation.previous && (
+                <Link
+                  href={`/curriculum/${navigation.previous.id}`}
+                  className="inline-flex items-center gap-3 px-5 py-3 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+                >
+                  <ChevronLeft className="w-5 h-5 flex-shrink-0" />
+                  <div className="text-left min-w-0 flex-1">
+                    <div className="text-sm text-white/60">Previous Unit</div>
+                    <div className="text-base font-medium truncate">
+                      {navigation.previous.title}
+                    </div>
+                  </div>
+                </Link>
+              )}
+            </div>
           </div>
         )}
       </div>

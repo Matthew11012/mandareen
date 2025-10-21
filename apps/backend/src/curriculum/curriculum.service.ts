@@ -92,6 +92,19 @@ export class CurriculumService {
               where: { userId, status: 'completed' as any },
               select: { id: true },
             },
+            // Include only QUIZ activities and the latest attempt for this user
+            activities: {
+              where: { type: 'QUIZ' },
+              select: {
+                id: true,
+                attempts: {
+                  where: { userId },
+                  orderBy: { createdAt: 'desc' },
+                  take: 1,
+                  select: { score: true, createdAt: true },
+                },
+              },
+            },
           },
         },
       },
@@ -102,13 +115,26 @@ export class CurriculumService {
       id: unit.id,
       title: unit.title,
       description: unit.description,
-      lessons: uUnit.lessons.map((l: any) => ({
-        id: l.id,
-        title: l.title,
-        description: l.description,
-        order: l.order,
-        completed: Array.isArray(l.progresses) && l.progresses.length > 0,
-      })),
+      lessons: uUnit.lessons.map((l: any) => {
+        const latestQuizAttempt = Array.isArray(l.activities)
+          ? l.activities
+              .flatMap((a: any) => a.attempts || [])
+              .sort(
+                (a: any, b: any) =>
+                  new Date(b.createdAt).getTime() -
+                  new Date(a.createdAt).getTime(),
+              )[0] || null
+          : null;
+
+        return {
+          id: l.id,
+          title: l.title,
+          description: l.description,
+          order: l.order,
+          completed: Array.isArray(l.progresses) && l.progresses.length > 0,
+          latestQuizScore: latestQuizAttempt?.score ?? null,
+        };
+      }),
     };
     if (process.env.CURRICULUM_DEBUG && debugStart) {
       this.logger.log(

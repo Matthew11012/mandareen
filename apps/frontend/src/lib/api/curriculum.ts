@@ -12,6 +12,7 @@ export type CurriculumLesson = {
   description?: string | null;
   order: number;
   completed?: boolean;
+  latestQuizScore?: number | null;
   activities?: Array<
     | { id: number; type: "READ"; levelBand: number; content: unknown }
     | { id: number; type: "GRAMMAR"; levelBand: number; content: unknown }
@@ -79,6 +80,9 @@ export async function generateLesson(
     {
       levelBand: opts.levelBand ?? 1,
       force: !!opts.force,
+    },
+    {
+      timeoutMs: 120000, // 2 minutes timeout for lesson generation
     }
   );
 }

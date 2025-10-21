@@ -16,7 +16,6 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
-  Volume2,
   Check,
   XCircle,
   Trophy,
@@ -204,9 +203,17 @@ export default function LessonRunnerPage({
     try {
       await generateLesson(unitId, lessonId, { levelBand: 1, force: false });
       await load();
+      toast.success("Lesson generated successfully!");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Generation failed";
-      setError(msg);
+      // Check if it's a timeout/abort error
+      if (msg.includes("aborted") || msg.includes("timeout")) {
+        setError(
+          "Lesson generation is taking longer than expected. Please refresh the page in a moment to see if the content was generated."
+        );
+      } else {
+        setError(msg);
+      }
     } finally {
       setGenerating(false);
     }
@@ -294,7 +301,14 @@ export default function LessonRunnerPage({
               disabled={generating}
               className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 cursor-pointer"
             >
-              {generating ? "Generating…" : "Generate lesson"}
+              {generating ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generating lesson (this may take 1-2 minutes)…
+                </>
+              ) : (
+                "Generate lesson"
+              )}
             </button>
           </div>
         )}
