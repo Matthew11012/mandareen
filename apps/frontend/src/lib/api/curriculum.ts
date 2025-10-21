@@ -79,6 +79,9 @@ export async function generateLesson(
     {
       levelBand: opts.levelBand ?? 1,
       force: !!opts.force,
+    },
+    {
+      timeoutMs: 120000, // 2 minutes timeout for lesson generation
     }
   );
 }
