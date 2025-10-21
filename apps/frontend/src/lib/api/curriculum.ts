@@ -12,6 +12,7 @@ export type CurriculumLesson = {
   description?: string | null;
   order: number;
   completed?: boolean;
+  latestQuizScore?: number | null;
   activities?: Array<
     | { id: number; type: "READ"; levelBand: number; content: unknown }
     | { id: number; type: "GRAMMAR"; levelBand: number; content: unknown }
