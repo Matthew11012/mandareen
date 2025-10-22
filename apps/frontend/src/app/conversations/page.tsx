@@ -357,80 +357,44 @@ export default function ConversationsPage() {
                   : m
               )
             );
-          } else if (
-            payload.type === "ai-enrichment" &&
-            payload.conversationId === conversationId
-          ) {
-            setMessages((prev) => {
-              // Find the latest AI message (most recent by creation time)
-              const aiMessages = prev.filter((m) => m.role === "ai");
-              const latestAiMessage = aiMessages[aiMessages.length - 1];
-
-              if (latestAiMessage) {
-                return prev.map((m) => {
-                  if (m.id === latestAiMessage.id) {
-                    return {
+          } else if (payload.type === "ai-enrichment") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === aiMsgId
+                  ? {
                       ...m,
                       pinyin: payload.pinyin || m.pinyin,
                       segments: payload.segments || m.segments,
                       _loadingPinyin: false,
-                    };
-                  }
-                  return m;
-                });
-              }
-              return prev;
-            });
-          } else if (
-            payload.type === "ai-translation" &&
-            payload.conversationId === conversationId
-          ) {
-            setMessages((prev) => {
-              // Find the latest AI message (most recent by creation time)
-              const aiMessages = prev.filter((m) => m.role === "ai");
-              const latestAiMessage = aiMessages[aiMessages.length - 1];
-
-              if (latestAiMessage) {
-                return prev.map((m) => {
-                  if (m.id === latestAiMessage.id) {
-                    return {
+                    }
+                  : m
+              )
+            );
+          } else if (payload.type === "ai-translation") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === aiMsgId
+                  ? {
                       ...m,
                       translation: payload.translation || m.translation,
                       _loadingTranslation: false,
-                    };
-                  }
-                  return m;
-                });
-              }
-              return prev;
-            });
-          } else if (
-            payload.type === "ai-audio" &&
-            payload.conversationId === conversationId
-          ) {
-            setMessages((prev) => {
-              // Find the latest AI message (most recent by creation time)
-              const aiMessages = prev.filter((m) => m.role === "ai");
-              const latestAiMessage = aiMessages[aiMessages.length - 1];
-
-              if (latestAiMessage) {
-                return prev.map((m) => {
-                  if (m.id === latestAiMessage.id) {
-                    return {
+                    }
+                  : m
+              )
+            );
+          } else if (payload.type === "ai-audio") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === aiMsgId
+                  ? {
                       ...m,
                       audioUrl: payload.audioUrl || m.audioUrl,
                       _loadingAudio: false,
-                    };
-                  }
-                  return m;
-                });
-              }
-              return prev;
-            });
-          } else if (
-            payload.type === "ai-notes" &&
-            payload.conversationId === conversationId
-          ) {
+                    }
+                  : m
+              )
+            );
+          } else if (payload.type === "ai-notes") {
             const notesCamel = payload.notes
               ? {
                   grammarNotes:
@@ -438,25 +402,17 @@ export default function ConversationsPage() {
                   tipsRich: payload.notes.tipsRich || payload.notes.tips_rich,
                 }
               : undefined;
-            setMessages((prev) => {
-              // Find the latest AI message (most recent by creation time)
-              const aiMessages = prev.filter((m) => m.role === "ai");
-              const latestAiMessage = aiMessages[aiMessages.length - 1];
-
-              if (latestAiMessage) {
-                return prev.map((m) => {
-                  if (m.id === latestAiMessage.id) {
-                    return {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === aiMsgId
+                  ? {
                       ...m,
                       notes: notesCamel || m.notes,
                       _loadingNotes: false,
-                    };
-                  }
-                  return m;
-                });
-              }
-              return prev;
-            });
+                    }
+                  : m
+              )
+            );
           } else if (
             payload &&
             typeof payload === "object" &&
@@ -720,6 +676,64 @@ export default function ConversationsPage() {
                   prev.map((m) =>
                     m.id === aiMsgId
                       ? { ...m, hanzi: (m.hanzi || "") + payload.hanziDelta }
+                      : m
+                  )
+                );
+              } else if (payload.type === "ai-enrichment") {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMsgId
+                      ? {
+                          ...m,
+                          pinyin: payload.pinyin || m.pinyin,
+                          segments: payload.segments || m.segments,
+                          _loadingPinyin: false,
+                        }
+                      : m
+                  )
+                );
+              } else if (payload.type === "ai-translation") {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMsgId
+                      ? {
+                          ...m,
+                          translation: payload.translation || m.translation,
+                          _loadingTranslation: false,
+                        }
+                      : m
+                  )
+                );
+              } else if (payload.type === "ai-audio") {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMsgId
+                      ? {
+                          ...m,
+                          audioUrl: payload.audioUrl || m.audioUrl,
+                          _loadingAudio: false,
+                        }
+                      : m
+                  )
+                );
+              } else if (payload.type === "ai-notes") {
+                const notesCamel = payload.notes
+                  ? {
+                      grammarNotes:
+                        payload.notes.grammarNotes ||
+                        payload.notes.grammar_notes,
+                      tipsRich:
+                        payload.notes.tipsRich || payload.notes.tips_rich,
+                    }
+                  : undefined;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMsgId
+                      ? {
+                          ...m,
+                          notes: notesCamel || m.notes,
+                          _loadingNotes: false,
+                        }
                       : m
                   )
                 );
