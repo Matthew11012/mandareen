@@ -293,4 +293,25 @@ export class LessonsController {
     const byHsk = await this.lessonsService.getWordsReadByHsk(req.user.id);
     return { byHsk };
   }
+
+  @Get('progress/words-timeline')
+  async getWordsTimeline(
+    @Req() req: AuthenticatedRequest,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('offsetMinutes') offsetMinutes?: string,
+  ): Promise<{
+    points: Array<{ date: string; new: number; learned: number }>;
+    totals: { new: number; learned: number };
+  }> {
+    const parsed =
+      typeof offsetMinutes === 'string' ? parseInt(offsetMinutes, 10) : 0;
+    const safeOffset = Number.isFinite(parsed) ? parsed : 0;
+    return this.lessonsService.getWordsTimeline(
+      req.user.id,
+      from,
+      to,
+      safeOffset,
+    );
+  }
 }

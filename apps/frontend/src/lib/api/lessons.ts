@@ -125,4 +125,17 @@ export const lessonsApi = {
       `lessons/progress/words-read-by-hsk`
     );
   },
+  async getWordsTimeline(params?: { from?: string; to?: string }) {
+    const offsetMinutes =
+      typeof window !== "undefined" ? -new Date().getTimezoneOffset() : 0;
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set("from", params.from);
+    if (params?.to) qs.set("to", params.to);
+    qs.set("offsetMinutes", String(offsetMinutes));
+    const path = `lessons/progress/words-timeline?${qs}`;
+    return get<{
+      points: Array<{ date: string; new: number; learned: number }>;
+      totals: { new: number; learned: number };
+    }>(path);
+  },
 };
