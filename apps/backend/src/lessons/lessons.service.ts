@@ -479,11 +479,18 @@ export class LessonsService {
             }
 
             emit('step', { key: 'persist_lesson' });
+
+            // Normalize and process tags
+            const rawTags = Array.isArray(generated.tags) ? generated.tags : [];
+            const normalizedTags = this.normalizeTags(rawTags);
+            const tagsWithSynonyms = this.applyTagSynonyms(normalizedTags);
+
             const created = await this.prismaService.lesson.create({
               data: {
                 level,
                 title: generated.title || null,
                 createdBy: user.email,
+                tags: tagsWithSynonyms,
                 sections: {
                   create: [
                     {
@@ -694,11 +701,20 @@ export class LessonsService {
             ...s,
             pinyin: toToneMarks(s.pinyin),
           }));
+
+          // Normalize and process tags
+          const rawTags = Array.isArray((generated as any).tags)
+            ? (generated as any).tags
+            : [];
+          const normalizedTags = this.normalizeTags(rawTags);
+          const tagsWithSynonyms = this.applyTagSynonyms(normalizedTags);
+
           const created = await this.prismaService.lesson.create({
             data: {
               level,
               title: (generated as any).title || null,
               createdBy: user.email,
+              tags: tagsWithSynonyms,
               sections: {
                 create: [
                   {
@@ -973,11 +989,17 @@ export class LessonsService {
         this.logger.warn('Segment dialogue quiz failed', e as any);
       }
 
+      // Normalize and process tags
+      const rawTags = Array.isArray(generated.tags) ? generated.tags : [];
+      const normalizedTags = this.normalizeTags(rawTags);
+      const tagsWithSynonyms = this.applyTagSynonyms(normalizedTags);
+
       lesson = await this.prismaService.lesson.create({
         data: {
           level,
           title: generated.title || null,
           createdBy: user.email,
+          tags: tagsWithSynonyms,
           sections: {
             create: [
               {
@@ -1174,11 +1196,17 @@ export class LessonsService {
         this.logger.warn('Segment story quiz failed', e as any);
       }
 
+      // Normalize and process tags
+      const rawTags = Array.isArray(generated.tags) ? generated.tags : [];
+      const normalizedTags = this.normalizeTags(rawTags);
+      const tagsWithSynonyms = this.applyTagSynonyms(normalizedTags);
+
       lesson = await this.prismaService.lesson.create({
         data: {
           level,
           title: generated.title || null,
           createdBy: user.email,
+          tags: tagsWithSynonyms,
           sections: {
             create: [
               {
@@ -1217,13 +1245,46 @@ export class LessonsService {
     return { id: lesson.id };
   }
 
-  async listLessons(level?: number, levels?: number[]) {
+  async listLessons(
+    level?: number,
+    levels?: number[],
+    timeframeTags?: string[],
+    contentTags?: string[],
+    includeUntagged?: boolean,
+  ) {
+    const whereConditions: any[] = [];
+
+    // Level filtering
+    if (levels && levels.length > 0) {
+      whereConditions.push({ level: { in: levels } });
+    } else if (level) {
+      whereConditions.push({ level });
+    }
+
+    // Tag filtering
+    if (includeUntagged) {
+      // If includeUntagged is true, only return lessons with empty tags
+      whereConditions.push({ tags: { equals: [] } });
+    } else {
+      // Regular tag filtering
+      const tagConditions: any[] = [];
+
+      if (timeframeTags && timeframeTags.length > 0) {
+        tagConditions.push({ tags: { hasSome: timeframeTags } });
+      }
+
+      if (contentTags && contentTags.length > 0) {
+        tagConditions.push({ tags: { hasSome: contentTags } });
+      }
+
+      if (tagConditions.length > 0) {
+        whereConditions.push({ AND: tagConditions });
+      }
+    }
+
     const where =
-      levels && levels.length > 0
-        ? { level: { in: levels } as any }
-        : level
-          ? { level }
-          : undefined;
+      whereConditions.length > 0 ? { AND: whereConditions } : undefined;
+
     const lessons = await this.prismaService.lesson.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -1247,6 +1308,7 @@ export class LessonsService {
         lessonType,
         titlePinyin: content.titlePinyin || null,
         titleTranslation: content.titleTranslation || null,
+        tags: l.tags || [],
       } as any;
     });
   }
@@ -1255,18 +1317,44 @@ export class LessonsService {
     createdBy: string,
     level?: number,
     levels?: number[],
+    timeframeTags?: string[],
+    contentTags?: string[],
+    includeUntagged?: boolean,
   ) {
-    const byLevel =
-      levels && levels.length > 0
-        ? { level: { in: levels } as any }
-        : level
-          ? { level }
-          : {};
+    const whereConditions: any[] = [{ createdBy }];
+
+    // Level filtering
+    if (levels && levels.length > 0) {
+      whereConditions.push({ level: { in: levels } });
+    } else if (level) {
+      whereConditions.push({ level });
+    }
+
+    // Tag filtering
+    if (includeUntagged) {
+      // If includeUntagged is true, only return lessons with empty tags
+      whereConditions.push({ tags: { equals: [] } });
+    } else {
+      // Regular tag filtering
+      const tagConditions: any[] = [];
+
+      if (timeframeTags && timeframeTags.length > 0) {
+        tagConditions.push({ tags: { hasSome: timeframeTags } });
+      }
+
+      if (contentTags && contentTags.length > 0) {
+        tagConditions.push({ tags: { hasSome: contentTags } });
+      }
+
+      if (tagConditions.length > 0) {
+        whereConditions.push({ AND: tagConditions });
+      }
+    }
+
+    const where = { AND: whereConditions };
+
     const lessons = await this.prismaService.lesson.findMany({
-      where: {
-        ...byLevel,
-        createdBy,
-      },
+      where,
       orderBy: { createdAt: 'desc' },
       include: {
         sections: {
@@ -1288,6 +1376,7 @@ export class LessonsService {
         lessonType,
         titlePinyin: content.titlePinyin || null,
         titleTranslation: content.titleTranslation || null,
+        tags: l.tags || [],
       } as any;
     });
   }
@@ -1742,6 +1831,14 @@ export class LessonsService {
       ? `\nTOPIC (mandatory): ${topic}\n.You MUST center the entire story on this TOPIC. The title MUST include at least one keyword from the topic. Use domain-specific vocabulary related to the topic and include those items in the vocabulary list.`
       : `\nNo topic provided: choose a fresh everyday-life theme distinct from generic themes. Avoid those unless explicitly requested.`;
     const timeframeConditioning = this.getTimeframeConditioning(timeframe);
+
+    // Get existing content tags to prefer in generation
+    const existingContentTags = await this.getExistingContentTags();
+    const availableTagsText =
+      existingContentTags.length > 0
+        ? `\n\nAVAILABLE CONTENT TAGS (prefer these): ${existingContentTags.join(', ')}\nYou may create 1-2 NEW content tags only if the topic absolutely requires them. If the lesson you are making is already covered by one of the tags, just use the tags available. If you must, do not create similar tags, but create completely separate tag categories from the available ones if absolutely necessary for the new lesson. `
+        : '';
+
     const messages = [
       {
         role: 'system' as const,
@@ -1752,11 +1849,18 @@ export class LessonsService {
             ${timeframeConditioning}
             - The story must progress at a pace suited to the specified HSK level, introducing and reinforcing level-appropriate vocabulary and grammar, but with occasional inclusion of a few "stretch" words/structures.
             - Promote gradual learning by organizing the story in a way that helps learners follow and understand (logical sequence, appropriate complexity for HSK level).
-            - Be creative and use storytelling techniques that engage learners emotionally and intellectually (e.g., character motivation, some conflict/resolution, surprise, or humor if suited)`,
+            - Be creative and use storytelling techniques that engage learners emotionally and intellectually (e.g., character motivation, some conflict/resolution, surprise, or humor if suited)
+            
+        Generate lesson content first. 
+        IMPORTANT: Ignore all tag-related instructions until AFTER you complete the lesson generation.`,
       },
       {
         role: 'user' as const,
         content: `Generate a Mandarin Chinese story lesson tailored to HSK level ${level}. Tell a coherent, engaging story strictly about the TOPIC. Length target: ~${approxChars} characters. Provide rich content. Use HSK-${level} vocab and grammar, with a few stretch words.${topicLine}
+
+        === TAG ASSIGNMENT (DO THIS LAST) ===
+        Only after completing the lesson generation above, assign appropriate tags to the lesson.
+        After creating the lesson, Use the available tags to create the appropriate tags for the lesson. Do not let the available tags influence your creation of the lesson. Only after creating the lesson may you check and assign the tags to the generated lesson. Use the tags available only if it is absolutely relevant to the lesson you have just created.${availableTagsText}
 
         Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
         {
@@ -1765,6 +1869,7 @@ export class LessonsService {
           "titleTranslation": "string",
           "lessonType": "story",
           "level": ${level},
+          "tags": ["${timeframe}", "content_tag_1", "content_tag_2", "content_tag_3"],
           "story": {
             "hanzi": "string (full Chinese text)",
             "translation": "string (full English translation; mirror paragraph breaks with blank lines)"
@@ -1807,6 +1912,14 @@ export class LessonsService {
       ? `\nTOPIC (mandatory): ${topic}\n.Use realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC. Include topic-specific vocabulary in the vocabulary list.`
       : `\nNo topic provided: choose a practical everyday-life scenario (not generic).`;
     const timeframeConditioning = this.getTimeframeConditioning(timeframe);
+
+    // Get existing content tags to prefer in generation
+    const existingContentTags = await this.getExistingContentTags();
+    const availableTagsText =
+      existingContentTags.length > 0
+        ? `\n\nAVAILABLE CONTENT TAGS (prefer these): ${existingContentTags.join(', ')}\nYou may create 1-2 NEW content tags only if the topic genuinely requires them. If the lesson you are making is already covered by one of the tags, just use the tags available. If you must, do not create similar tags, but create completely separate tag categories from the available ones if absolutely necessary for the new lesson.`
+        : '';
+
     const messages = [
       {
         role: 'system' as const,
@@ -1827,13 +1940,20 @@ export class LessonsService {
             2. Determine character types, main communicative goal(s), likely challenges, and learning value.
             3. Select or invent core and stretch vocabulary with high topicality and utility for learners.
             4. Ensure dialogue pacing, complexity, and vocabulary align with HSK level objectives.
-            5. **Do not output your reasoning—apply it only to craft your JSON.**`,
+            5. **Do not output your reasoning—apply it only to craft your JSON.**
+          
+          Generate lesson content first. 
+          IMPORTANT: Ignore all tag-related instructions until AFTER you complete the lesson generation.`,
       },
       {
         role: 'user' as const,
         content: `Generate a Mandarin Chinese dialogue lesson tailored to HSK level ${level}. Provide ${approxTurns} turns of natural conversation. Use HSK-${level} vocab and grammar, with a few stretch words.  
         TOPIC (mandatory): ${topicLine}  
         Use realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC.
+
+        === TAG ASSIGNMENT (DO THIS LAST) ===
+        Only after completing the lesson generation above, assign appropriate tags to the lesson.
+        After creating the dialogue lesson, Use the available tags to create the appropriate tags for the lesson. Do not let the available tags influence your creation of the lesson. Only after creating the lesson may you check and assign the tags to the generated lesson. Use the tags available only if it is absolutely relevant to the lesson you have just created.${availableTagsText}
 
         Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
         {
@@ -1842,6 +1962,7 @@ export class LessonsService {
           "titleTranslation": "string",
           "lessonType": "dialogue",
           "level": ${level},
+          "tags": ["${timeframe}", "content_tag_1", "content_tag_2", "content_tag_3"],
           "dialogue": {
             "turns": [ // 18-22 turns of practical daily conversation suitable for HSK-${level}
               { "speaker": "<Character name or role(could be narrator or third person or other roles befitting the scenario)>", "hanzi": "string", "translation": "string" }
@@ -1983,5 +2104,132 @@ export class LessonsService {
       }
     }
     return notes;
+  }
+
+  // Tag normalization and management utilities
+  private normalizeTag(tag: string): string {
+    return tag
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ') // collapse multiple spaces
+      .replace(/[^a-z0-9 ]/g, '') // only alphanumeric and spaces
+      .substring(0, 20); // max 20 chars
+  }
+
+  private normalizeTags(tags: string[]): string[] {
+    const normalized = tags
+      .map((tag) => this.normalizeTag(tag))
+      .filter((tag) => tag.length > 0)
+      .filter((tag, index, arr) => arr.indexOf(tag) === index); // dedupe
+
+    return normalized.slice(0, 4); // cap at 4 tags
+  }
+
+  private getTagSynonyms(): Map<string, string> {
+    const synonyms = new Map<string, string>();
+    synonyms.set('tech', 'technology');
+    synonyms.set('uni', 'university');
+    synonyms.set('school', 'education');
+    synonyms.set('work', 'career');
+    synonyms.set('job', 'career');
+    synonyms.set('travel', 'trip');
+    synonyms.set('food', 'dining');
+    synonyms.set('restaurant', 'dining');
+    synonyms.set('hospital', 'medical');
+    synonyms.set('doctor', 'medical');
+    synonyms.set('health', 'medical');
+    synonyms.set('love', 'romance');
+    synonyms.set('dating', 'romance');
+    synonyms.set('sport', 'sports');
+    synonyms.set('game', 'gaming');
+    synonyms.set('music', 'entertainment');
+    synonyms.set('movie', 'entertainment');
+    synonyms.set('film', 'entertainment');
+    synonyms.set('book', 'reading');
+    synonyms.set('study', 'education');
+    synonyms.set('learn', 'education');
+    return synonyms;
+  }
+
+  private applyTagSynonyms(tags: string[]): string[] {
+    const synonyms = this.getTagSynonyms();
+    return tags.map((tag) => synonyms.get(tag) || tag);
+  }
+
+  async getAvailableTags(): Promise<{
+    timeframe: Array<{ tag: string; count: number }>;
+    content: Array<{ tag: string; count: number }>;
+  }> {
+    const timeframeTags = [
+      'modern',
+      'mythic',
+      'imperial',
+      'pre_modern',
+      'futuristic',
+    ];
+
+    // Get all tags with counts
+    const queryResult = await this.prismaService.$queryRaw<
+      Array<{ tag: string; count: bigint }>
+    >`
+      SELECT unnest(tags) as tag, COUNT(*) as count
+      FROM "Lesson"
+      WHERE array_length(tags, 1) > 0
+      GROUP BY unnest(tags)
+      ORDER BY count DESC, tag ASC
+      LIMIT 50
+    `;
+
+    const allTags = queryResult.map((row) => ({
+      tag: row.tag,
+      count: Number(row.count),
+    }));
+
+    // Separate timeframe and content tags
+    const timeframeTagsWithCounts = timeframeTags.map((tag) => {
+      const found = allTags.find((t) => t.tag === tag);
+      return { tag, count: found ? found.count : 0 };
+    });
+
+    const contentTags = allTags.filter(
+      (tagObj) => !timeframeTags.includes(tagObj.tag),
+    );
+
+    const result = { timeframe: timeframeTagsWithCounts, content: contentTags };
+    return result;
+  }
+
+  async getTagCounts(): Promise<Record<string, number>> {
+    const result = await this.prismaService.$queryRaw<
+      Array<{ tag: string; count: bigint }>
+    >`
+      SELECT unnest(tags) as tag, COUNT(*) as count
+      FROM "Lesson"
+      WHERE array_length(tags, 1) > 0
+      GROUP BY unnest(tags)
+    `;
+
+    const counts: Record<string, number> = {};
+    result.forEach((row) => {
+      counts[row.tag] = Number(row.count);
+    });
+
+    return counts;
+  }
+
+  private async getExistingContentTags(): Promise<string[]> {
+    const counts = await this.getTagCounts();
+    const timeframeTags = [
+      'modern',
+      'mythic',
+      'imperial',
+      'pre_modern',
+      'futuristic',
+    ];
+
+    return Object.keys(counts)
+      .filter((tag) => !timeframeTags.includes(tag))
+      .sort((a, b) => counts[b] - counts[a])
+      .slice(0, 50); // top 50 by frequency
   }
 }

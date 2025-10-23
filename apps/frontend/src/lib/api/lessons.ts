@@ -8,6 +8,7 @@ export interface LessonListItem {
   lessonType: string;
   titlePinyin: string | null;
   titleTranslation: string | null;
+  tags: string[];
 }
 
 export interface LessonSection {
@@ -25,6 +26,11 @@ export interface LessonDetail {
   finished?: boolean;
 }
 
+export interface AvailableTags {
+  timeframe: Array<{ tag: string; count: number }>;
+  content: Array<{ tag: string; count: number }>;
+}
+
 export const lessonsApi = {
   async generate(params: {
     level?: number;
@@ -34,21 +40,46 @@ export const lessonsApi = {
   }) {
     return post<{ id: number }>("lessons/generate", params);
   },
-  async list(params?: { level?: number; levels?: number[] }) {
+  async listTags() {
+    return get<AvailableTags>("lessons/tags");
+  },
+  async list(params?: {
+    level?: number;
+    levels?: number[];
+    timeframeTags?: string[];
+    contentTags?: string[];
+    includeUntagged?: boolean;
+  }) {
     const qs = new URLSearchParams();
     if (typeof params?.level === "number")
       qs.set("level", String(params.level));
     if (params?.levels && params.levels.length > 0)
       qs.set("levels", params.levels.join(","));
+    if (params?.timeframeTags && params.timeframeTags.length > 0)
+      qs.set("timeframeTags", params.timeframeTags.join(","));
+    if (params?.contentTags && params.contentTags.length > 0)
+      qs.set("contentTags", params.contentTags.join(","));
+    if (params?.includeUntagged === true) qs.set("includeUntagged", "true");
     const path = `lessons${qs.toString() ? `?${qs}` : ""}`;
     return get<LessonListItem[]>(path);
   },
-  async listMine(params?: { level?: number; levels?: number[] }) {
+  async listMine(params?: {
+    level?: number;
+    levels?: number[];
+    timeframeTags?: string[];
+    contentTags?: string[];
+    includeUntagged?: boolean;
+  }) {
     const qs = new URLSearchParams();
     if (typeof params?.level === "number")
       qs.set("level", String(params.level));
     if (params?.levels && params.levels.length > 0)
       qs.set("levels", params.levels.join(","));
+    if (params?.timeframeTags && params.timeframeTags.length > 0)
+      qs.set("timeframeTags", params.timeframeTags.join(","));
+    if (params?.contentTags && params.contentTags.length > 0)
+      qs.set("contentTags", params.contentTags.join(","));
+    if (params?.includeUntagged === true) qs.set("includeUntagged", "true");
     const path = `lessons/mine${qs.toString() ? `?${qs}` : ""}`;
     return get<LessonListItem[]>(path);
   },

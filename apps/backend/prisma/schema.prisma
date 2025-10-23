@@ -37,8 +37,13 @@ model Lesson {
   title     String?
   createdBy String?
   createdAt DateTime        @default(now())
+  tags      String[]        @default([])
   sections  LessonSection[]
   progress  LessonProgress[]
+
+  @@index([tags], type: Gin)
+  @@index([createdAt])
+  @@index([createdBy])
 }
 
 model LessonSection {
