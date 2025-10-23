@@ -1869,7 +1869,7 @@ export class LessonsService {
           "titleTranslation": "string",
           "lessonType": "story",
           "level": ${level},
-          "tags": ["${timeframe}", "content_tag_1", "content_tag_2", "content_tag_3"],
+          "tags": ["${timeframe}", "content_tag_1", "content_tag_2<optional, only add if absolutely necessary>"],
           "story": {
             "hanzi": "string (full Chinese text)",
             "translation": "string (full English translation; mirror paragraph breaks with blank lines)"
@@ -1962,7 +1962,7 @@ export class LessonsService {
           "titleTranslation": "string",
           "lessonType": "dialogue",
           "level": ${level},
-          "tags": ["${timeframe}", "content_tag_1", "content_tag_2", "content_tag_3"],
+          "tags": ["${timeframe}", "content_tag_1", "content_tag_2<optional, only add if absolutely necessary>"],
           "dialogue": {
             "turns": [ // 18-22 turns of practical daily conversation suitable for HSK-${level}
               { "speaker": "<Character name or role(could be narrator or third person or other roles befitting the scenario)>", "hanzi": "string", "translation": "string" }
