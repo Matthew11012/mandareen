@@ -294,6 +294,24 @@ export class LessonsController {
     return { byHsk };
   }
 
+  @Get('progress/weekly')
+  async getWeeklyProgress(
+    @Req() req: AuthenticatedRequest,
+    @Query('offsetMinutes') offsetMinutes?: string,
+  ): Promise<{
+    weeklyCount: number;
+    weekStartLocalISO: string;
+    weekEndLocalISO: string;
+  }> {
+    const parsed =
+      typeof offsetMinutes === 'string' ? parseInt(offsetMinutes, 10) : 0;
+    const safeOffset = Number.isFinite(parsed) ? parsed : 0;
+    return this.lessonsService.countWeeklyFinishedLessons(
+      req.user.id,
+      safeOffset,
+    );
+  }
+
   @Get('progress/words-timeline')
   async getWordsTimeline(
     @Req() req: AuthenticatedRequest,

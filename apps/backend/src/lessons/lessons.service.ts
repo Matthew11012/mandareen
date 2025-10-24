@@ -2603,4 +2603,96 @@ export class LessonsService {
       return { points: [], totals: { new: 0, learned: 0 } };
     }
   }
+
+  async countWeeklyFinishedLessons(
+    userId: number,
+    offsetMinutes: number,
+  ): Promise<{
+    weeklyCount: number;
+    weekStartLocalISO: string;
+    weekEndLocalISO: string;
+  }> {
+    try {
+      const bounds = this.getWeekBoundsUtc(offsetMinutes);
+
+      // Count AI lesson completions
+      const aiCount = await this.prismaService.lessonProgress.count({
+        where: {
+          userId,
+          finishedAt: {
+            gte: bounds.weekStartUtc,
+            lt: bounds.nextWeekStartUtc,
+          },
+        },
+      });
+
+      // Count curriculum lesson completions (distinct lessons)
+      const curriculumResults =
+        await this.prismaService.curriculumProgress.groupBy({
+          by: ['lessonId'],
+          where: {
+            userId,
+            status: 'completed',
+            lessonId: { not: null },
+            updatedAt: {
+              gte: bounds.weekStartUtc,
+              lt: bounds.nextWeekStartUtc,
+            },
+          },
+        });
+      const curriculumCount = curriculumResults.length;
+
+      const weeklyCount = aiCount + curriculumCount;
+
+      return {
+        weeklyCount,
+        weekStartLocalISO: bounds.weekStartLocalISO,
+        weekEndLocalISO: bounds.weekEndLocalISO,
+      };
+    } catch (error) {
+      this.logger.error('Error in countWeeklyFinishedLessons', error);
+      return {
+        weeklyCount: 0,
+        weekStartLocalISO: new Date().toISOString(),
+        weekEndLocalISO: new Date().toISOString(),
+      };
+    }
+  }
+
+  private getWeekBoundsUtc(offsetMinutes: number): {
+    weekStartUtc: Date;
+    nextWeekStartUtc: Date;
+    weekStartLocalISO: string;
+    weekEndLocalISO: string;
+  } {
+    const now = new Date();
+    const localNow = new Date(now.getTime() + offsetMinutes * 60_000);
+    const day = (localNow.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+    const mondayLocal = new Date(
+      Date.UTC(
+        localNow.getUTCFullYear(),
+        localNow.getUTCMonth(),
+        localNow.getUTCDate() - day,
+        0,
+        0,
+        0,
+        0,
+      ),
+    );
+    const nextMondayLocal = new Date(
+      mondayLocal.getTime() + 7 * 24 * 60 * 60_000,
+    );
+    const weekStartUtc = new Date(
+      mondayLocal.getTime() - offsetMinutes * 60_000,
+    );
+    const nextWeekStartUtc = new Date(
+      nextMondayLocal.getTime() - offsetMinutes * 60_000,
+    );
+    return {
+      weekStartUtc,
+      nextWeekStartUtc,
+      weekStartLocalISO: mondayLocal.toISOString(),
+      weekEndLocalISO: new Date(nextMondayLocal.getTime() - 1).toISOString(),
+    };
+  }
 }

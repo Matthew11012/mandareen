@@ -9,6 +9,7 @@ import {
   Calendar,
 } from "lucide-react";
 import CountUp from "@/components/ui/CountUp";
+import Link from "next/link";
 
 interface QuickStatsProps {
   currentLevel: number | null;
@@ -16,6 +17,8 @@ interface QuickStatsProps {
   studyStreakDays: number;
   streakTodayContinued: boolean;
   streakCarryOverDays: number;
+  weeklyGoalLessons: number | null;
+  weeklyCount: number;
 }
 
 export default function QuickStats({
@@ -24,6 +27,8 @@ export default function QuickStats({
   studyStreakDays,
   streakTodayContinued,
   streakCarryOverDays,
+  weeklyGoalLessons,
+  weeklyCount,
 }: QuickStatsProps) {
   const displayedLevel = (() => {
     if (currentLevel === null) return "Not Assessed";
@@ -148,21 +153,39 @@ export default function QuickStats({
           <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
             <Calendar className="w-5 h-5 text-orange-400" />
           </div>
-          <div>
+          <div className="flex-1">
             <p className="text-[#c4c4c4] text-sm font-inter">Weekly Goal</p>
-            <p
-              className="text-white text-xl font-inter font-semibold"
-              style={{ fontVariantNumeric: "tabular-nums" }}
-            >
-              <CountUp
-                from={0}
-                to={5}
-                separator=","
-                direction="up"
-                duration={1}
-              />{" "}
-              lessons
-            </p>
+            {weeklyGoalLessons === null ? (
+              <div className="flex items-center justify-between">
+                <Link
+                  href="/profile#weekly-goal"
+                  className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white text-xs font-inter rounded-md transition-colors duration-200"
+                >
+                  Set goal
+                </Link>
+              </div>
+            ) : (
+              <div>
+                <p
+                  className="text-white text-xl font-inter font-semibold"
+                  style={{ fontVariantNumeric: "tabular-nums" }}
+                >
+                  <CountUp
+                    from={0}
+                    to={weeklyCount}
+                    separator=","
+                    direction="up"
+                    duration={1}
+                  />{" "}
+                  of {weeklyGoalLessons} lessons
+                </p>
+                <p className="text-[#a6a6a6] text-xs font-inter mt-1">
+                  {weeklyGoalLessons - weeklyCount > 0
+                    ? `${weeklyGoalLessons - weeklyCount} to go`
+                    : "Goal achieved!"}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

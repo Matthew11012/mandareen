@@ -8,18 +8,18 @@ datasource db {
 }
 
 model User {
-  id              Int            @id @default(autoincrement())
-  email           String         @unique
-  password_hashed String
-  createdAt       DateTime       @default(now())
-  googleId        String?        @unique
-  assessments     Assessment[]
-  conversations   Conversation[]
-  flashcards      Flashcard[]
-  lessonProgresses LessonProgress[]
-  // Curriculum back-relations
-  curriculumProgresses CurriculumProgress[]
+  id                   Int                     @id @default(autoincrement())
+  email                String                  @unique
+  password_hashed      String
+  createdAt            DateTime                @default(now())
+  googleId             String?                 @unique
+  weeklyGoalLessons    Int?
   activityAttempts     ActivityAttempt[]
+  assessments          Assessment[]
+  conversations        Conversation[]
+  curriculumProgresses CurriculumProgress[]
+  flashcards           Flashcard[]
+  lessonProgresses     LessonProgress[]
   curriculumBookmark   UserCurriculumBookmark?
 }
 
@@ -32,14 +32,14 @@ model Assessment {
 }
 
 model Lesson {
-  id        Int             @id @default(autoincrement())
+  id        Int              @id @default(autoincrement())
   level     Int
   title     String?
   createdBy String?
-  createdAt DateTime        @default(now())
-  tags      String[]        @default([])
-  sections  LessonSection[]
+  createdAt DateTime         @default(now())
+  tags      String[]         @default([])
   progress  LessonProgress[]
+  sections  LessonSection[]
 
   @@index([tags], type: Gin)
   @@index([createdAt])
@@ -58,14 +58,13 @@ model LessonSection {
 }
 
 model LessonProgress {
-  id         Int      @id @default(autoincrement())
+  id         Int       @id @default(autoincrement())
   userId     Int
   lessonId   Int
   finishedAt DateTime?
-  createdAt  DateTime @default(now())
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  lesson     Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, lessonId])
   @@index([userId])
@@ -171,32 +170,30 @@ model Message {
 
 /// RAG: Knowledge sources and chunks for grounded generation
 model RagSource {
-  id         Int          @id @default(autoincrement())
-  title      String
-  sourceType String
-  language   String?
-  metadata   Json?
-  createdAt  DateTime     @default(now())
-  chunks     RagChunk[]
-  sections   RagSection[]
-  // Curriculum back-relation
+  id              Int              @id @default(autoincrement())
+  title           String
+  sourceType      String
+  language        String?
+  metadata        Json?
+  createdAt       DateTime         @default(now())
   curriculumUnits CurriculumUnit[]
+  chunks          RagChunk[]
+  sections        RagSection[]
 }
 
 model RagSection {
-  id        Int        @id @default(autoincrement())
-  sourceId  Int
-  heading   String?
-  slug      String?
-  tags      String[]
-  hskMin    Int?
-  hskMax    Int?
-  metadata  Json?
-  createdAt DateTime   @default(now())
-  chunks    RagChunk[]
-  source    RagSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  // Curriculum back-relation
+  id                Int                @id @default(autoincrement())
+  sourceId          Int
+  heading           String?
+  slug              String?
+  tags              String[]
+  hskMin            Int?
+  hskMax            Int?
+  metadata          Json?
+  createdAt         DateTime           @default(now())
   curriculumLessons CurriculumLesson[]
+  chunks            RagChunk[]
+  source            RagSource          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 }
 
 model RagChunk {
@@ -245,58 +242,41 @@ model RagEmbedding {
   @@index([vector], map: "ragembedding_vector_hnsw")
 }
 
-// ==============================
-// Curriculum (Materialized Track)
-// ==============================
-
-enum CurriculumActivityType {
-  READ
-  VOCAB
-  GRAMMAR
-  QUIZ
-  LISTEN
-  SPEAK
-}
-
 model CurriculumUnit {
-  id             Int      @id @default(autoincrement())
+  id             Int                      @id @default(autoincrement())
   ragSourceId    Int
   title          String
   description    String?
-  order          Int      @default(0)
-  targetLevelMin Int?     @default(0)
-  targetLevelMax Int?     @default(7)
+  order          Int                      @default(0)
+  targetLevelMin Int?                     @default(0)
+  targetLevelMax Int?                     @default(7)
+  createdAt      DateTime                 @default(now())
   metadata       Json?
-  createdAt      DateTime @default(now())
-
   lessons        CurriculumLesson[]
   progresses     CurriculumProgress[]
+  ragSource      RagSource                @relation(fields: [ragSourceId], references: [id], onDelete: Cascade)
   bookmarks      UserCurriculumBookmark[]
-
-  // FK to RAG
-  ragSource RagSource @relation(fields: [ragSourceId], references: [id], onDelete: Cascade)
 
   @@unique([ragSourceId, title])
   @@index([ragSourceId, order])
 }
 
 model CurriculumLesson {
-  id           Int      @id @default(autoincrement())
+  id           Int                      @id @default(autoincrement())
   unitId       Int
   ragSectionId Int?
   title        String
   description  String?
-  order        Int      @default(0)
+  order        Int                      @default(0)
   objectives   Json?
   grammarKeys  String[]
+  createdAt    DateTime                 @default(now())
   metadata     Json?
-  createdAt    DateTime @default(now())
-
-  unit       CurriculumUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
-  ragSection RagSection?     @relation(fields: [ragSectionId], references: [id], onDelete: Cascade)
-  activities CurriculumActivity[]
-  progresses CurriculumProgress[]
-  bookmarks  UserCurriculumBookmark[]
+  activities   CurriculumActivity[]
+  ragSection   RagSection?              @relation(fields: [ragSectionId], references: [id], onDelete: Cascade)
+  unit         CurriculumUnit           @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  progresses   CurriculumProgress[]
+  bookmarks    UserCurriculumBookmark[]
 
   @@unique([unitId, ragSectionId])
   @@unique([unitId, title])
@@ -306,46 +286,38 @@ model CurriculumLesson {
 }
 
 model CurriculumActivity {
-  id        Int                    @id @default(autoincrement())
-  lessonId  Int
-  type      CurriculumActivityType
-  version   Int                    @default(1)
-  levelBand Int                    @default(0)
-  content   Json
-  order     Int                    @default(0)
-  createdAt DateTime               @default(now())
-
-  lesson     CurriculumLesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  id         Int                      @id @default(autoincrement())
+  lessonId   Int
+  type       CurriculumActivityType
+  version    Int                      @default(1)
+  levelBand  Int                      @default(0)
+  content    Json
+  order      Int                      @default(0)
+  createdAt  DateTime                 @default(now())
   attempts   ActivityAttempt[]
+  lesson     CurriculumLesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   progresses CurriculumProgress[]
   bookmarks  UserCurriculumBookmark[]
 
-  // Idempotency: one artifact per (lesson, type, version, levelBand)
   @@unique([lessonId, type, version, levelBand])
   @@index([lessonId, type])
 }
 
-enum CurriculumProgressStatus {
-  in_progress
-  completed
-}
-
 model CurriculumProgress {
-  id         Int                       @id @default(autoincrement())
+  id         Int                      @id @default(autoincrement())
   userId     Int
   unitId     Int?
   lessonId   Int?
   activityId Int?
   status     CurriculumProgressStatus
   score      Int?
-  attempts   Int                       @default(0)
-  updatedAt  DateTime                  @updatedAt
-  createdAt  DateTime                  @default(now())
-
-  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  unit     CurriculumUnit?    @relation(fields: [unitId], references: [id], onDelete: Cascade)
-  lesson   CurriculumLesson?  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  activity CurriculumActivity? @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  attempts   Int                      @default(0)
+  updatedAt  DateTime                 @updatedAt
+  createdAt  DateTime                 @default(now())
+  activity   CurriculumActivity?      @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  lesson     CurriculumLesson?        @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  unit       CurriculumUnit?          @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  user       User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, unitId])
   @@index([userId, lessonId])
@@ -360,23 +332,35 @@ model ActivityAttempt {
   payload    Json
   score      Int?
   createdAt  DateTime           @default(now())
-
-  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  activity CurriculumActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  activity   CurriculumActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, activityId])
 }
 
 model UserCurriculumBookmark {
-  id         Int        @id @default(autoincrement())
-  userId     Int        @unique
+  id         Int                 @id @default(autoincrement())
+  userId     Int                 @unique
   unitId     Int?
   lessonId   Int?
   activityId Int?
-  updatedAt  DateTime   @updatedAt
+  updatedAt  DateTime            @updatedAt
+  activity   CurriculumActivity? @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  lesson     CurriculumLesson?   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  unit       CurriculumUnit?     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
 
-  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  unit     CurriculumUnit?    @relation(fields: [unitId], references: [id], onDelete: Cascade)
-  lesson   CurriculumLesson?  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  activity CurriculumActivity? @relation(fields: [activityId], references: [id], onDelete: Cascade)
+enum CurriculumActivityType {
+  READ
+  VOCAB
+  GRAMMAR
+  QUIZ
+  LISTEN
+  SPEAK
+}
+
+enum CurriculumProgressStatus {
+  in_progress
+  completed
 }

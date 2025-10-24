@@ -7,12 +7,32 @@ export class UsersService {
 
   async getMe(
     userId: number,
-  ): Promise<{ id: number; email: string; createdAt: Date }> {
+  ): Promise<{
+    id: number;
+    email: string;
+    createdAt: Date;
+    weeklyGoalLessons: number | null;
+  }> {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { id: true, email: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        createdAt: true,
+        weeklyGoalLessons: true,
+      },
     });
     return user;
+  }
+
+  async setWeeklyGoal(
+    userId: number,
+    weeklyGoalLessons: number | null,
+  ): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { weeklyGoalLessons },
+    });
   }
 
   async getCurrentLevel(
