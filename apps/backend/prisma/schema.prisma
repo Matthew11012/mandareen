@@ -75,6 +75,7 @@ model VocabularyItem {
   id          Int               @id @default(autoincrement())
   hanzi       String            @unique
   pinyin      String
+  pinyin_search String?
   definition  String
   createdAt   DateTime          @default(now())
   frequency   Int?
@@ -87,6 +88,7 @@ model VocabularyItem {
   instances   WordInstance[]
 
   @@index([hanzi])
+  @@index([pinyin_search])
   @@index([hskLevel])
   @@index([source])
 }
