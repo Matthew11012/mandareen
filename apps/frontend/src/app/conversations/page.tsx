@@ -1281,7 +1281,7 @@ export default function ConversationsPage() {
               top: Math.max(10, popup.y - 150),
               zIndex: 1000,
             }}
-            className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+            className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
           >
             <div className="font-bold text-white text-lg truncate">
               {popup.word}
@@ -1384,6 +1384,131 @@ export default function ConversationsPage() {
                 <Plus className="w-4 h-4" />
                 <span className="text-sm font-inter">Add to Flashcards</span>
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Mobile top sheet popup for AiMessage */}
+        {popup.open && (
+          <div className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4">
+            <div className="max-w-sm mx-auto">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="font-bold text-white text-lg truncate">
+                  {popup.word}
+                </div>
+              </div>
+              {popup.pinyin && (
+                <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                  {popup.pinyin}
+                </div>
+              )}
+              {Array.isArray(popup.definitions) &&
+              popup.definitions.length > 0 ? (
+                <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                  {popup.definitions.map((d, i) => (
+                    <div key={i}>• {d}</div>
+                  ))}
+                </div>
+              ) : popup.definition ? (
+                <div className="text-xs text-[#a6a6a6] mb-3">
+                  {popup.definition}
+                </div>
+              ) : null}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setPopup((p) => ({ ...p, open: false }));
+                  }}
+                  className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    // Build sentence-level context using segments and token index
+                    let ctx:
+                      | {
+                          hanzi?: string;
+                          pinyin?: string;
+                          translation?: string;
+                        }
+                      | undefined;
+                    const tokenIndex = popup.tokenIndex ?? -1;
+                    if (Array.isArray(m.segments) && tokenIndex >= 0) {
+                      const messageHanzi = m.hanzi || "";
+                      const segments = m.segments || [];
+                      const tokenStart = segments
+                        .slice(0, tokenIndex)
+                        .reduce((acc, s) => acc + (s.text?.length || 0), 0);
+                      const hanziSentences = messageHanzi
+                        .split(/(?<=[。！？!?])/)
+                        .map((s) => s.trim())
+                        .filter(Boolean);
+                      let accLen = 0;
+                      let sentenceIdx = 0;
+                      for (let si = 0; si < hanziSentences.length; si++) {
+                        const sTxt = hanziSentences[si];
+                        const sLen = sTxt.length;
+                        if (
+                          tokenStart >= accLen &&
+                          tokenStart < accLen + sLen
+                        ) {
+                          sentenceIdx = si;
+                          break;
+                        }
+                        accLen += sLen;
+                      }
+                      const chosenHanzi =
+                        sentenceIdx >= 0
+                          ? hanziSentences[sentenceIdx]
+                          : hanziSentences[0] || messageHanzi;
+                      // Rebuild per-character pinyin aligned to message hanzi
+                      const pinyinTokens = (m.pinyin || "")
+                        .split(/\s+/)
+                        .map((s) => s.trim())
+                        .filter((s) => s.length > 0);
+                      const chars = Array.from(messageHanzi);
+                      const perChar: string[] = new Array(chars.length).fill(
+                        ""
+                      );
+                      let t = 0;
+                      for (let i = 0; i < chars.length; i++) {
+                        if (/^[\u3400-\u9FFF]$/.test(chars[i])) {
+                          perChar[i] = pinyinTokens[t] || "";
+                          if (pinyinTokens[t]) t++;
+                        }
+                      }
+                      const sentStartInMsg = hanziSentences
+                        .slice(0, sentenceIdx)
+                        .join("").length;
+                      const sentLen = chosenHanzi.length;
+                      const chosenPinyin = perChar
+                        .slice(sentStartInMsg, sentStartInMsg + sentLen)
+                        .join(" ")
+                        .trim();
+                      const transSentences = (m.translation || "")
+                        .split(/(?<=[.!?])\s+/)
+                        .map((s) => s.trim())
+                        .filter(Boolean);
+                      const chosenTrans =
+                        sentenceIdx >= 0 && transSentences[sentenceIdx]
+                          ? transSentences[sentenceIdx]
+                          : undefined;
+                      ctx = {
+                        hanzi: chosenHanzi,
+                        pinyin: chosenPinyin,
+                        translation: chosenTrans,
+                      };
+                    }
+                    void addSingleToFlashcards(popup.word, ctx);
+                    setPopup((p) => ({ ...p, open: false }));
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm font-inter">Add to Flashcards</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -2074,7 +2199,7 @@ export default function ConversationsPage() {
                   top: Math.max(10, notesPopup.y - 150),
                   zIndex: 1000,
                 }}
-                className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+                className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
               >
                 <div className="font-bold text-white text-lg truncate">
                   {notesPopup.word}
@@ -2112,6 +2237,61 @@ export default function ConversationsPage() {
                       Add to Flashcards
                     </span>
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* Mobile top sheet popup for notes modal */}
+            {notesPopup.open && (
+              <div className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4">
+                <div className="max-w-sm mx-auto">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="font-bold text-white text-lg truncate">
+                      {notesPopup.word}
+                    </div>
+                  </div>
+                  {notesPopup.pinyin ? (
+                    <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                      {notesPopup.pinyin}
+                    </div>
+                  ) : null}
+                  {Array.isArray(notesPopup.definitions) &&
+                  notesPopup.definitions.length > 0 ? (
+                    <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                      {notesPopup.definitions.map((d, i) => (
+                        <div key={i}>• {d}</div>
+                      ))}
+                    </div>
+                  ) : notesPopup.definition ? (
+                    <div className="text-xs text-[#a6a6a6] mb-3">
+                      {notesPopup.definition}
+                    </div>
+                  ) : null}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setNotesPopup((p) => ({ ...p, open: false }));
+                      }}
+                      className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                    >
+                      Close
+                    </button>
+                    <button
+                      onClick={() => {
+                        void addSingleToFlashcards(
+                          notesPopup.word,
+                          notesPopup.ctx
+                        );
+                        setNotesPopup((p) => ({ ...p, open: false }));
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span className="text-sm font-inter">
+                        Add to Flashcards
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
