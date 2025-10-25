@@ -17,6 +17,8 @@ import {
   PieChart,
   Pie,
   LabelList,
+  AreaChart,
+  Area,
 } from "recharts";
 
 type ByLevel = Record<number, number>;
@@ -27,24 +29,33 @@ export default function ProgressPage() {
   const [byLevel, setByLevel] = useState<ByLevel>({});
   const [totalsByLevel, setTotalsByLevel] = useState<ByLevel>({});
   const [wordsByHsk, setWordsByHsk] = useState<Record<string, number>>({});
+  const [wordsTimeline, setWordsTimeline] = useState<{
+    points: Array<{ date: string; new: number; learned: number }>;
+    totals: { new: number; learned: number };
+  }>({ points: [], totals: { new: 0, learned: 0 } });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   type LessonsChartType = "bars" | "stacked" | "line";
   type WordsChartType = "bars" | "pie";
+  type WordsTimelineFilter = "all" | "30" | "7";
   const [lessonsChartType, setLessonsChartType] =
     useState<LessonsChartType>("bars");
   const [wordsChartType, setWordsChartType] = useState<WordsChartType>("bars");
+  const [wordsTimelineFilter, setWordsTimelineFilter] =
+    useState<WordsTimelineFilter>("all");
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         setLoading(true);
-        const [finished, allLessons, wordsByHskRes] = await Promise.all([
-          lessonsApi.getProgressByLevel(),
-          lessonsApi.list(),
-          lessonsApi.getWordsReadByHsk(),
-        ]);
+        const [finished, allLessons, wordsByHskRes, wordsTimelineRes] =
+          await Promise.all([
+            lessonsApi.getProgressByLevel(),
+            lessonsApi.list(),
+            lessonsApi.getWordsReadByHsk(),
+            lessonsApi.getWordsTimeline(),
+          ]);
         if (!mounted) return;
         setByLevel(finished.byLevel || {});
         const agg: ByLevel = {};
@@ -53,6 +64,7 @@ export default function ProgressPage() {
         });
         setTotalsByLevel(agg);
         setWordsByHsk(wordsByHskRes.byHsk || {});
+        setWordsTimeline(wordsTimelineRes);
       } catch (e) {
         console.error(e);
         if (!mounted) return;
@@ -96,6 +108,28 @@ export default function ProgressPage() {
       }),
     [byLevel, totalsByLevel]
   );
+
+  const filteredTimelineData = useMemo(() => {
+    if (!wordsTimeline.points || wordsTimeline.points.length === 0) return [];
+
+    const now = new Date();
+    let cutoffDate: Date;
+
+    switch (wordsTimelineFilter) {
+      case "7":
+        cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case "30":
+        cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        return wordsTimeline.points;
+    }
+
+    return wordsTimeline.points.filter(
+      (point) => new Date(point.date) >= cutoffDate
+    );
+  }, [wordsTimeline.points, wordsTimelineFilter]);
 
   const getHSKBarColor = (lvl: number): string => {
     switch (lvl) {
@@ -548,6 +582,149 @@ export default function ProgressPage() {
                 )}
               </div>
             )}
+          </section>
+
+          {/* Words Progress Timeline */}
+          <section className="bg-[#2e323a] rounded-xl border border-[#404040] p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h2 className="text-white font-inter font-medium text-sm md:text-base">
+                Words Progress
+              </h2>
+              <div
+                className="inline-flex rounded-lg border border-[#404040] overflow-hidden"
+                role="group"
+                aria-label="Timeline filter"
+              >
+                <button
+                  type="button"
+                  onClick={() => setWordsTimelineFilter("all")}
+                  className={`px-2 py-1 text-xs font-inter cursor-pointer ${
+                    wordsTimelineFilter === "all"
+                      ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                      : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                  }`}
+                  aria-pressed={wordsTimelineFilter === "all"}
+                >
+                  All Time
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWordsTimelineFilter("30")}
+                  className={`px-2 py-1 text-xs font-inter border-l border-[#404040] cursor-pointer ${
+                    wordsTimelineFilter === "30"
+                      ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                      : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                  }`}
+                  aria-pressed={wordsTimelineFilter === "30"}
+                >
+                  30 days
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWordsTimelineFilter("7")}
+                  className={`px-2 py-1 text-xs font-inter border-l border-[#404040] cursor-pointer ${
+                    wordsTimelineFilter === "7"
+                      ? "bg-[#4040f2]/10 text-[#9aa6ff]"
+                      : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
+                  }`}
+                  aria-pressed={wordsTimelineFilter === "7"}
+                >
+                  7 days
+                </button>
+              </div>
+            </div>
+            {loading ? (
+              <div className="text-[#a6a6a6] text-sm">Loading…</div>
+            ) : error ? (
+              <div className="text-red-400 text-sm" role="alert">
+                {error}
+              </div>
+            ) : (
+              <div className="mt-2 h-64 sm:h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={filteredTimelineData}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid stroke="#2e323a" strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="date"
+                      stroke="#a6a6a6"
+                      tick={{ fill: "#a6a6a6", fontSize: 12 }}
+                      tickFormatter={(value) => {
+                        const date = new Date(value);
+                        return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
+                      }}
+                    />
+                    <YAxis
+                      stroke="#a6a6a6"
+                      tick={{ fill: "#a6a6a6", fontSize: 12 }}
+                      allowDecimals={false}
+                    />
+                    <ReTooltip
+                      contentStyle={{
+                        background: "#2e323a",
+                        border: "1px solid #404040",
+                        color: "#fff",
+                      }}
+                      labelFormatter={(value) => {
+                        const date = new Date(value);
+                        const day = String(date.getDate()).padStart(2, "0");
+                        const month = String(date.getMonth() + 1).padStart(
+                          2,
+                          "0"
+                        );
+                        const year = String(date.getFullYear()).slice(-2);
+                        return `${day}/${month}/${year}`;
+                      }}
+                    />
+                    <Legend formatter={legendFormatter} wrapperStyle={{}} />
+                    <Area
+                      type="monotone"
+                      dataKey="learned"
+                      stackId="1"
+                      stroke="#10b981"
+                      fill="#10b981"
+                      name="Learned Words"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="new"
+                      stackId="1"
+                      stroke="#3b82f6"
+                      fill="#3b82f6"
+                      name="New Words"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Summary Tiles */}
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <div className="bg-[#1a1d23] rounded-lg p-3 border border-[#404040]">
+                <div className="text-[#a6a6a6] text-xs font-inter mb-1">
+                  New Words
+                </div>
+                <div className="text-white text-lg font-semibold">
+                  {wordsTimeline.totals.new}
+                </div>
+                <div className="text-[#a6a6a6] text-xs">
+                  Read less than ten times
+                </div>
+              </div>
+              <div className="bg-[#1a1d23] rounded-lg p-3 border border-[#404040]">
+                <div className="text-[#a6a6a6] text-xs font-inter mb-1">
+                  Learned Words
+                </div>
+                <div className="text-white text-lg font-semibold">
+                  {wordsTimeline.totals.learned}
+                </div>
+                <div className="text-[#a6a6a6] text-xs">
+                  Read ten times or more
+                </div>
+              </div>
+            </div>
           </section>
         </div>
       </div>

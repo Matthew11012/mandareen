@@ -13,6 +13,7 @@ import { LayoutGroup } from "framer-motion";
 import { ProgressBanner } from "@/components/lessons/ProgressBanner";
 import { LessonCard } from "@/components/lessons/LessonCard";
 import { Carousel } from "@/components/lessons/Carousel";
+import { MultiSelect } from "@/components/ui/multi-select";
 import {
   Select,
   SelectContent,
@@ -82,11 +83,19 @@ export default function LessonsPage() {
 
   const [finishedIds, setFinishedIds] = useState<Set<number>>(new Set());
 
+  // Tag filtering state
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState<{
+    timeframe: Array<{ tag: string; count: number }>;
+    content: Array<{ tag: string; count: number }>;
+  } | null>(null);
+
   // LocalStorage persistence (no URL params)
   const LS_KEYS = {
     mode: "mandareen.lessons.mode.v1",
     hsk: "mandareen.lessons.hsk.v1",
     time: "mandareen.lessons.time.v1",
+    tags: "mandareen.lessons.tags.v1",
   } as const;
 
   type TimeframeKey = typeof timeframe;
@@ -111,6 +120,15 @@ export default function LessonsPage() {
       }
       const t = localStorage.getItem(LS_KEYS.time);
       if (isValidTimeframe(t)) setTimeframe(t);
+
+      // Load tag filtering state
+      const tags = localStorage.getItem(LS_KEYS.tags);
+      if (tags) {
+        try {
+          const parsed = JSON.parse(tags);
+          if (Array.isArray(parsed)) setSelectedTags(parsed);
+        } catch {}
+      }
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -126,12 +144,13 @@ export default function LessonsPage() {
           genLevel == null ? "auto" : String(genLevel)
         );
         localStorage.setItem(LS_KEYS.time, timeframe);
+        localStorage.setItem(LS_KEYS.tags, JSON.stringify(selectedTags));
       } catch {}
     }, 250);
     return () => window.clearTimeout(id);
     // we intentionally omit LS_KEYS refs to keep stable keys
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [outputMode, genLevel, timeframe]);
+  }, [outputMode, genLevel, timeframe, selectedTags]);
 
   // Per-section finished status filters
   type StatusFilter = "all" | "finished" | "unfinished";
@@ -141,13 +160,37 @@ export default function LessonsPage() {
   const [storiesStatus, setStoriesStatus] = useState<StatusFilter>("all");
   const [dialoguesStatus, setDialoguesStatus] = useState<StatusFilter>("all");
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      // Transform selectedTags into separate timeframe and content tags
+      const timeframeTags = [
+        "modern",
+        "mythic",
+        "imperial",
+        "pre_modern",
+        "futuristic",
+      ];
+      const selectedTimeframeTags = selectedTags.filter((tag) =>
+        timeframeTags.includes(tag)
+      );
+      const selectedContentTags = selectedTags.filter(
+        (tag) => !timeframeTags.includes(tag)
+      );
+      const includeUntagged = selectedTags.includes("untagged");
+
+      const tagFilterParams = {
+        timeframeTags:
+          selectedTimeframeTags.length > 0 ? selectedTimeframeTags : undefined,
+        contentTags:
+          selectedContentTags.length > 0 ? selectedContentTags : undefined,
+        includeUntagged: includeUntagged,
+      };
+
       const [allData, mineData, finished] = await Promise.all([
-        lessonsApi.list(),
-        lessonsApi.listMine(),
+        lessonsApi.list(tagFilterParams),
+        lessonsApi.listMine(tagFilterParams),
         lessonsApi.getFinishedIds().catch(() => ({ ids: [] })),
       ]);
       setMyItems(mineData);
@@ -159,7 +202,7 @@ export default function LessonsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedTags]);
 
   // URL params removed by request; state is now local-only
 
@@ -167,7 +210,30 @@ export default function LessonsPage() {
 
   useEffect(() => {
     if (!authLoading) load();
-  }, [authLoading]);
+  }, [authLoading, load]);
+
+  // Reload data when tag filters change
+  useEffect(() => {
+    if (!authLoading) {
+      const timeoutId = setTimeout(() => {
+        load();
+      }, 300); // Debounce tag filter changes
+      return () => clearTimeout(timeoutId);
+    }
+  }, [selectedTags, authLoading, load]);
+
+  // Load available tags
+  useEffect(() => {
+    const loadTags = async () => {
+      try {
+        const tags = await lessonsApi.listTags();
+        setAvailableTags(tags);
+      } catch (error) {
+        console.error("Failed to load tags:", error);
+      }
+    };
+    loadTags();
+  }, []);
 
   // Derived filtered data
 
@@ -799,7 +865,65 @@ export default function LessonsPage() {
           </div>
         </div>
 
-        <div className="flex flex-row items-center justify-end">
+        <div className="flex flex-row items-center justify-between">
+          <div className="flex-shrink-0">
+            {availableTags && (
+              <MultiSelect
+                options={[
+                  {
+                    heading: "Timeframe",
+                    options: (availableTags?.timeframe || [])
+                      .filter((tagObj) => tagObj?.tag) // Filter out any undefined tags
+                      .map((tagObj) => ({
+                        value: tagObj.tag,
+                        label: `${tagObj.tag
+                          .split("_")
+                          .map(
+                            (word) =>
+                              word.charAt(0).toUpperCase() + word.slice(1)
+                          )
+                          .join(" ")} (${tagObj.count})`,
+                        style: { badgeColor: "#4040f2", iconColor: "#ffffff" },
+                      })),
+                  },
+                  {
+                    heading: "Content",
+                    options: (availableTags?.content || [])
+                      .filter((tagObj) => tagObj?.tag) // Filter out any undefined tags
+                      .map((tagObj) => ({
+                        value: tagObj.tag,
+                        label: `${tagObj.tag
+                          .split("_")
+                          .map(
+                            (word) =>
+                              word.charAt(0).toUpperCase() + word.slice(1)
+                          )
+                          .join(" ")} (${tagObj.count})`,
+                        style: { badgeColor: "#f97316", iconColor: "#ffffff" },
+                      })),
+                  },
+                  {
+                    heading: "Other",
+                    options: [
+                      {
+                        value: "untagged",
+                        label: "Untagged Lessons",
+                        style: { badgeColor: "#6b7280", iconColor: "#ffffff" },
+                      },
+                    ],
+                  },
+                ]}
+                onValueChange={setSelectedTags}
+                defaultValue={selectedTags}
+                placeholder="Filter by tags"
+                responsive={true}
+                searchable={true}
+                variant="inverted"
+                className="border-[#404040]"
+                popoverClassName="bg-[#2e323f] border-[#404040] focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-none"
+              />
+            )}
+          </div>
           <button
             onClick={load}
             disabled={loading}

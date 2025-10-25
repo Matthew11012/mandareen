@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { get, post } from "../http/http";
+import { get, post, put } from "../http/http";
 
 const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
 
@@ -37,6 +37,7 @@ export interface MeResponse {
   email: string;
   createdAt: string;
   currentLevel: number | null;
+  weeklyGoalLessons: number | null;
 }
 
 export interface ApiError {
@@ -98,10 +99,15 @@ export const authApi = {
   },
 
   /**
-   * Initiate Google OAuth flow
-   * @returns Google OAuth URL for redirection
+   * Update weekly goal for lessons
+   * @param weeklyGoalLessons Number of lessons (1-50) or null to unset
+   * @returns Promise with updated weekly goal
    */
-  getGoogleAuthUrl: (): string => {
-    return `${baseUrl}/auth/google`;
+  updateWeeklyGoal: async (
+    weeklyGoalLessons: number | null
+  ): Promise<{ weeklyGoalLessons: number | null }> => {
+    return put<{ weeklyGoalLessons: number | null }>("users/weekly-goal", {
+      weeklyGoalLessons,
+    });
   },
 };

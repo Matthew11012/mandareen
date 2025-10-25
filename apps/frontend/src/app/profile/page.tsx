@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/layout";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { authApi, type MeResponse } from "@/lib/api/auth";
-import { RefreshCw, User } from "lucide-react";
+import { RefreshCw, User, Target, Minus, Plus, Save, X } from "lucide-react";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 
 export default function ProfilePage() {
@@ -13,6 +13,9 @@ export default function ProfilePage() {
   const [data, setData] = useState<MeResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [weeklyGoalValue, setWeeklyGoalValue] = useState<number | null>(null);
+  const [savingGoal, setSavingGoal] = useState(false);
+  const [goalError, setGoalError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -20,10 +23,49 @@ export default function ProfilePage() {
     try {
       const me = await authApi.me();
       setData(me);
+      setWeeklyGoalValue(me.weeklyGoalLessons);
     } catch {
       setError("Failed to load profile");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveWeeklyGoal = async () => {
+    if (weeklyGoalValue === data?.weeklyGoalLessons) return; // No change
+
+    setSavingGoal(true);
+    setGoalError(null);
+    try {
+      await authApi.updateWeeklyGoal(weeklyGoalValue);
+      // Update local data optimistically
+      setData((prev) =>
+        prev ? { ...prev, weeklyGoalLessons: weeklyGoalValue } : null
+      );
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to save weekly goal";
+      setGoalError(errorMessage);
+      // Revert to original value
+      setWeeklyGoalValue(data?.weeklyGoalLessons || null);
+    } finally {
+      setSavingGoal(false);
+    }
+  };
+
+  const clearWeeklyGoal = async () => {
+    setSavingGoal(true);
+    setGoalError(null);
+    try {
+      await authApi.updateWeeklyGoal(null);
+      setData((prev) => (prev ? { ...prev, weeklyGoalLessons: null } : null));
+      setWeeklyGoalValue(null);
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to clear weekly goal";
+      setGoalError(errorMessage);
+    } finally {
+      setSavingGoal(false);
     }
   };
 
@@ -108,6 +150,112 @@ export default function ProfilePage() {
           ) : (
             <p className="text-[#a6a6a6] font-inter text-sm">No data</p>
           )}
+        </div>
+
+        {/* Weekly Goal Section */}
+        <div
+          id="weekly-goal"
+          className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] w-fit max-w-full"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+              <Target className="w-5 h-5 text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-white font-inter font-semibold">
+                Weekly Goal
+              </h3>
+              <p className="text-[#a6a6a6] font-inter text-sm">
+                Set your target number of lessons per week (1-50)
+              </p>
+            </div>
+          </div>
+
+          {goalError && (
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+              <p className="text-red-400 font-inter text-sm">{goalError}</p>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() =>
+                  setWeeklyGoalValue((prev) => Math.max(1, (prev || 1) - 1))
+                }
+                disabled={savingGoal || weeklyGoalValue === null}
+                className="w-10 h-10 bg-[#404040] hover:bg-[#505050] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg flex items-center justify-center transition-colors duration-200 cursor-pointer"
+                aria-label="Decrease goal"
+              >
+                <Minus className="w-4 h-4 text-white" />
+              </button>
+
+              <div className="w-24">
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  step="1"
+                  value={weeklyGoalValue || ""}
+                  onChange={(e) => {
+                    const value =
+                      e.target.value === ""
+                        ? null
+                        : Math.max(
+                            1,
+                            Math.min(50, parseInt(e.target.value) || 1)
+                          );
+                    setWeeklyGoalValue(value);
+                  }}
+                  disabled={savingGoal}
+                  inputMode="numeric"
+                  className="w-full px-3 py-2 bg-[#24262b] border border-[#3a3a3a] rounded-lg text-white font-inter text-center disabled:opacity-50 disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  placeholder="Set goal"
+                  aria-describedby="goal-help"
+                />
+              </div>
+
+              <button
+                onClick={() =>
+                  setWeeklyGoalValue((prev) => Math.min(50, (prev || 1) + 1))
+                }
+                disabled={savingGoal || weeklyGoalValue === null}
+                className="w-10 h-10 bg-[#404040] hover:bg-[#505050] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg flex items-center justify-center transition-colors duration-200 cursor-pointer"
+                aria-label="Increase goal"
+              >
+                <Plus className="w-4 h-4 text-white" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 w-fit">
+              <button
+                onClick={saveWeeklyGoal}
+                disabled={
+                  savingGoal || weeklyGoalValue === data?.weeklyGoalLessons
+                }
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-inter rounded-lg transition-colors duration-200 flex items-center gap-2 cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                {savingGoal ? "Saving..." : "Save"}
+              </button>
+
+              {data?.weeklyGoalLessons !== null && (
+                <button
+                  onClick={clearWeeklyGoal}
+                  disabled={savingGoal}
+                  className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 text-sm font-inter rounded-lg transition-colors duration-200 flex items-center gap-2 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                  Clear
+                </button>
+              )}
+            </div>
+
+            <p id="goal-help" className="text-[#a6a6a6] font-inter text-xs">
+              Set a weekly target to stay motivated. You can change or clear
+              this anytime.
+            </p>
+          </div>
         </div>
       </div>
     </DashboardLayout>

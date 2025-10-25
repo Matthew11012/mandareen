@@ -4,23 +4,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardLayout } from "@/components/layout";
 import { dictionaryApi, type VocabItem } from "@/lib/api/dictionary";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
+// Removed local sort UI; ordering is now server-driven
 import { AnimatePresence, motion } from "framer-motion";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 export default function DictionaryPage() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<VocabItem[]>([]);
+  const [pinned, setPinned] = useState<VocabItem[]>([]);
+  const [exact, setExact] = useState(false);
+  const [showPinyinExamples, setShowPinyinExamples] = useState(false);
   const [selected, setSelected] = useState<VocabItem | null>(null);
   const [levels, setLevels] = useState<number[]>([]);
-  const [sort, setSort] = useState<"relevance" | "hsk" | "hanzi">("relevance");
   //   const [mineOnly] = useState(false); // placeholder for future filter
   const controllerRef = useRef<AbortController | null>(null);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
@@ -28,7 +25,7 @@ export default function DictionaryPage() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [loadMoreLoading, setLoadMoreLoading] = useState(false);
 
-  // Debounced search with pagination state
+  // Debounced search with pagination state (server handles relevance + HSK)
   useEffect(() => {
     const id = setTimeout(async () => {
       if (!q.trim()) {
@@ -41,47 +38,18 @@ export default function DictionaryPage() {
       try {
         controllerRef.current?.abort();
         controllerRef.current = new AbortController();
-        const res = await dictionaryApi.search(q, { limit: 30 });
-        const base = (res.items || []) as VocabItem[];
-        const filtered = levels.length
-          ? base.filter((r) =>
-              r.hskLevel ? levels.includes(r.hskLevel) : false
-            )
-          : base;
-        const sorted = [...filtered].sort((a, b) => {
-          if (sort === "hsk") {
-            const ah = (a.hskLevel ?? 999) as number;
-            const bh = (b.hskLevel ?? 999) as number;
-            if (ah !== bh) return ah - bh;
-            const hc = (a.hanzi || "").localeCompare(b.hanzi || "");
-            if (hc !== 0) return hc;
-            return a.id - b.id;
-          }
-          if (sort === "hanzi") {
-            const hc = (a.hanzi || "").localeCompare(b.hanzi || "");
-            if (hc !== 0) return hc;
-            return a.id - b.id;
-          }
-          const norm = (s?: string | null) => (s || "").toLowerCase();
-          const qn = norm(q);
-          const score = (v: VocabItem) => {
-            const h = norm(v.hanzi);
-            const p = norm(v.pinyin);
-            const d = norm(v.definition);
-            if (h === qn) return 1000;
-            if (h.startsWith(qn)) return 800 - h.length;
-            if (p === qn) return 700;
-            if (p.startsWith(qn)) return 600 - p.length;
-            if (h.includes(qn)) return 500 - h.length;
-            if (p.includes(qn)) return 400 - p.length;
-            if (d.includes(qn)) return 200 - Math.min(d.length, 200);
-            return 0;
-          };
-          const sb = score(b) - score(a);
-          if (sb !== 0) return sb;
-          return a.id - b.id;
+        const res = await dictionaryApi.search(q, {
+          limit: 30,
+          hsk: levels,
+          exact,
         });
-        setItems(sorted);
+        const base = (res.items || []) as VocabItem[];
+        const pin = (res.pinned || []) as VocabItem[];
+        // De-duplicate pinned from items if necessary
+        const pinIds = new Set(pin.map((p) => p.id));
+        const dedup = base.filter((it) => !pinIds.has(it.id));
+        setPinned(pin);
+        setItems(dedup);
         setNextCursor(res.nextCursor);
       } catch {
         setError("Failed to search");
@@ -90,7 +58,7 @@ export default function DictionaryPage() {
       }
     }, 250);
     return () => clearTimeout(id);
-  }, [q, levels, sort]);
+  }, [q, levels, exact]);
 
   const toggleLevel = (lvl: number) =>
     setLevels((prev) =>
@@ -109,55 +77,92 @@ export default function DictionaryPage() {
       subtitle="Search words across your lessons and cedict"
     >
       <div ref={containerRef} className="p-6 space-y-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            type="text"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="搜索… / pinyin… / english…"
-            className="w-full sm:w-[420px] px-3 py-2 rounded-lg bg-[#2e323a] border border-[#404040] text-white placeholder:text-[#8a8f99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4040f2]"
-            aria-label="Search dictionary"
-          />
-          <div
-            className="flex items-center flex-wrap gap-2"
-            role="group"
-            aria-label="Filter by HSK level"
-          >
-            {[1, 2, 3, 4, 5, 6, 7].map((lvl) => (
-              <button
-                key={lvl}
-                type="button"
-                onClick={() => toggleLevel(lvl)}
-                className={`px-2 py-1 text-xs rounded-full cursor-pointer ${
-                  levels.includes(lvl)
-                    ? getHSKPillClasses(lvl)
-                    : "border border-[#404040] text-[#a6a6a6]"
-                }`}
-                aria-pressed={levels.includes(lvl)}
-              >
-                HSK {lvl}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 ml-auto text-xs text-[#a6a6a6]">
-            <div className="min-w-[160px]">
-              <Select
-                value={sort}
-                onValueChange={(v) =>
-                  setSort(v as "relevance" | "hsk" | "hanzi")
-                }
-              >
-                <SelectTrigger className="w-full bg-[#2e323a] border-[#404040] text-[#c9d1d9] focus:ring-[#4040f2]">
-                  <SelectValue placeholder="Sort" />
-                </SelectTrigger>
-                <SelectContent className="bg-[#2e323a] border-[#404040] text-[#c9d1d9]">
-                  <SelectItem value="relevance">Relevance</SelectItem>
-                  <SelectItem value="hsk">HSK</SelectItem>
-                  <SelectItem value="hanzi">Hanzi</SelectItem>
-                </SelectContent>
-              </Select>
+        <div className="flex flex-col gap-3">
+          {/* Search input and pinyin tip row */}
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="text"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="搜索… / pinyin… / english…"
+              className="w-full sm:w-[420px] px-3 py-2 rounded-lg bg-[#2e323a] border border-[#404040] text-white placeholder:text-[#8a8f99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4040f2]"
+              aria-label="Search dictionary"
+              aria-describedby="pinyin-tip-text"
+            />
+            <div className="flex flex-col gap-1 text-sm text-[#8a8f99]">
+              <div className="flex items-center gap-1">
+                <span id="pinyin-tip-text">
+                  Tip: For ü, type <span className="text-[#c9d1d9]">u:</span> or
+                  <span className="text-[#c9d1d9]"> v</span>. Example: 女儿
+                  (daughter) → &quot;nu: er&quot; or &quot;nv er&quot;.
+                </span>
+                <button
+                  onClick={() => setShowPinyinExamples(!showPinyinExamples)}
+                  aria-expanded={showPinyinExamples}
+                  aria-controls="pinyin-more-examples"
+                  className="p-1 rounded-full hover:bg-[#404040] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4040f2] cursor-pointer  "
+                  aria-label="Show more pinyin examples"
+                >
+                  {showPinyinExamples ? (
+                    <ChevronUp size={16} />
+                  ) : (
+                    <ChevronDown size={16} />
+                  )}
+                </button>
+              </div>
+              <AnimatePresence>
+                {showPinyinExamples && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    id="pinyin-more-examples"
+                    className="overflow-hidden"
+                  >
+                    More examples: lüe, nüe
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-            <span aria-live="polite">{countText}</span>
+          </div>
+
+          {/* HSK filters and exact phrase row */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div
+              className="flex items-center flex-wrap gap-2"
+              role="group"
+              aria-label="Filter by HSK level"
+            >
+              {[1, 2, 3, 4, 5, 6, 7].map((lvl) => (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() => toggleLevel(lvl)}
+                  className={`px-2 py-1 text-xs rounded-full cursor-pointer ${
+                    levels.includes(lvl)
+                      ? getHSKPillClasses(lvl)
+                      : "border border-[#404040] text-[#a6a6a6]"
+                  }`}
+                  aria-pressed={levels.includes(lvl)}
+                >
+                  HSK {lvl}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 ml-auto text-xs text-[#a6a6a6]">
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={exact}
+                  onChange={(e) => setExact(e.target.checked)}
+                  className="h-4 w-4 rounded border-[#404040] bg-[#2e323a] text-[#4040f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4040f2]"
+                  aria-label="Exact phrase"
+                />
+                <span className="text-xs">Exact phrase</span>
+              </label>
+              <span aria-live="polite">{countText}</span>
+            </div>
           </div>
         </div>
 
@@ -173,10 +178,65 @@ export default function DictionaryPage() {
                 className="h-[96px] rounded-lg bg-[#2e323a] border border-[#404040] animate-pulse"
               />
             ))
-          ) : items.length === 0 && q.trim() ? (
+          ) : items.length === 0 && pinned.length === 0 && q.trim() ? (
             <div className="text-[#a6a6a6]">No results</div>
           ) : (
             <AnimatePresence initial={false}>
+              {pinned.length > 0 && (
+                <div className="col-span-full">
+                  <div className="text-[#8a8f99] text-xs uppercase tracking-wide mb-2">
+                    Top matches
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-2">
+                    {pinned.map((v) => (
+                      <motion.button
+                        key={`pin-${v.id}`}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 300,
+                          damping: 24,
+                          mass: 0.5,
+                          bounce: 0.2,
+                        }}
+                        className="text-left p-3 rounded-lg bg-[#2e323a] border border-[#404040] hover:border-[#4040f2] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4040f2]"
+                        onClick={() => setSelected(v)}
+                        title={v.definition || undefined}
+                        whileTap={{ scale: 0.98 }}
+                        aria-label={`Top match: ${v.hanzi}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="text-white text-lg font-semibold truncate">
+                            {v.hanzi}
+                          </div>
+                          {typeof v.hskLevel === "number" && (
+                            <span
+                              className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(v.hskLevel)}`}
+                            >
+                              HSK {v.hskLevel}
+                            </span>
+                          )}
+                        </div>
+                        {v.pinyin ? (
+                          <div className="text-[#9aa6ff] text-xs mt-1">
+                            {v.pinyin}
+                          </div>
+                        ) : null}
+                        {v.definition ? (
+                          <div
+                            className="text-[#a6a6a6] text-sm mt-1 truncate"
+                            title={v.definition || undefined}
+                          >
+                            {v.definition}
+                          </div>
+                        ) : null}
+                      </motion.button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {items.map((v, idx) => (
                 <motion.button
                   key={v.id}
@@ -258,48 +318,15 @@ export default function DictionaryPage() {
                   const res = await dictionaryApi.search(q, {
                     limit: 30,
                     cursor: next,
+                    hsk: levels,
+                    exact,
                   });
                   const nextPage = (res.items || []) as VocabItem[];
-                  const filteredNext: VocabItem[] = levels.length
-                    ? nextPage.filter((r) =>
-                        r.hskLevel ? levels.includes(r.hskLevel) : false
-                      )
-                    : nextPage;
-                  // Sort only the new page; do not resort previously loaded items to avoid reshuffle
-                  const sortedNext = [...filteredNext].sort((a, b) => {
-                    if (sort === "hsk") {
-                      const ah = (a.hskLevel ?? 999) as number;
-                      const bh = (b.hskLevel ?? 999) as number;
-                      if (ah !== bh) return ah - bh;
-                      const hc = (a.hanzi || "").localeCompare(b.hanzi || "");
-                      if (hc !== 0) return hc;
-                      return a.id - b.id;
-                    }
-                    if (sort === "hanzi") {
-                      const hc = (a.hanzi || "").localeCompare(b.hanzi || "");
-                      if (hc !== 0) return hc;
-                      return a.id - b.id;
-                    }
-                    const norm = (s?: string | null) => (s || "").toLowerCase();
-                    const qn = norm(q);
-                    const score = (v: VocabItem) => {
-                      const h = norm(v.hanzi);
-                      const p = norm(v.pinyin);
-                      const d = norm(v.definition);
-                      if (h === qn) return 1000;
-                      if (h.startsWith(qn)) return 800 - h.length;
-                      if (p === qn) return 700;
-                      if (p.startsWith(qn)) return 600 - p.length;
-                      if (h.includes(qn)) return 500 - h.length;
-                      if (p.includes(qn)) return 400 - p.length;
-                      if (d.includes(qn)) return 200 - Math.min(d.length, 200);
-                      return 0;
-                    };
-                    const sb = score(b) - score(a);
-                    if (sb !== 0) return sb;
-                    return a.id - b.id;
-                  });
-                  setItems([...items, ...sortedNext]);
+                  const pinIds2 = new Set((pinned || []).map((p) => p.id));
+                  const dedupNext = nextPage.filter(
+                    (it) => !pinIds2.has(it.id)
+                  );
+                  setItems([...items, ...dedupNext]);
                   setNextCursor(res.nextCursor);
                   // Preserve scroll position in the scroll container
                   if (scrollEl) {

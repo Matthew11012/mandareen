@@ -68,6 +68,31 @@ export class VocabularyController {
     const limitNum = parseInt((req?.query?.limit as string) || '20', 10);
     const limit = Math.min(Math.max(isNaN(limitNum) ? 20 : limitNum, 1), 100);
     const cursor = (req?.query?.cursor as string) || undefined;
-    return this.vocabularyService.searchVocabulary(query, limit, cursor);
+    // Parse HSK levels: supports hsk=1&hsk=2 or hsk=1,2
+    let hskLevels: number[] | undefined = undefined;
+    const rawHsk = req?.query?.hsk as undefined | string | string[];
+    if (typeof rawHsk === 'string') {
+      const parts = rawHsk.split(',').map((s) => parseInt(s.trim(), 10));
+      const vals = parts.filter((n) => !isNaN(n));
+      if (vals.length > 0) hskLevels = vals;
+    } else if (Array.isArray(rawHsk)) {
+      const vals = rawHsk
+        .flatMap((item) =>
+          String(item)
+            .split(',')
+            .map((s) => parseInt(s.trim(), 10)),
+        )
+        .filter((n) => !isNaN(n));
+      if (vals.length > 0) hskLevels = vals;
+    }
+    const exactParam = (req?.query?.exact as string) || undefined;
+    const exact = exactParam === '1' || exactParam === 'true';
+    return this.vocabularyService.searchVocabulary(
+      query,
+      limit,
+      cursor,
+      hskLevels,
+      exact,
+    );
   }
 }

@@ -1,4 +1,4 @@
-import { get, post } from "../http/http";
+import { get, post, del } from "../http/http";
 
 export interface DueFlashcardItem {
   id: number;
@@ -23,6 +23,22 @@ export interface DueFlashcardItem {
   }>;
 }
 
+export interface FlashcardListItem {
+  id: number;
+  vocabId: number;
+  hanzi: string;
+  pinyin: string;
+  definition: string;
+  hskLevel: number | null;
+  nextReview: string;
+  createdAt: string;
+}
+
+export interface ListAllResponse {
+  items: FlashcardListItem[];
+  nextCursor?: { createdAt: string; id: number };
+}
+
 export const flashcardsApi = {
   async create(params: { vocabId: number; sourceInstanceId?: number }) {
     return post<{ flashcard: { id: number } }>("flashcards", params);
@@ -43,5 +59,27 @@ export const flashcardsApi = {
       newIntervalDays: number;
       newEasiness: number;
     }>(`flashcards/${id}/review`, { quality });
+  },
+
+  async listAll(
+    limit?: number,
+    cursor?: { createdAt: string; id: number }
+  ): Promise<ListAllResponse> {
+    const params = new URLSearchParams();
+    if (limit) params.set("limit", limit.toString());
+    if (cursor) {
+      params.set("cursorCreatedAt", cursor.createdAt);
+      params.set("cursorId", cursor.id.toString());
+    }
+    const query = params.toString();
+    return get<ListAllResponse>(`flashcards${query ? `?${query}` : ""}`);
+  },
+
+  async remove(id: number) {
+    return del<{ deleted: number }>(`flashcards/${id}`);
+  },
+
+  async removeMany(ids: number[]) {
+    return post<{ deleted: number }>("flashcards/bulk-delete", { ids });
   },
 };

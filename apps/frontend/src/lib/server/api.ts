@@ -123,3 +123,29 @@ export async function serverGetUnit(unitId: number): Promise<{
 }> {
   return serverApiFetch(`curriculum/units/${unitId}`);
 }
+
+export async function serverGetWeeklyProgress(offsetMinutes?: number): Promise<{
+  weeklyCount: number;
+  weekStartLocalISO: string;
+  weekEndLocalISO: string;
+}> {
+  const qs = new URLSearchParams();
+  if (typeof offsetMinutes === "number") {
+    qs.set("offsetMinutes", String(offsetMinutes));
+  }
+  const path =
+    qs.size > 0
+      ? `lessons/progress/weekly?${qs.toString()}`
+      : "lessons/progress/weekly";
+  return serverApiFetch(path);
+}
+
+export async function serverGetMe(): Promise<{
+  id: number;
+  email: string;
+  createdAt: string;
+  currentLevel: number | null;
+  weeklyGoalLessons: number | null;
+}> {
+  return serverApiFetch("users/me");
+}

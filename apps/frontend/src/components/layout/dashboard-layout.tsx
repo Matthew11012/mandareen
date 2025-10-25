@@ -135,6 +135,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto bg-[#222831]">
+          {/* aria-live region for inline announcements */}
+          <div aria-live="polite" aria-atomic="true" className="sr-only" />
           <div className="h-full">{children}</div>
         </main>
       </div>
