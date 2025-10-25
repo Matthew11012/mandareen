@@ -9,12 +9,14 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
 import { GoogleUser } from '../types/request.types';
+import { BetterAuthAdapter } from './better-auth.config';
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private betterAuth: BetterAuthAdapter,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -44,11 +46,12 @@ export class AuthService {
       },
     });
 
-    // Generate JWT token
-    const token = this.jwtService.sign({
-      sub: user.id,
-      email: user.email,
-    });
+    // Generate JWT token (Better Auth path or legacy based on flag)
+    const useBetter =
+      (process.env.AUTH_PROVIDER || 'betterauth') === 'betterauth';
+    const token = useBetter
+      ? this.betterAuth.issueJwt({ id: user.id, email: user.email })
+      : this.jwtService.sign({ sub: user.id, email: user.email });
 
     return {
       user,
@@ -76,11 +79,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Generate JWT token
-    const token = this.jwtService.sign({
-      sub: user.id,
-      email: user.email,
-    });
+    // Generate JWT token (Better Auth path or legacy based on flag)
+    const useBetter =
+      (process.env.AUTH_PROVIDER || 'betterauth') === 'betterauth';
+    const token = useBetter
+      ? this.betterAuth.issueJwt({ id: user.id, email: user.email })
+      : this.jwtService.sign({ sub: user.id, email: user.email });
 
     return {
       user: {
@@ -132,13 +136,14 @@ export class AuthService {
       throw new UnauthorizedException('No user from Google');
     }
 
-    // Generate JWT token
-    const token = await Promise.resolve(
-      this.jwtService.sign({
-        sub: user.id,
-        email: user.email,
-      }),
-    );
+    // Generate JWT token (Better Auth path or legacy based on flag)
+    const useBetter =
+      (process.env.AUTH_PROVIDER || 'betterauth') === 'betterauth';
+    const token = useBetter
+      ? this.betterAuth.issueJwt({ id: user.id, email: user.email })
+      : await Promise.resolve(
+          this.jwtService.sign({ sub: user.id, email: user.email }),
+        );
 
     return {
       user: {

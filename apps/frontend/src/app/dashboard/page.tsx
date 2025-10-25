@@ -9,6 +9,8 @@ import {
   serverListUnits,
   serverGetUnit,
   serverGetCurrentLevel,
+  serverGetWeeklyProgress,
+  serverGetMe,
   type ServerCurriculumLesson,
   type ServerCurriculumUnit,
 } from "@/lib/server/api";
@@ -32,30 +34,50 @@ export default async function DashboardPage() {
     offsetMinutes = undefined;
   }
 
-  const [history, lessonsCount, streakRes, wordsRead, units, currentLevel] =
-    await Promise.all([
-      serverGetAssessmentHistory().catch(() => []),
-      serverGetLessonsProgressCount().catch(() => ({ finishedCount: 0 })),
-      serverGetStudyStreakStatus(offsetMinutes)
-        .then((res) => ({
-          todayContinued: Boolean(res.todayContinued),
-          streakDays: res.streakDays || 0,
-          carryOverDays: res.carryOverDays || 0,
-        }))
-        .catch(async () => {
-          const fallback = await serverGetStudyStreak(offsetMinutes).catch(
-            () => ({ streakDays: 0 })
-          );
-          return {
-            todayContinued: true,
-            streakDays: fallback.streakDays || 0,
-            carryOverDays: fallback.streakDays || 0,
-          };
-        }),
-      serverGetWordsRead().catch(() => ({ readCount: 0 })),
-      serverListUnits().catch(() => []),
-      serverGetCurrentLevel().catch(() => ({ currentLevel: null })),
-    ]);
+  const [
+    history,
+    lessonsCount,
+    streakRes,
+    wordsRead,
+    units,
+    currentLevel,
+    weeklyProgress,
+    userData,
+  ] = await Promise.all([
+    serverGetAssessmentHistory().catch(() => []),
+    serverGetLessonsProgressCount().catch(() => ({ finishedCount: 0 })),
+    serverGetStudyStreakStatus(offsetMinutes)
+      .then((res) => ({
+        todayContinued: Boolean(res.todayContinued),
+        streakDays: res.streakDays || 0,
+        carryOverDays: res.carryOverDays || 0,
+      }))
+      .catch(async () => {
+        const fallback = await serverGetStudyStreak(offsetMinutes).catch(
+          () => ({ streakDays: 0 })
+        );
+        return {
+          todayContinued: true,
+          streakDays: fallback.streakDays || 0,
+          carryOverDays: fallback.streakDays || 0,
+        };
+      }),
+    serverGetWordsRead().catch(() => ({ readCount: 0 })),
+    serverListUnits().catch(() => []),
+    serverGetCurrentLevel().catch(() => ({ currentLevel: null })),
+    serverGetWeeklyProgress(offsetMinutes).catch(() => ({
+      weeklyCount: 0,
+      weekStartLocalISO: new Date().toISOString(),
+      weekEndLocalISO: new Date().toISOString(),
+    })),
+    serverGetMe().catch(() => ({
+      id: 0,
+      email: "",
+      createdAt: new Date().toISOString(),
+      currentLevel: null,
+      weeklyGoalLessons: null,
+    })),
+  ]);
 
   let guidedUnit: ServerCurriculumUnit | null = null;
   let guidedLesson: ServerCurriculumLesson | null = null;
@@ -72,7 +94,7 @@ export default async function DashboardPage() {
         units.find((u) => u.completedLessons < u.totalLessons) ?? units[0];
       const unitDetail = await serverGetUnit(targetUnit.id);
       const nextLesson =
-        unitDetail.lessons.find((l) => !l.completed) ??
+        unitDetail.lessons.find((l: ServerCurriculumLesson) => !l.completed) ??
         unitDetail.lessons[0] ??
         null;
       guidedUnit = targetUnit;
@@ -189,6 +211,8 @@ export default async function DashboardPage() {
           studyStreakDays={streakRes.streakDays || 0}
           streakTodayContinued={Boolean(streakRes.todayContinued)}
           streakCarryOverDays={streakRes.carryOverDays || 0}
+          weeklyGoalLessons={userData.weeklyGoalLessons}
+          weeklyCount={weeklyProgress.weeklyCount}
         />
 
         <div className="space-y-4">

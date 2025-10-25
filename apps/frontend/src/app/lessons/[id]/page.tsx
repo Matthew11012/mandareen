@@ -24,6 +24,7 @@ import { toast } from "sonner";
 // import { flashcardsApi } from "@/lib/api/flashcards";
 import { AnimatePresence, motion } from "framer-motion";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
+import { Separator } from "@/components/ui/separator";
 
 export default function LessonViewerPage() {
   const router = useRouter();
@@ -56,6 +57,14 @@ export default function LessonViewerPage() {
   >({});
   const [finishLoading, setFinishLoading] = useState(false);
 
+  // Scroll-aware header state
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+  const [isContentChanging, setIsContentChanging] = useState(false);
+  const scrollThreshold = 50; // Hide after scrolling down 30px
+  const showThreshold = 30; // Show when scrolling up 20px
+  const minScrollDelta = 10; // Minimum scroll delta to trigger direction change
+
   const load = async () => {
     if (!id) return;
     setLoading(true);
@@ -74,6 +83,90 @@ export default function LessonViewerPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Scroll detection for header auto-hide
+  useEffect(() => {
+    const handleScroll = () => {
+      // The scroll is happening on the main element, not window
+      const mainElement = document.querySelector("main");
+      const currentScrollY = mainElement?.scrollTop || 0;
+
+      // Ignore scroll events during content changes
+      if (isContentChanging) {
+        return;
+      }
+
+      // Don't hide header if we're at the top
+      if (currentScrollY < 10) {
+        setIsHeaderVisible(true);
+        setLastScrollY(currentScrollY);
+        return;
+      }
+
+      // Don't hide header during multi-select mode
+      if (multiSelect) {
+        setIsHeaderVisible(true);
+        setLastScrollY(currentScrollY);
+        return;
+      }
+
+      // Determine scroll direction (only if there's significant movement)
+      const scrollDelta = currentScrollY - lastScrollY;
+
+      if (scrollDelta > minScrollDelta) {
+        // Scrolling down significantly
+        if (currentScrollY > scrollThreshold) {
+          setIsHeaderVisible(false);
+        } else {
+        }
+      } else if (scrollDelta < -minScrollDelta) {
+        // Scrolling up significantly
+        if (currentScrollY > showThreshold) {
+          setIsHeaderVisible(true);
+        } else {
+        }
+      } else {
+      }
+      // If scrollDelta is within [-minScrollDelta, minScrollDelta], ignore small movements
+
+      setLastScrollY(currentScrollY);
+    };
+
+    // Find the main scrollable element
+    const mainElement = document.querySelector("main");
+
+    if (mainElement) {
+      // Listen to the main element's scroll events
+      mainElement.addEventListener("scroll", handleScroll, { passive: true });
+
+      return () => {
+        mainElement.removeEventListener("scroll", handleScroll);
+      };
+    } else {
+      console.log("Main element not found, falling back to window scroll");
+      // Fallback to window scroll
+      window.addEventListener("scroll", handleScroll, { passive: true });
+
+      return () => {
+        window.removeEventListener("scroll", handleScroll);
+      };
+    }
+  }, [
+    lastScrollY,
+    multiSelect,
+    scrollThreshold,
+    showThreshold,
+    minScrollDelta,
+    isHeaderVisible,
+    isContentChanging,
+  ]);
+
+  // Tap to show header when hidden
+  const handleTapToShowHeader = () => {
+    if (!isHeaderVisible) {
+      setIsHeaderVisible(true);
+    }
+  };
 
   const storySection = useMemo(
     () => data?.sections.find((s) => s.sectionType === "story"),
@@ -848,10 +941,18 @@ export default function LessonViewerPage() {
       subtitle={`HSK ${data?.level ?? ""}`}
     >
       <div className="p-6 space-y-6">
-        <div
+        <motion.div
           className="flex flex-wrap items-center justify-between gap-2 sticky top-0 z-20 -mx-6 px-6 py-2 bg-[#222831]/80 backdrop-blur border-b border-[#30333a]"
           role="toolbar"
           aria-label="Lesson controls"
+          initial={{ y: 0 }}
+          animate={{ y: isHeaderVisible ? 0 : -100 }}
+          transition={{
+            type: "spring",
+            stiffness: 300,
+            damping: 30,
+            duration: 0.3,
+          }}
         >
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
@@ -866,7 +967,8 @@ export default function LessonViewerPage() {
               </div>
             </button>
             <button
-              onClick={() =>
+              onClick={() => {
+                setIsContentChanging(true);
                 setShowPinyin((prev) => {
                   const next = !prev;
                   // Force all blocks/turns to follow global state
@@ -883,8 +985,10 @@ export default function LessonViewerPage() {
                     ) as Record<number, boolean>
                   );
                   return next;
-                })
-              }
+                });
+                // Reset content changing flag after a short delay
+                setTimeout(() => setIsContentChanging(false), 150);
+              }}
               className="px-3 py-2 bg-orange-500/20 border border-orange-500/40 rounded-lg hover:border-orange-500 text-orange-300 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#222831]"
               type="button"
               aria-pressed={showPinyin}
@@ -900,7 +1004,8 @@ export default function LessonViewerPage() {
               </div>
             </button>
             <button
-              onClick={() =>
+              onClick={() => {
+                setIsContentChanging(true);
                 setShowTranslation((prev) => {
                   const next = !prev;
                   // Force all blocks/turns to follow global state
@@ -917,8 +1022,10 @@ export default function LessonViewerPage() {
                     ) as Record<number, boolean>
                   );
                   return next;
-                })
-              }
+                });
+                // Reset content changing flag after a short delay
+                setTimeout(() => setIsContentChanging(false), 150);
+              }}
               className="px-3 py-2 bg-purple-600/20 border border-purple-600/40 rounded-lg hover:border-purple-600 text-purple-300 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-purple-400 focus-visible:ring-offset-[#222831]"
               type="button"
               aria-pressed={showTranslation}
@@ -1018,7 +1125,17 @@ export default function LessonViewerPage() {
               />
             </button>
           </div>
-        </div>
+        </motion.div>
+
+        {/* Tap area to show header when hidden */}
+        {!isHeaderVisible && (
+          <div
+            className="fixed top-0 left-0 right-0 h-16 z-10 cursor-pointer"
+            onClick={handleTapToShowHeader}
+            aria-label="Tap to show controls"
+            title="Tap to show controls"
+          />
+        )}
 
         {(story?.titlePinyin ||
           story?.titleTranslation ||
@@ -1056,10 +1173,10 @@ export default function LessonViewerPage() {
         ) : (
           <div
             ref={contentRef}
-            className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] relative"
+            className="bg-[#2e323a] rounded-xl sm:p-6 border border-[#404040] relative"
           >
             {story && (
-              <div className="space-y-6">
+              <div className="space-y-6 p-2">
                 {segmentedParagraphs.map((segChunk, ci) => (
                   <div key={ci} className="space-y-2">
                     <div className="flex items-center gap-2 justify-end">
@@ -1116,7 +1233,7 @@ export default function LessonViewerPage() {
                         </svg>
                       </button>
                     </div>
-                    <div className="leading-8 text-white font-inter text-[18px]">
+                    <div className="leading-8 text-white font-inter sm:text-[18px] text-[16px]">
                       {segChunk.map((seg: LessonToken, idx) => {
                         const isWord = Boolean(seg.isWord);
                         return (
@@ -1222,7 +1339,7 @@ export default function LessonViewerPage() {
                 {dialogue.turns.map((turn, ti) => (
                   <div
                     key={ti}
-                    className="bg-[#262a31] rounded-lg p-3 border border-[#3a3a3a]"
+                    className="sm:bg-[#262a31] rounded-lg p-3 sm:border sm:border-[#3a3a3a]"
                   >
                     <div className="flex items-center justify-between mb-1">
                       <div className="text-[#9aa6ff] font-inter text-sm">
@@ -1283,6 +1400,7 @@ export default function LessonViewerPage() {
                         </button>
                       </div>
                     </div>
+                    <Separator className="mb-1 border-1 opacity-50" />
                     <div className="leading-8 text-white font-inter text-[18px]">
                       {(turn.segments ?? []).map((seg: LessonToken, idx) => {
                         const isWord = Boolean(seg.isWord);
@@ -2022,7 +2140,7 @@ export default function LessonViewerPage() {
                     ? "none"
                     : "translate(-50%, calc(-100% - 8px))",
                 }}
-                className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+                className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="font-bold text-white text-lg truncate">
@@ -2210,6 +2328,214 @@ export default function LessonViewerPage() {
                       Add to Flashcards
                     </span>
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* Mobile top sheet popup */}
+            {popup.open && (
+              <div className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4">
+                <div className="max-w-sm mx-auto">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="font-bold text-white text-lg truncate">
+                      {popup.word}
+                    </div>
+                    {typeof popup.hskLevel === "number" && (
+                      <span
+                        className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                          popup.hskLevel
+                        )}`}
+                      >
+                        HSK {popup.hskLevel}
+                      </span>
+                    )}
+                  </div>
+                  {popup.pinyin && (
+                    <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                      {popup.pinyin}
+                    </div>
+                  )}
+                  {Array.isArray(popup.definitions) &&
+                  popup.definitions.length > 0 ? (
+                    <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                      {popup.definitions.map((d, i) => (
+                        <div key={i}>• {d}</div>
+                      ))}
+                    </div>
+                  ) : popup.definition ? (
+                    <div className="text-xs text-[#a6a6a6] mb-3">
+                      {popup.definition}
+                    </div>
+                  ) : null}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setPopup((p) => ({ ...p, open: false }));
+                      }}
+                      className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                    >
+                      Close
+                    </button>
+                    <button
+                      onClick={() => {
+                        // Build sentence-level context for the exact clicked token using stored indices
+                        let ctx:
+                          | {
+                              hanzi?: string;
+                              pinyin?: string;
+                              translation?: string;
+                            }
+                          | undefined;
+                        const paraIndex = popup.paraIndex ?? -1;
+                        const tokenIndex = popup.tokenIndex ?? -1;
+                        if (paraIndex >= 0 && tokenIndex >= 0) {
+                          const paraHanzi = storyParagraphs[paraIndex] || "";
+                          const hanziSentences = paraHanzi
+                            .split(/(?<=[。！？!?])/)
+                            .map((s) => s.trim())
+                            .filter(Boolean);
+                          const tokens = segmentedParagraphs[paraIndex] || [];
+                          const tokenStart = tokens
+                            .slice(0, tokenIndex)
+                            .reduce((acc, s) => acc + (s.text?.length || 0), 0);
+                          let accLen = 0;
+                          let sentenceIdx = 0;
+                          for (let si = 0; si < hanziSentences.length; si++) {
+                            const sTxt = hanziSentences[si];
+                            const sLen = sTxt.length;
+                            if (
+                              tokenStart >= accLen &&
+                              tokenStart < accLen + sLen
+                            ) {
+                              sentenceIdx = si;
+                              break;
+                            }
+                            accLen += sLen;
+                          }
+                          const chosenHanzi =
+                            sentenceIdx >= 0
+                              ? hanziSentences[sentenceIdx]
+                              : hanziSentences[0] || paraHanzi;
+                          const paraTrans =
+                            translationParagraphs[paraIndex] || "";
+                          const transSentences = paraTrans
+                            .split(/(?<=[.!?])\s+/)
+                            .map((s) => s.trim())
+                            .filter(Boolean);
+                          const chosenTrans =
+                            sentenceIdx >= 0 && transSentences[sentenceIdx]
+                              ? transSentences[sentenceIdx]
+                              : undefined;
+                          let chosenPinyin: string | undefined;
+                          if (story?.pinyin) {
+                            const storyCharPinyin = buildStoryCharPinyin(
+                              story.hanzi,
+                              story.pinyin
+                            );
+                            let storyOffset = 0;
+                            for (let i = 0; i < paraIndex; i++) {
+                              storyOffset +=
+                                (storyParagraphs[i] || "").length + 2; // +2 for \n\n
+                            }
+                            const paraStart = storyOffset;
+                            const sentStartInPara = hanziSentences
+                              .slice(0, sentenceIdx)
+                              .join("").length;
+                            const sentGlobalStart = paraStart + sentStartInPara;
+                            const sentLen = chosenHanzi.length;
+                            const slice = storyCharPinyin.slice(
+                              sentGlobalStart,
+                              sentGlobalStart + sentLen
+                            );
+                            chosenPinyin = slice.join(" ");
+                          }
+                          ctx = {
+                            hanzi: chosenHanzi,
+                            pinyin: chosenPinyin,
+                            translation: chosenTrans,
+                          };
+                        } else if (dialogue) {
+                          // Fallback for dialogue popup (no para/token indices): use the turn containing the word
+                          const found = (dialogue.turns || []).find((t) =>
+                            t.hanzi?.includes(popup.word)
+                          );
+                          if (found) {
+                            let perCharPinyin: string | undefined =
+                              found.pinyin;
+                            if (
+                              !perCharPinyin &&
+                              Array.isArray(found.segments)
+                            ) {
+                              const chars = Array.from(found.hanzi || "");
+                              const per: string[] = new Array(
+                                chars.length
+                              ).fill("");
+                              let ci = 0;
+                              for (const s of found.segments) {
+                                const chineseLen = Array.from(
+                                  s.text || ""
+                                ).filter((c) =>
+                                  /[\u3400-\u9FFF]/.test(c)
+                                ).length;
+                                const toks = (s.pinyin || "")
+                                  .split(/\s+/)
+                                  .filter(Boolean);
+                                for (let k = 0; k < chineseLen; k++) {
+                                  while (
+                                    ci < chars.length &&
+                                    !/[\u3400-\u9FFF]/.test(chars[ci])
+                                  )
+                                    ci++;
+                                  if (ci >= chars.length) break;
+                                  per[ci] = toks[k] || toks[0] || "";
+                                  ci++;
+                                }
+                              }
+                              perCharPinyin = per.join(" ");
+                            }
+                            ctx = {
+                              hanzi: found.hanzi,
+                              pinyin: perCharPinyin,
+                              translation: found.translation,
+                            };
+                          }
+                        }
+                        // Derive vocab metadata from popup/segment
+                        let vocabDef: string | undefined = undefined;
+                        if (
+                          Array.isArray(popup.definitions) &&
+                          popup.definitions.length > 0
+                        ) {
+                          vocabDef = popup.definitions[0];
+                        } else if (popup.definition) {
+                          vocabDef = popup.definition;
+                        }
+                        let vocabHskLevel: number | undefined = undefined;
+                        if (
+                          typeof popup.paraIndex === "number" &&
+                          typeof popup.tokenIndex === "number"
+                        ) {
+                          const seg = (segmentedParagraphs[popup.paraIndex] ||
+                            [])[popup.tokenIndex] as LessonToken | undefined;
+                          if (seg && typeof seg.hskLevel === "number") {
+                            vocabHskLevel = seg.hskLevel;
+                          }
+                        }
+                        void addSingleToFlashcards(popup.word, ctx, {
+                          pinyin: popup.pinyin,
+                          definition: vocabDef,
+                          hskLevel: vocabHskLevel,
+                        });
+                        setPopup((p) => ({ ...p, open: false }));
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span className="text-sm font-inter">
+                        Add to Flashcards
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -2830,7 +3156,7 @@ function InlineSegments({
             visibility: popupPos ? "visible" : "hidden",
             transform: popupPos ? "none" : "translate(-50%, calc(-100% - 8px))",
           }}
-          className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+          className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
         >
           <div className="flex items-center justify-between gap-3">
             <div className="font-bold text-white text-lg truncate">
@@ -2887,6 +3213,79 @@ function InlineSegments({
               <Plus className="w-4 h-4" />
               <span className="text-sm font-inter">Add to Flashcards</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile top sheet popup for InlineSegments */}
+      {popup.open && (
+        <div className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4">
+          <div className="max-w-sm mx-auto">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="font-bold text-white text-lg truncate">
+                {popup.word}
+              </div>
+              {typeof popup.hskLevel === "number" && (
+                <span
+                  className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                    popup.hskLevel as number
+                  )}`}
+                  aria-label={`HSK level ${popup.hskLevel}`}
+                >
+                  HSK {popup.hskLevel}
+                </span>
+              )}
+            </div>
+            {popup.pinyin && (
+              <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                {popup.pinyin}
+              </div>
+            )}
+            {Array.isArray(popup.definitions) &&
+            popup.definitions.length > 0 ? (
+              <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                {popup.definitions.map((d, i) => (
+                  <div key={i}>• {d}</div>
+                ))}
+              </div>
+            ) : popup.definition ? (
+              <div className="text-xs text-[#a6a6a6] mb-3">
+                {popup.definition}
+              </div>
+            ) : null}
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setPopup((p) => ({ ...p, open: false }));
+                }}
+                className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  const ctx = {
+                    hanzi: contextSentenceZh || fallbackZh,
+                    pinyin: undefined,
+                    translation: contextSentenceTranslation,
+                  };
+                  const vocabDef = Array.isArray(popup.definitions)
+                    ? popup.definitions[0]
+                    : popup.definition;
+                  onAddFlashcard?.(popup.word, ctx, {
+                    pinyin: popup.pinyin,
+                    definition: vocabDef,
+                    hskLevel: popup.hskLevel,
+                  });
+                  setPopup((p) => ({ ...p, open: false }));
+                }}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                type="button"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="text-sm font-inter">Add to Flashcards</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

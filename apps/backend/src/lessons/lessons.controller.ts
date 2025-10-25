@@ -38,10 +38,21 @@ export class LessonsController {
     return { id: result.id };
   }
 
+  @Get('tags')
+  async getAvailableTags(): Promise<{
+    timeframe: Array<{ tag: string; count: number }>;
+    content: Array<{ tag: string; count: number }>;
+  }> {
+    return this.lessonsService.getAvailableTags();
+  }
+
   @Get()
   async listLessons(
     @Query('level') level?: string,
     @Query('levels') levels?: string | string[],
+    @Query('timeframeTags') timeframeTags?: string | string[],
+    @Query('contentTags') contentTags?: string | string[],
+    @Query('includeUntagged') includeUntagged?: string,
   ): Promise<
     Array<{
       id: number;
@@ -51,6 +62,7 @@ export class LessonsController {
       lessonType: string;
       titlePinyin: string | null;
       titleTranslation: string | null;
+      tags: string[];
     }>
   > {
     const lvl = level ? parseInt(level, 10) : undefined;
@@ -65,7 +77,28 @@ export class LessonsController {
             .map((v) => parseInt(v, 10))
             .filter((n) => !isNaN(n))
         : undefined;
-    const lessons = await this.lessonsService.listLessons(lvl, levelsArr);
+
+    const timeframeTagsArr: string[] | undefined = Array.isArray(timeframeTags)
+      ? (timeframeTags as string[]).flatMap((v) => v.split(','))
+      : typeof timeframeTags === 'string'
+        ? timeframeTags.split(',')
+        : undefined;
+
+    const contentTagsArr: string[] | undefined = Array.isArray(contentTags)
+      ? (contentTags as string[]).flatMap((v) => v.split(','))
+      : typeof contentTags === 'string'
+        ? contentTags.split(',')
+        : undefined;
+
+    const includeUntaggedBool = includeUntagged === 'true';
+
+    const lessons = await this.lessonsService.listLessons(
+      lvl,
+      levelsArr,
+      timeframeTagsArr,
+      contentTagsArr,
+      includeUntaggedBool,
+    );
     return lessons.map((l: any) => ({
       id: l.id,
       title: l.title ?? null,
@@ -74,6 +107,7 @@ export class LessonsController {
       lessonType: l.lessonType,
       titlePinyin: l.titlePinyin,
       titleTranslation: l.titleTranslation,
+      tags: l.tags || [],
     }));
   }
 
@@ -84,6 +118,9 @@ export class LessonsController {
     @Req() req: AuthenticatedRequest,
     @Query('level') level?: string,
     @Query('levels') levels?: string | string[],
+    @Query('timeframeTags') timeframeTags?: string | string[],
+    @Query('contentTags') contentTags?: string | string[],
+    @Query('includeUntagged') includeUntagged?: string,
   ): Promise<
     Array<{
       id: number;
@@ -93,6 +130,7 @@ export class LessonsController {
       lessonType: string;
       titlePinyin: string | null;
       titleTranslation: string | null;
+      tags: string[];
     }>
   > {
     const lvl = level ? parseInt(level, 10) : undefined;
@@ -107,10 +145,28 @@ export class LessonsController {
             .map((v) => parseInt(v, 10))
             .filter((n) => !isNaN(n))
         : undefined;
+
+    const timeframeTagsArr: string[] | undefined = Array.isArray(timeframeTags)
+      ? (timeframeTags as string[]).flatMap((v) => v.split(','))
+      : typeof timeframeTags === 'string'
+        ? timeframeTags.split(',')
+        : undefined;
+
+    const contentTagsArr: string[] | undefined = Array.isArray(contentTags)
+      ? (contentTags as string[]).flatMap((v) => v.split(','))
+      : typeof contentTags === 'string'
+        ? contentTags.split(',')
+        : undefined;
+
+    const includeUntaggedBool = includeUntagged === 'true';
+
     const lessons = await this.lessonsService.listLessonsByCreator(
       req.user.email,
       lvl,
       levelsArr,
+      timeframeTagsArr,
+      contentTagsArr,
+      includeUntaggedBool,
     );
     return lessons.map((l: any) => ({
       id: l.id,
@@ -120,6 +176,7 @@ export class LessonsController {
       lessonType: l.lessonType,
       titlePinyin: l.titlePinyin,
       titleTranslation: l.titleTranslation,
+      tags: l.tags || [],
     }));
   }
 
@@ -235,5 +292,44 @@ export class LessonsController {
   ): Promise<{ byHsk: Record<string, number> }> {
     const byHsk = await this.lessonsService.getWordsReadByHsk(req.user.id);
     return { byHsk };
+  }
+
+  @Get('progress/weekly')
+  async getWeeklyProgress(
+    @Req() req: AuthenticatedRequest,
+    @Query('offsetMinutes') offsetMinutes?: string,
+  ): Promise<{
+    weeklyCount: number;
+    weekStartLocalISO: string;
+    weekEndLocalISO: string;
+  }> {
+    const parsed =
+      typeof offsetMinutes === 'string' ? parseInt(offsetMinutes, 10) : 0;
+    const safeOffset = Number.isFinite(parsed) ? parsed : 0;
+    return this.lessonsService.countWeeklyFinishedLessons(
+      req.user.id,
+      safeOffset,
+    );
+  }
+
+  @Get('progress/words-timeline')
+  async getWordsTimeline(
+    @Req() req: AuthenticatedRequest,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('offsetMinutes') offsetMinutes?: string,
+  ): Promise<{
+    points: Array<{ date: string; new: number; learned: number }>;
+    totals: { new: number; learned: number };
+  }> {
+    const parsed =
+      typeof offsetMinutes === 'string' ? parseInt(offsetMinutes, 10) : 0;
+    const safeOffset = Number.isFinite(parsed) ? parsed : 0;
+    return this.lessonsService.getWordsTimeline(
+      req.user.id,
+      from,
+      to,
+      safeOffset,
+    );
   }
 }

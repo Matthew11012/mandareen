@@ -21,6 +21,21 @@ interface GenerateOptions {
 export class LessonsService {
   private readonly logger = new Logger(LessonsService.name);
 
+  // In-memory TTL + LRU cache for words timeline
+  // Key format: `${userId}|${from}|${to}|${offset}|${bucket}` where bucket ∈ day|week
+  private readonly timelineCache: Map<
+    string,
+    {
+      value: {
+        points: Array<{ date: string; new: number; learned: number }>;
+        totals: { new: number; learned: number };
+      };
+      expiresAt: number;
+    }
+  > = new Map();
+  private static readonly TIMELINE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+  private static readonly TIMELINE_CACHE_MAX = 1000; // soft cap
+
   constructor(
     private readonly prismaService: PrismaService,
     private readonly openAIService: OpenAIService,
@@ -28,6 +43,51 @@ export class LessonsService {
     private readonly ragService: RagService,
     private readonly jwt?: JwtService,
   ) {}
+
+  private getTimelineCache(key: string): {
+    points: Array<{ date: string; new: number; learned: number }>;
+    totals: { new: number; learned: number };
+  } | null {
+    const entry = this.timelineCache.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+      this.timelineCache.delete(key);
+      return null;
+    }
+    // LRU: refresh order
+    this.timelineCache.delete(key);
+    this.timelineCache.set(key, entry);
+    return entry.value;
+  }
+
+  private setTimelineCache(
+    key: string,
+    value: {
+      points: Array<{ date: string; new: number; learned: number }>;
+      totals: { new: number; learned: number };
+    },
+    ttlMs = LessonsService.TIMELINE_CACHE_TTL_MS,
+  ): void {
+    try {
+      this.timelineCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+      // LRU cap
+      if (this.timelineCache.size > LessonsService.TIMELINE_CACHE_MAX) {
+        const firstKey = this.timelineCache.keys().next().value as
+          | string
+          | undefined;
+        if (firstKey) this.timelineCache.delete(firstKey);
+      }
+    } catch {
+      // Swallow cache set errors; caching is best-effort
+    }
+  }
+
+  private invalidateTimelineCache(userId: number): void {
+    const prefix = `${userId}|`;
+    for (const k of Array.from(this.timelineCache.keys())) {
+      if (k.startsWith(prefix)) this.timelineCache.delete(k);
+    }
+  }
 
   private async batchUpsertVocabulary(
     items: Array<{
@@ -479,11 +539,18 @@ export class LessonsService {
             }
 
             emit('step', { key: 'persist_lesson' });
+
+            // Normalize and process tags
+            const rawTags = Array.isArray(generated.tags) ? generated.tags : [];
+            const normalizedTags = this.normalizeTags(rawTags);
+            const tagsWithSynonyms = this.applyTagSynonyms(normalizedTags);
+
             const created = await this.prismaService.lesson.create({
               data: {
                 level,
                 title: generated.title || null,
                 createdBy: user.email,
+                tags: tagsWithSynonyms,
                 sections: {
                   create: [
                     {
@@ -694,11 +761,20 @@ export class LessonsService {
             ...s,
             pinyin: toToneMarks(s.pinyin),
           }));
+
+          // Normalize and process tags
+          const rawTags = Array.isArray((generated as any).tags)
+            ? (generated as any).tags
+            : [];
+          const normalizedTags = this.normalizeTags(rawTags);
+          const tagsWithSynonyms = this.applyTagSynonyms(normalizedTags);
+
           const created = await this.prismaService.lesson.create({
             data: {
               level,
               title: (generated as any).title || null,
               createdBy: user.email,
+              tags: tagsWithSynonyms,
               sections: {
                 create: [
                   {
@@ -973,11 +1049,17 @@ export class LessonsService {
         this.logger.warn('Segment dialogue quiz failed', e as any);
       }
 
+      // Normalize and process tags
+      const rawTags = Array.isArray(generated.tags) ? generated.tags : [];
+      const normalizedTags = this.normalizeTags(rawTags);
+      const tagsWithSynonyms = this.applyTagSynonyms(normalizedTags);
+
       lesson = await this.prismaService.lesson.create({
         data: {
           level,
           title: generated.title || null,
           createdBy: user.email,
+          tags: tagsWithSynonyms,
           sections: {
             create: [
               {
@@ -1174,11 +1256,17 @@ export class LessonsService {
         this.logger.warn('Segment story quiz failed', e as any);
       }
 
+      // Normalize and process tags
+      const rawTags = Array.isArray(generated.tags) ? generated.tags : [];
+      const normalizedTags = this.normalizeTags(rawTags);
+      const tagsWithSynonyms = this.applyTagSynonyms(normalizedTags);
+
       lesson = await this.prismaService.lesson.create({
         data: {
           level,
           title: generated.title || null,
           createdBy: user.email,
+          tags: tagsWithSynonyms,
           sections: {
             create: [
               {
@@ -1217,13 +1305,46 @@ export class LessonsService {
     return { id: lesson.id };
   }
 
-  async listLessons(level?: number, levels?: number[]) {
+  async listLessons(
+    level?: number,
+    levels?: number[],
+    timeframeTags?: string[],
+    contentTags?: string[],
+    includeUntagged?: boolean,
+  ) {
+    const whereConditions: any[] = [];
+
+    // Level filtering
+    if (levels && levels.length > 0) {
+      whereConditions.push({ level: { in: levels } });
+    } else if (level) {
+      whereConditions.push({ level });
+    }
+
+    // Tag filtering
+    if (includeUntagged) {
+      // If includeUntagged is true, only return lessons with empty tags
+      whereConditions.push({ tags: { equals: [] } });
+    } else {
+      // Regular tag filtering
+      const tagConditions: any[] = [];
+
+      if (timeframeTags && timeframeTags.length > 0) {
+        tagConditions.push({ tags: { hasSome: timeframeTags } });
+      }
+
+      if (contentTags && contentTags.length > 0) {
+        tagConditions.push({ tags: { hasSome: contentTags } });
+      }
+
+      if (tagConditions.length > 0) {
+        whereConditions.push({ AND: tagConditions });
+      }
+    }
+
     const where =
-      levels && levels.length > 0
-        ? { level: { in: levels } as any }
-        : level
-          ? { level }
-          : undefined;
+      whereConditions.length > 0 ? { AND: whereConditions } : undefined;
+
     const lessons = await this.prismaService.lesson.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -1247,6 +1368,7 @@ export class LessonsService {
         lessonType,
         titlePinyin: content.titlePinyin || null,
         titleTranslation: content.titleTranslation || null,
+        tags: l.tags || [],
       } as any;
     });
   }
@@ -1255,18 +1377,44 @@ export class LessonsService {
     createdBy: string,
     level?: number,
     levels?: number[],
+    timeframeTags?: string[],
+    contentTags?: string[],
+    includeUntagged?: boolean,
   ) {
-    const byLevel =
-      levels && levels.length > 0
-        ? { level: { in: levels } as any }
-        : level
-          ? { level }
-          : {};
+    const whereConditions: any[] = [{ createdBy }];
+
+    // Level filtering
+    if (levels && levels.length > 0) {
+      whereConditions.push({ level: { in: levels } });
+    } else if (level) {
+      whereConditions.push({ level });
+    }
+
+    // Tag filtering
+    if (includeUntagged) {
+      // If includeUntagged is true, only return lessons with empty tags
+      whereConditions.push({ tags: { equals: [] } });
+    } else {
+      // Regular tag filtering
+      const tagConditions: any[] = [];
+
+      if (timeframeTags && timeframeTags.length > 0) {
+        tagConditions.push({ tags: { hasSome: timeframeTags } });
+      }
+
+      if (contentTags && contentTags.length > 0) {
+        tagConditions.push({ tags: { hasSome: contentTags } });
+      }
+
+      if (tagConditions.length > 0) {
+        whereConditions.push({ AND: tagConditions });
+      }
+    }
+
+    const where = { AND: whereConditions };
+
     const lessons = await this.prismaService.lesson.findMany({
-      where: {
-        ...byLevel,
-        createdBy,
-      },
+      where,
       orderBy: { createdAt: 'desc' },
       include: {
         sections: {
@@ -1288,6 +1436,7 @@ export class LessonsService {
         lessonType,
         titlePinyin: content.titlePinyin || null,
         titleTranslation: content.titleTranslation || null,
+        tags: l.tags || [],
       } as any;
     });
   }
@@ -1314,6 +1463,8 @@ export class LessonsService {
       update: { finishedAt: new Date() },
       create: { userId, lessonId, finishedAt: new Date() },
     });
+    // Invalidate cached timelines for this user
+    this.invalidateTimelineCache(userId);
     return { ok: true } as const;
   }
 
@@ -1742,6 +1893,14 @@ export class LessonsService {
       ? `\nTOPIC (mandatory): ${topic}\n.You MUST center the entire story on this TOPIC. The title MUST include at least one keyword from the topic. Use domain-specific vocabulary related to the topic and include those items in the vocabulary list.`
       : `\nNo topic provided: choose a fresh everyday-life theme distinct from generic themes. Avoid those unless explicitly requested.`;
     const timeframeConditioning = this.getTimeframeConditioning(timeframe);
+
+    // Get existing content tags to prefer in generation
+    const existingContentTags = await this.getExistingContentTags();
+    const availableTagsText =
+      existingContentTags.length > 0
+        ? `\n\nAVAILABLE CONTENT TAGS (prefer these): ${existingContentTags.join(', ')}\nYou may create 1-2 NEW content tags only if the topic absolutely requires them. If the lesson you are making is already covered by one of the tags, just use the tags available. If you must, do not create similar tags, but create completely separate tag categories from the available ones if absolutely necessary for the new lesson. `
+        : '';
+
     const messages = [
       {
         role: 'system' as const,
@@ -1752,11 +1911,18 @@ export class LessonsService {
             ${timeframeConditioning}
             - The story must progress at a pace suited to the specified HSK level, introducing and reinforcing level-appropriate vocabulary and grammar, but with occasional inclusion of a few "stretch" words/structures.
             - Promote gradual learning by organizing the story in a way that helps learners follow and understand (logical sequence, appropriate complexity for HSK level).
-            - Be creative and use storytelling techniques that engage learners emotionally and intellectually (e.g., character motivation, some conflict/resolution, surprise, or humor if suited)`,
+            - Be creative and use storytelling techniques that engage learners emotionally and intellectually (e.g., character motivation, some conflict/resolution, surprise, or humor if suited)
+            
+        Generate lesson content first. 
+        IMPORTANT: Ignore all tag-related instructions until AFTER you complete the lesson generation.`,
       },
       {
         role: 'user' as const,
         content: `Generate a Mandarin Chinese story lesson tailored to HSK level ${level}. Tell a coherent, engaging story strictly about the TOPIC. Length target: ~${approxChars} characters. Provide rich content. Use HSK-${level} vocab and grammar, with a few stretch words.${topicLine}
+
+        === TAG ASSIGNMENT (DO THIS LAST) ===
+        Only after completing the lesson generation above, assign appropriate tags to the lesson.
+        After creating the lesson, Use the available tags to create the appropriate tags for the lesson. Do not let the available tags influence your creation of the lesson. Only after creating the lesson may you check and assign the tags to the generated lesson. Use the tags available only if it is absolutely relevant to the lesson you have just created.${availableTagsText}
 
         Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
         {
@@ -1765,6 +1931,7 @@ export class LessonsService {
           "titleTranslation": "string",
           "lessonType": "story",
           "level": ${level},
+          "tags": ["${timeframe}", "content_tag_1", "content_tag_2<optional, only add if absolutely necessary>"],
           "story": {
             "hanzi": "string (full Chinese text)",
             "translation": "string (full English translation; mirror paragraph breaks with blank lines)"
@@ -1807,6 +1974,14 @@ export class LessonsService {
       ? `\nTOPIC (mandatory): ${topic}\n.Use realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC. Include topic-specific vocabulary in the vocabulary list.`
       : `\nNo topic provided: choose a practical everyday-life scenario (not generic).`;
     const timeframeConditioning = this.getTimeframeConditioning(timeframe);
+
+    // Get existing content tags to prefer in generation
+    const existingContentTags = await this.getExistingContentTags();
+    const availableTagsText =
+      existingContentTags.length > 0
+        ? `\n\nAVAILABLE CONTENT TAGS (prefer these): ${existingContentTags.join(', ')}\nYou may create 1-2 NEW content tags only if the topic genuinely requires them. If the lesson you are making is already covered by one of the tags, just use the tags available. If you must, do not create similar tags, but create completely separate tag categories from the available ones if absolutely necessary for the new lesson.`
+        : '';
+
     const messages = [
       {
         role: 'system' as const,
@@ -1827,13 +2002,20 @@ export class LessonsService {
             2. Determine character types, main communicative goal(s), likely challenges, and learning value.
             3. Select or invent core and stretch vocabulary with high topicality and utility for learners.
             4. Ensure dialogue pacing, complexity, and vocabulary align with HSK level objectives.
-            5. **Do not output your reasoning—apply it only to craft your JSON.**`,
+            5. **Do not output your reasoning—apply it only to craft your JSON.**
+          
+          Generate lesson content first. 
+          IMPORTANT: Ignore all tag-related instructions until AFTER you complete the lesson generation.`,
       },
       {
         role: 'user' as const,
         content: `Generate a Mandarin Chinese dialogue lesson tailored to HSK level ${level}. Provide ${approxTurns} turns of natural conversation. Use HSK-${level} vocab and grammar, with a few stretch words.  
         TOPIC (mandatory): ${topicLine}  
         Use realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC.
+
+        === TAG ASSIGNMENT (DO THIS LAST) ===
+        Only after completing the lesson generation above, assign appropriate tags to the lesson.
+        After creating the dialogue lesson, Use the available tags to create the appropriate tags for the lesson. Do not let the available tags influence your creation of the lesson. Only after creating the lesson may you check and assign the tags to the generated lesson. Use the tags available only if it is absolutely relevant to the lesson you have just created.${availableTagsText}
 
         Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
         {
@@ -1842,6 +2024,7 @@ export class LessonsService {
           "titleTranslation": "string",
           "lessonType": "dialogue",
           "level": ${level},
+          "tags": ["${timeframe}", "content_tag_1", "content_tag_2<optional, only add if absolutely necessary>"],
           "dialogue": {
             "turns": [ // 18-22 turns of practical daily conversation suitable for HSK-${level}
               { "speaker": "<Character name or role(could be narrator or third person or other roles befitting the scenario)>", "hanzi": "string", "translation": "string" }
@@ -1983,5 +2166,533 @@ export class LessonsService {
       }
     }
     return notes;
+  }
+
+  // Tag normalization and management utilities
+  private normalizeTag(tag: string): string {
+    return tag
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ') // collapse multiple spaces
+      .replace(/[^a-z0-9 ]/g, '') // only alphanumeric and spaces
+      .substring(0, 20); // max 20 chars
+  }
+
+  private normalizeTags(tags: string[]): string[] {
+    const normalized = tags
+      .map((tag) => this.normalizeTag(tag))
+      .filter((tag) => tag.length > 0)
+      .filter((tag, index, arr) => arr.indexOf(tag) === index); // dedupe
+
+    return normalized.slice(0, 4); // cap at 4 tags
+  }
+
+  private getTagSynonyms(): Map<string, string> {
+    const synonyms = new Map<string, string>();
+    synonyms.set('tech', 'technology');
+    synonyms.set('uni', 'university');
+    synonyms.set('school', 'education');
+    synonyms.set('work', 'career');
+    synonyms.set('job', 'career');
+    synonyms.set('travel', 'trip');
+    synonyms.set('food', 'dining');
+    synonyms.set('restaurant', 'dining');
+    synonyms.set('hospital', 'medical');
+    synonyms.set('doctor', 'medical');
+    synonyms.set('health', 'medical');
+    synonyms.set('love', 'romance');
+    synonyms.set('dating', 'romance');
+    synonyms.set('sport', 'sports');
+    synonyms.set('game', 'gaming');
+    synonyms.set('music', 'entertainment');
+    synonyms.set('movie', 'entertainment');
+    synonyms.set('film', 'entertainment');
+    synonyms.set('book', 'reading');
+    synonyms.set('study', 'education');
+    synonyms.set('learn', 'education');
+    return synonyms;
+  }
+
+  private applyTagSynonyms(tags: string[]): string[] {
+    const synonyms = this.getTagSynonyms();
+    return tags.map((tag) => synonyms.get(tag) || tag);
+  }
+
+  async getAvailableTags(): Promise<{
+    timeframe: Array<{ tag: string; count: number }>;
+    content: Array<{ tag: string; count: number }>;
+  }> {
+    const timeframeTags = [
+      'modern',
+      'mythic',
+      'imperial',
+      'pre_modern',
+      'futuristic',
+    ];
+
+    // Get all tags with counts
+    const queryResult = await this.prismaService.$queryRaw<
+      Array<{ tag: string; count: bigint }>
+    >`
+      SELECT unnest(tags) as tag, COUNT(*) as count
+      FROM "Lesson"
+      WHERE array_length(tags, 1) > 0
+      GROUP BY unnest(tags)
+      ORDER BY count DESC, tag ASC
+      LIMIT 50
+    `;
+
+    const allTags = queryResult.map((row) => ({
+      tag: row.tag,
+      count: Number(row.count),
+    }));
+
+    // Separate timeframe and content tags
+    const timeframeTagsWithCounts = timeframeTags.map((tag) => {
+      const found = allTags.find((t) => t.tag === tag);
+      return { tag, count: found ? found.count : 0 };
+    });
+
+    const contentTags = allTags.filter(
+      (tagObj) => !timeframeTags.includes(tagObj.tag),
+    );
+
+    const result = { timeframe: timeframeTagsWithCounts, content: contentTags };
+    return result;
+  }
+
+  async getTagCounts(): Promise<Record<string, number>> {
+    const result = await this.prismaService.$queryRaw<
+      Array<{ tag: string; count: bigint }>
+    >`
+      SELECT unnest(tags) as tag, COUNT(*) as count
+      FROM "Lesson"
+      WHERE array_length(tags, 1) > 0
+      GROUP BY unnest(tags)
+    `;
+
+    const counts: Record<string, number> = {};
+    result.forEach((row) => {
+      counts[row.tag] = Number(row.count);
+    });
+
+    return counts;
+  }
+
+  private async getExistingContentTags(): Promise<string[]> {
+    const counts = await this.getTagCounts();
+    const timeframeTags = [
+      'modern',
+      'mythic',
+      'imperial',
+      'pre_modern',
+      'futuristic',
+    ];
+
+    return Object.keys(counts)
+      .filter((tag) => !timeframeTags.includes(tag))
+      .sort((a, b) => counts[b] - counts[a])
+      .slice(0, 50); // top 50 by frequency
+  }
+
+  async getWordsTimeline(
+    userId: number,
+    from?: string,
+    to?: string,
+    offsetMinutes = 0,
+  ): Promise<{
+    points: Array<{ date: string; new: number; learned: number }>;
+    totals: { new: number; learned: number };
+  }> {
+    try {
+      // Get user's join date and set defaults
+      const user = await (this.prismaService as any).user.findUnique({
+        where: { id: userId },
+        select: { createdAt: true },
+      });
+      if (!user) {
+        return { points: [], totals: { new: 0, learned: 0 } };
+      }
+
+      const userJoinDate = new Date(user.createdAt);
+      const fromDate = from ? new Date(from) : userJoinDate;
+      const toDate = to ? new Date(to) : new Date();
+
+      // Adjust dates by offsetMinutes
+      const adjustedFrom = new Date(
+        fromDate.getTime() + offsetMinutes * 60 * 1000,
+      );
+      const adjustedTo = new Date(toDate.getTime() + offsetMinutes * 60 * 1000);
+
+      // Cache key and lookup
+      const totalDays = Math.max(
+        1,
+        Math.floor(
+          (Date.UTC(
+            adjustedTo.getUTCFullYear(),
+            adjustedTo.getUTCMonth(),
+            adjustedTo.getUTCDate(),
+          ) -
+            Date.UTC(
+              adjustedFrom.getUTCFullYear(),
+              adjustedFrom.getUTCMonth(),
+              adjustedFrom.getUTCDate(),
+            )) /
+            (24 * 60 * 60 * 1000),
+        ),
+      );
+      const bucket = totalDays > 365 ? 'week' : 'day';
+      const cacheKey = `${userId}|${adjustedFrom.toISOString().slice(0, 10)}|${adjustedTo
+        .toISOString()
+        .slice(0, 10)}|${offsetMinutes}|${bucket}`;
+      const cached = this.getTimelineCache(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      // Try fast path using WordInstance with boundary-based aggregation
+      try {
+        const rangeFrom = adjustedFrom.toISOString().split('T')[0];
+        const rangeTo = adjustedTo.toISOString().split('T')[0];
+        const daily = bucket === 'day';
+        const dateExpr = daily ? 'day' : `date_trunc('week', day)::date`;
+        const seriesStep = daily ? '1 day' : '1 week';
+
+        const result = await (this.prismaService as any).$queryRawUnsafe(
+          `
+          WITH finished AS (
+            SELECT lp."lessonId", ((lp."finishedAt" + INTERVAL '1 minute' * $1)::date) AS day
+            FROM "LessonProgress" lp
+            WHERE lp."userId" = $2 AND lp."finishedAt" IS NOT NULL
+          ),
+          occ_raw AS (
+            SELECT ${dateExpr} AS bucket_day, wi."vocabId" AS vid, COUNT(*)::int AS occ
+            FROM finished f
+            JOIN "LessonSection" s ON s."lessonId" = f."lessonId"
+            JOIN "WordInstance" wi ON wi."sectionId" = s.id
+            GROUP BY ${dateExpr}, wi."vocabId"
+          ),
+          cum AS (
+            SELECT bucket_day, vid,
+                   SUM(occ) OVER (PARTITION BY vid ORDER BY bucket_day
+                     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cum
+            FROM occ_raw
+          ),
+          first_seen AS (
+            SELECT vid, MIN(bucket_day) AS first_day FROM cum WHERE cum >= 1 GROUP BY vid
+          ),
+          learned_at AS (
+            SELECT vid, MIN(bucket_day) AS learned_day FROM cum WHERE cum >= 10 GROUP BY vid
+          ),
+          series AS (
+            SELECT gs::date AS day
+            FROM generate_series($3::date, $4::date, '${seriesStep}') AS gs
+          ),
+          starts AS (
+            SELECT first_day AS day, COUNT(*)::int AS started FROM first_seen GROUP BY first_day
+          ),
+          learned AS (
+            SELECT learned_day AS day, COUNT(*)::int AS learned FROM learned_at GROUP BY learned_day
+          ),
+          joined AS (
+            SELECT series.day,
+                   COALESCE(starts.started, 0) AS started,
+                   COALESCE(learned.learned, 0) AS learned
+            FROM series
+            LEFT JOIN starts  ON starts.day  = series.day
+            LEFT JOIN learned ON learned.day = series.day
+          ),
+          agg AS (
+            SELECT day,
+                   SUM(started) OVER (ORDER BY day
+                     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS started_cum,
+                   SUM(learned) OVER (ORDER BY day
+                     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS learned_cum
+            FROM joined
+          )
+          SELECT day::text AS date,
+                 GREATEST(started_cum - learned_cum, 0) AS new,
+                 learned_cum AS learned
+          FROM agg
+          ORDER BY day
+          `,
+          offsetMinutes,
+          userId,
+          rangeFrom,
+          rangeTo,
+        );
+
+        const points = result.map((row: any) => ({
+          date: row.date,
+          new: Number(row.new) || 0,
+          learned: Number(row.learned) || 0,
+        }));
+
+        // Calculate totals from the last point
+        const totals =
+          points.length > 0
+            ? {
+                new: points[points.length - 1].new,
+                learned: points[points.length - 1].learned,
+              }
+            : { new: 0, learned: 0 };
+
+        const out = { points, totals };
+        this.setTimelineCache(cacheKey, out);
+        return out;
+      } catch (sqlError) {
+        this.logger.warn(
+          'SQL fast path failed, falling back to content parsing',
+          sqlError,
+        );
+      }
+
+      // Fallback: parse lesson content
+      const finishedLessonIds = await this.getFinishedLessonIds(userId);
+      if (finishedLessonIds.length === 0) {
+        return { points: [], totals: { new: 0, learned: 0 } };
+      }
+
+      const lessons = await (this.prismaService as any).lesson.findMany({
+        where: { id: { in: finishedLessonIds } },
+        select: {
+          id: true,
+          sections: {
+            select: {
+              sectionType: true,
+              content: true,
+            },
+          },
+        },
+      });
+
+      const progress = await (
+        this.prismaService as any
+      ).lessonProgress.findMany({
+        where: {
+          userId,
+          lessonId: { in: finishedLessonIds },
+          finishedAt: { not: null },
+        },
+        select: { lessonId: true, finishedAt: true },
+      });
+
+      // Build word occurrence map per lesson
+      const lessonWordCounts: Record<number, Record<string, number>> = {};
+
+      for (const lesson of lessons) {
+        const wordCounts: Record<string, number> = {};
+
+        for (const section of lesson.sections) {
+          const type = (section.sectionType || '').toLowerCase();
+          const content: any = section.content || {};
+
+          if (type === 'dialogue') {
+            const turns: any[] = Array.isArray(content.turns)
+              ? content.turns
+              : [];
+            for (const turn of turns) {
+              const segs: any[] = Array.isArray(turn?.segments)
+                ? turn.segments
+                : [];
+              for (const seg of segs) {
+                if (
+                  seg &&
+                  seg.isWord &&
+                  typeof seg.text === 'string' &&
+                  seg.text.trim().length > 0
+                ) {
+                  const word = seg.text.trim();
+                  wordCounts[word] = (wordCounts[word] || 0) + 1;
+                }
+              }
+            }
+          } else {
+            const segs: any[] = Array.isArray(content.segments)
+              ? content.segments
+              : [];
+            for (const seg of segs) {
+              if (
+                seg &&
+                seg.isWord &&
+                typeof seg.text === 'string' &&
+                seg.text.trim().length > 0
+              ) {
+                const word = seg.text.trim();
+                wordCounts[word] = (wordCounts[word] || 0) + 1;
+              }
+            }
+          }
+        }
+
+        lessonWordCounts[lesson.id] = wordCounts;
+      }
+
+      // Build daily timeline
+      const dayMap: Record<string, Record<string, number>> = {};
+
+      for (const prog of progress) {
+        const day = new Date(
+          prog.finishedAt.getTime() + offsetMinutes * 60 * 1000,
+        )
+          .toISOString()
+          .split('T')[0];
+
+        if (!dayMap[day]) {
+          dayMap[day] = {};
+        }
+
+        const wordCounts = lessonWordCounts[prog.lessonId] || {};
+        for (const [word, count] of Object.entries(wordCounts)) {
+          dayMap[day][word] = (dayMap[day][word] || 0) + count;
+        }
+      }
+
+      // Generate date series and calculate cumulative counts
+      const points: Array<{ date: string; new: number; learned: number }> = [];
+      const wordCumulative: Record<string, number> = {};
+
+      const startDate = new Date(adjustedFrom);
+      const endDate = new Date(adjustedTo);
+
+      for (
+        let d = new Date(startDate);
+        d <= endDate;
+        d.setDate(d.getDate() + 1)
+      ) {
+        const dayStr = d.toISOString().split('T')[0];
+        const dayWords = dayMap[dayStr] || {};
+
+        // Update cumulative counts
+        for (const [word, count] of Object.entries(dayWords)) {
+          wordCumulative[word] = (wordCumulative[word] || 0) + count;
+        }
+
+        // Count new vs learned
+        let newCount = 0;
+        let learnedCount = 0;
+
+        for (const [, total] of Object.entries(wordCumulative)) {
+          if (total > 0 && total < 10) {
+            newCount++;
+          } else if (total >= 10) {
+            learnedCount++;
+          }
+        }
+
+        points.push({
+          date: dayStr,
+          new: newCount,
+          learned: learnedCount,
+        });
+      }
+
+      const totals =
+        points.length > 0
+          ? {
+              new: points[points.length - 1].new,
+              learned: points[points.length - 1].learned,
+            }
+          : { new: 0, learned: 0 };
+
+      const out = { points, totals };
+      this.setTimelineCache(cacheKey, out);
+      return out;
+    } catch (error) {
+      this.logger.error('Error in getWordsTimeline', error);
+      return { points: [], totals: { new: 0, learned: 0 } };
+    }
+  }
+
+  async countWeeklyFinishedLessons(
+    userId: number,
+    offsetMinutes: number,
+  ): Promise<{
+    weeklyCount: number;
+    weekStartLocalISO: string;
+    weekEndLocalISO: string;
+  }> {
+    try {
+      const bounds = this.getWeekBoundsUtc(offsetMinutes);
+
+      // Count AI lesson completions
+      const aiCount = await this.prismaService.lessonProgress.count({
+        where: {
+          userId,
+          finishedAt: {
+            gte: bounds.weekStartUtc,
+            lt: bounds.nextWeekStartUtc,
+          },
+        },
+      });
+
+      // Count curriculum lesson completions (distinct lessons)
+      const curriculumResults =
+        await this.prismaService.curriculumProgress.groupBy({
+          by: ['lessonId'],
+          where: {
+            userId,
+            status: 'completed',
+            lessonId: { not: null },
+            updatedAt: {
+              gte: bounds.weekStartUtc,
+              lt: bounds.nextWeekStartUtc,
+            },
+          },
+        });
+      const curriculumCount = curriculumResults.length;
+
+      const weeklyCount = aiCount + curriculumCount;
+
+      return {
+        weeklyCount,
+        weekStartLocalISO: bounds.weekStartLocalISO,
+        weekEndLocalISO: bounds.weekEndLocalISO,
+      };
+    } catch (error) {
+      this.logger.error('Error in countWeeklyFinishedLessons', error);
+      return {
+        weeklyCount: 0,
+        weekStartLocalISO: new Date().toISOString(),
+        weekEndLocalISO: new Date().toISOString(),
+      };
+    }
+  }
+
+  private getWeekBoundsUtc(offsetMinutes: number): {
+    weekStartUtc: Date;
+    nextWeekStartUtc: Date;
+    weekStartLocalISO: string;
+    weekEndLocalISO: string;
+  } {
+    const now = new Date();
+    const localNow = new Date(now.getTime() + offsetMinutes * 60_000);
+    const day = (localNow.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+    const mondayLocal = new Date(
+      Date.UTC(
+        localNow.getUTCFullYear(),
+        localNow.getUTCMonth(),
+        localNow.getUTCDate() - day,
+        0,
+        0,
+        0,
+        0,
+      ),
+    );
+    const nextMondayLocal = new Date(
+      mondayLocal.getTime() + 7 * 24 * 60 * 60_000,
+    );
+    const weekStartUtc = new Date(
+      mondayLocal.getTime() - offsetMinutes * 60_000,
+    );
+    const nextWeekStartUtc = new Date(
+      nextMondayLocal.getTime() - offsetMinutes * 60_000,
+    );
+    return {
+      weekStartUtc,
+      nextWeekStartUtc,
+      weekStartLocalISO: mondayLocal.toISOString(),
+      weekEndLocalISO: new Date(nextMondayLocal.getTime() - 1).toISOString(),
+    };
   }
 }

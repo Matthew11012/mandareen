@@ -4,6 +4,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { GoogleStrategy } from './strategies/google.strategy';
+import { BetterAuthAdapter } from './better-auth.config';
 
 @Module({
   imports: [
@@ -13,8 +14,8 @@ import { GoogleStrategy } from './strategies/google.strategy';
       signOptions: { expiresIn: '1d' }, // Token expires in 1 day
     }),
   ],
-  providers: [AuthService, GoogleStrategy],
+  providers: [AuthService, GoogleStrategy, BetterAuthAdapter],
   controllers: [AuthController],
   exports: [AuthService],
 })
-export class AuthModule {} 
+export class AuthModule {}

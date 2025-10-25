@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -87,5 +89,42 @@ export class FlashcardsController {
   async review(@Param('id') id: string, @Body() body: { quality: number }) {
     const result = await this.service.reviewFlashcard(Number(id), body.quality);
     return result;
+  }
+
+  @Get()
+  async listAll(
+    @Req() req: AuthenticatedRequest,
+    @Query('limit') limit?: string,
+    @Query('cursorCreatedAt') cursorCreatedAt?: string,
+    @Query('cursorId') cursorId?: string,
+  ) {
+    const userId = req.user.id;
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    const cursor =
+      cursorCreatedAt && cursorId
+        ? { createdAt: new Date(cursorCreatedAt), id: parseInt(cursorId, 10) }
+        : undefined;
+
+    return this.service.listAll(userId, limitNum, cursor);
+  }
+
+  @Delete(':id')
+  async delete(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    const userId = req.user.id;
+    const deleted = await this.service.deleteFlashcard(userId, Number(id));
+    return { deleted };
+  }
+
+  @Post('bulk-delete')
+  async bulkDelete(
+    @Body() body: { ids: number[] },
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const userId = req.user.id;
+    if (!Array.isArray(body.ids) || body.ids.length === 0) {
+      throw new BadRequestException('ids must be a non-empty array');
+    }
+    const deleted = await this.service.deleteMany(userId, body.ids);
+    return { deleted };
   }
 }
