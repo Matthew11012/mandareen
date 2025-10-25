@@ -24,7 +24,7 @@ import { toast } from "sonner";
 // import { flashcardsApi } from "@/lib/api/flashcards";
 import { AnimatePresence, motion } from "framer-motion";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
-import { Separator } from "@/components/ui/separator"
+import { Separator } from "@/components/ui/separator";
 
 export default function LessonViewerPage() {
   const router = useRouter();
@@ -57,6 +57,14 @@ export default function LessonViewerPage() {
   >({});
   const [finishLoading, setFinishLoading] = useState(false);
 
+  // Scroll-aware header state
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+  const [isContentChanging, setIsContentChanging] = useState(false);
+  const scrollThreshold = 50; // Hide after scrolling down 30px
+  const showThreshold = 30; // Show when scrolling up 20px
+  const minScrollDelta = 10; // Minimum scroll delta to trigger direction change
+
   const load = async () => {
     if (!id) return;
     setLoading(true);
@@ -75,6 +83,90 @@ export default function LessonViewerPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Scroll detection for header auto-hide
+  useEffect(() => {
+    const handleScroll = () => {
+      // The scroll is happening on the main element, not window
+      const mainElement = document.querySelector("main");
+      const currentScrollY = mainElement?.scrollTop || 0;
+
+      // Ignore scroll events during content changes
+      if (isContentChanging) {
+        return;
+      }
+
+      // Don't hide header if we're at the top
+      if (currentScrollY < 10) {
+        setIsHeaderVisible(true);
+        setLastScrollY(currentScrollY);
+        return;
+      }
+
+      // Don't hide header during multi-select mode
+      if (multiSelect) {
+        setIsHeaderVisible(true);
+        setLastScrollY(currentScrollY);
+        return;
+      }
+
+      // Determine scroll direction (only if there's significant movement)
+      const scrollDelta = currentScrollY - lastScrollY;
+
+      if (scrollDelta > minScrollDelta) {
+        // Scrolling down significantly
+        if (currentScrollY > scrollThreshold) {
+          setIsHeaderVisible(false);
+        } else {
+        }
+      } else if (scrollDelta < -minScrollDelta) {
+        // Scrolling up significantly
+        if (currentScrollY > showThreshold) {
+          setIsHeaderVisible(true);
+        } else {
+        }
+      } else {
+      }
+      // If scrollDelta is within [-minScrollDelta, minScrollDelta], ignore small movements
+
+      setLastScrollY(currentScrollY);
+    };
+
+    // Find the main scrollable element
+    const mainElement = document.querySelector("main");
+
+    if (mainElement) {
+      // Listen to the main element's scroll events
+      mainElement.addEventListener("scroll", handleScroll, { passive: true });
+
+      return () => {
+        mainElement.removeEventListener("scroll", handleScroll);
+      };
+    } else {
+      console.log("Main element not found, falling back to window scroll");
+      // Fallback to window scroll
+      window.addEventListener("scroll", handleScroll, { passive: true });
+
+      return () => {
+        window.removeEventListener("scroll", handleScroll);
+      };
+    }
+  }, [
+    lastScrollY,
+    multiSelect,
+    scrollThreshold,
+    showThreshold,
+    minScrollDelta,
+    isHeaderVisible,
+    isContentChanging,
+  ]);
+
+  // Tap to show header when hidden
+  const handleTapToShowHeader = () => {
+    if (!isHeaderVisible) {
+      setIsHeaderVisible(true);
+    }
+  };
 
   const storySection = useMemo(
     () => data?.sections.find((s) => s.sectionType === "story"),
@@ -849,10 +941,18 @@ export default function LessonViewerPage() {
       subtitle={`HSK ${data?.level ?? ""}`}
     >
       <div className="p-6 space-y-6">
-        <div
+        <motion.div
           className="flex flex-wrap items-center justify-between gap-2 sticky top-0 z-20 -mx-6 px-6 py-2 bg-[#222831]/80 backdrop-blur border-b border-[#30333a]"
           role="toolbar"
           aria-label="Lesson controls"
+          initial={{ y: 0 }}
+          animate={{ y: isHeaderVisible ? 0 : -100 }}
+          transition={{
+            type: "spring",
+            stiffness: 300,
+            damping: 30,
+            duration: 0.3,
+          }}
         >
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
@@ -867,7 +967,8 @@ export default function LessonViewerPage() {
               </div>
             </button>
             <button
-              onClick={() =>
+              onClick={() => {
+                setIsContentChanging(true);
                 setShowPinyin((prev) => {
                   const next = !prev;
                   // Force all blocks/turns to follow global state
@@ -884,8 +985,10 @@ export default function LessonViewerPage() {
                     ) as Record<number, boolean>
                   );
                   return next;
-                })
-              }
+                });
+                // Reset content changing flag after a short delay
+                setTimeout(() => setIsContentChanging(false), 150);
+              }}
               className="px-3 py-2 bg-orange-500/20 border border-orange-500/40 rounded-lg hover:border-orange-500 text-orange-300 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#222831]"
               type="button"
               aria-pressed={showPinyin}
@@ -901,7 +1004,8 @@ export default function LessonViewerPage() {
               </div>
             </button>
             <button
-              onClick={() =>
+              onClick={() => {
+                setIsContentChanging(true);
                 setShowTranslation((prev) => {
                   const next = !prev;
                   // Force all blocks/turns to follow global state
@@ -918,8 +1022,10 @@ export default function LessonViewerPage() {
                     ) as Record<number, boolean>
                   );
                   return next;
-                })
-              }
+                });
+                // Reset content changing flag after a short delay
+                setTimeout(() => setIsContentChanging(false), 150);
+              }}
               className="px-3 py-2 bg-purple-600/20 border border-purple-600/40 rounded-lg hover:border-purple-600 text-purple-300 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-purple-400 focus-visible:ring-offset-[#222831]"
               type="button"
               aria-pressed={showTranslation}
@@ -1019,7 +1125,17 @@ export default function LessonViewerPage() {
               />
             </button>
           </div>
-        </div>
+        </motion.div>
+
+        {/* Tap area to show header when hidden */}
+        {!isHeaderVisible && (
+          <div
+            className="fixed top-0 left-0 right-0 h-16 z-10 cursor-pointer"
+            onClick={handleTapToShowHeader}
+            aria-label="Tap to show controls"
+            title="Tap to show controls"
+          />
+        )}
 
         {(story?.titlePinyin ||
           story?.titleTranslation ||
@@ -1060,7 +1176,7 @@ export default function LessonViewerPage() {
             className="bg-[#2e323a] rounded-xl sm:p-6 border border-[#404040] relative"
           >
             {story && (
-              <div className="space-y-6 p-3">
+              <div className="space-y-6 p-2">
                 {segmentedParagraphs.map((segChunk, ci) => (
                   <div key={ci} className="space-y-2">
                     <div className="flex items-center gap-2 justify-end">
