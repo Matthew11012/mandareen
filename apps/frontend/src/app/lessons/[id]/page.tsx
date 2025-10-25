@@ -24,6 +24,7 @@ import { toast } from "sonner";
 // import { flashcardsApi } from "@/lib/api/flashcards";
 import { AnimatePresence, motion } from "framer-motion";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
+import { Separator } from "@/components/ui/separator"
 
 export default function LessonViewerPage() {
   const router = useRouter();
@@ -1056,10 +1057,10 @@ export default function LessonViewerPage() {
         ) : (
           <div
             ref={contentRef}
-            className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] relative"
+            className="bg-[#2e323a] rounded-xl sm:p-6 border border-[#404040] relative"
           >
             {story && (
-              <div className="space-y-6">
+              <div className="space-y-6 p-3">
                 {segmentedParagraphs.map((segChunk, ci) => (
                   <div key={ci} className="space-y-2">
                     <div className="flex items-center gap-2 justify-end">
@@ -1116,7 +1117,7 @@ export default function LessonViewerPage() {
                         </svg>
                       </button>
                     </div>
-                    <div className="leading-8 text-white font-inter text-[18px]">
+                    <div className="leading-8 text-white font-inter sm:text-[18px] text-[16px]">
                       {segChunk.map((seg: LessonToken, idx) => {
                         const isWord = Boolean(seg.isWord);
                         return (
@@ -1222,7 +1223,7 @@ export default function LessonViewerPage() {
                 {dialogue.turns.map((turn, ti) => (
                   <div
                     key={ti}
-                    className="bg-[#262a31] rounded-lg p-3 border border-[#3a3a3a]"
+                    className="sm:bg-[#262a31] rounded-lg p-3 sm:border sm:border-[#3a3a3a]"
                   >
                     <div className="flex items-center justify-between mb-1">
                       <div className="text-[#9aa6ff] font-inter text-sm">
@@ -1283,6 +1284,7 @@ export default function LessonViewerPage() {
                         </button>
                       </div>
                     </div>
+                    <Separator className="mb-1 border-1 opacity-50" />
                     <div className="leading-8 text-white font-inter text-[18px]">
                       {(turn.segments ?? []).map((seg: LessonToken, idx) => {
                         const isWord = Boolean(seg.isWord);
