@@ -23,6 +23,20 @@ export interface ReviewResult {
   newEasiness: number;
 }
 
+export interface ListAllResult {
+  items: Array<{
+    id: number;
+    vocabId: number;
+    hanzi: string;
+    pinyin: string;
+    definition: string;
+    hskLevel: number | null;
+    nextReview: string;
+    createdAt: string;
+  }>;
+  nextCursor?: { createdAt: string; id: number };
+}
+
 @Injectable()
 export class FlashcardsService {
   constructor(
@@ -424,5 +438,70 @@ export class FlashcardsService {
       newIntervalDays: updated.intervalDays,
       newNextReview: updated.nextReview.toISOString(),
     };
+  }
+
+  async listAll(
+    userId: number,
+    limit: number = 50,
+    cursor?: { createdAt: Date; id: number },
+  ): Promise<ListAllResult> {
+    const whereClause: any = { userId };
+
+    if (cursor) {
+      whereClause.OR = [
+        { createdAt: { lt: cursor.createdAt } },
+        {
+          createdAt: cursor.createdAt,
+          id: { lt: cursor.id },
+        },
+      ];
+    }
+
+    const flashcards = await this.prisma.flashcard.findMany({
+      where: whereClause,
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      take: limit + 1, // Take one extra to determine if there's a next page
+      include: { vocab: true },
+    });
+
+    const hasNextPage = flashcards.length > limit;
+    const items = hasNextPage ? flashcards.slice(0, limit) : flashcards;
+
+    const result: ListAllResult = {
+      items: items.map((f) => ({
+        id: f.id,
+        vocabId: f.vocabId,
+        hanzi: f.vocab?.hanzi || '',
+        pinyin: toToneMarks(f.vocab?.pinyin || '') || '',
+        definition: f.vocab?.definition || '',
+        hskLevel: f.vocab?.hskLevel ?? null,
+        nextReview: f.nextReview.toISOString(),
+        createdAt: f.createdAt.toISOString(),
+      })),
+    };
+
+    if (hasNextPage && items.length > 0) {
+      const lastItem = items[items.length - 1];
+      result.nextCursor = {
+        createdAt: lastItem.createdAt.toISOString(),
+        id: lastItem.id,
+      };
+    }
+
+    return result;
+  }
+
+  async deleteFlashcard(userId: number, cardId: number): Promise<number> {
+    const result = await this.prisma.flashcard.deleteMany({
+      where: { id: cardId, userId },
+    });
+    return result.count;
+  }
+
+  async deleteMany(userId: number, ids: number[]): Promise<number> {
+    const result = await this.prisma.flashcard.deleteMany({
+      where: { userId, id: { in: ids } },
+    });
+    return result.count;
   }
 }

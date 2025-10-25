@@ -119,6 +119,7 @@ model Flashcard {
   nextReview       DateTime
   intervalDays     Int
   easiness         Float
+  createdAt        DateTime            @default(now())
   sourceInstance   WordInstance?       @relation(fields: [sourceInstanceId], references: [id])
   user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   vocab            VocabularyItem      @relation(fields: [vocabId], references: [id], onDelete: Cascade)
@@ -126,6 +127,7 @@ model Flashcard {
   reviews          Review[]
 
   @@index([userId, nextReview])
+  @@index([userId, createdAt])
 }
 
 model Review {
