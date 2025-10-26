@@ -940,7 +940,7 @@ export default function LessonViewerPage() {
       title={data?.title || `Lesson #${id}`}
       subtitle={`HSK ${data?.level ?? ""}`}
     >
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 pt-0 space-y-6">
         <motion.div
           className="flex flex-wrap items-center justify-between gap-2 sticky top-0 z-20 -mx-6 px-6 py-2 bg-[#222831]/80 backdrop-blur border-b border-[#30333a]"
           role="toolbar"
@@ -1400,7 +1400,7 @@ export default function LessonViewerPage() {
                         </button>
                       </div>
                     </div>
-                    <Separator className="mb-1 border-1 opacity-50" />
+                    <Separator className="mb-1 border-1 opacity-50 sm:hidden" />
                     <div className="leading-8 text-white font-inter text-[18px]">
                       {(turn.segments ?? []).map((seg: LessonToken, idx) => {
                         const isWord = Boolean(seg.isWord);
@@ -2570,7 +2570,7 @@ export default function LessonViewerPage() {
                     ? "none"
                     : "translate(-50%, calc(-100% - 8px))",
                 }}
-                className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+                className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="font-bold text-white text-lg truncate">
@@ -2630,7 +2630,7 @@ export default function LessonViewerPage() {
                         vocabDef = notesPopup.definition;
                       }
 
-                      void addSingleToFlashcards(notesPopup.word, ctx, {
+                      await addSingleToFlashcards(notesPopup.word, ctx, {
                         pinyin: notesPopup.pinyin,
                         definition: vocabDef,
                         hskLevel: undefined, // Notes don't have HSK level info
@@ -2647,6 +2647,107 @@ export default function LessonViewerPage() {
                 </div>
               </div>
             )}
+
+            {/* Mobile top sheet popup for notes */}
+            <AnimatePresence>
+              {notesPopup.open && (
+                <motion.div
+                  initial={{ y: "-100%" }}
+                  animate={{ y: 0 }}
+                  exit={{ y: "-100%" }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 300,
+                    damping: 30,
+                    duration: 0.3,
+                  }}
+                  className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+                >
+                  <div className="max-w-sm mx-auto">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div className="font-bold text-white text-lg truncate">
+                        {notesPopup.word}
+                      </div>
+                      {typeof notesPopup.hskLevel === "number" && (
+                        <span
+                          className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                            notesPopup.hskLevel
+                          )}`}
+                        >
+                          HSK {notesPopup.hskLevel}
+                        </span>
+                      )}
+                    </div>
+                    {notesPopup.pinyin && (
+                      <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                        {notesPopup.pinyin}
+                      </div>
+                    )}
+                    {Array.isArray(notesPopup.definitions) &&
+                    notesPopup.definitions.length > 0 ? (
+                      <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                        {notesPopup.definitions.map((d, i) => (
+                          <div key={i}>• {d}</div>
+                        ))}
+                      </div>
+                    ) : notesPopup.definition ? (
+                      <div className="text-xs text-[#a6a6a6] mb-3">
+                        {notesPopup.definition}
+                      </div>
+                    ) : null}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setNotesPopup((p) => ({ ...p, open: false }));
+                        }}
+                        className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                      >
+                        Close
+                      </button>
+                      <button
+                        onClick={async () => {
+                          // Create context from the notes popup data
+                          const ctx = {
+                            hanzi: notesPopup.word,
+                            pinyin: notesPopup.pinyin,
+                            translation:
+                              notesPopup.definition ||
+                              (Array.isArray(notesPopup.definitions) &&
+                              notesPopup.definitions.length > 0
+                                ? notesPopup.definitions[0]
+                                : undefined),
+                          };
+
+                          // Derive vocab metadata from popup
+                          let vocabDef: string | undefined = undefined;
+                          if (
+                            Array.isArray(notesPopup.definitions) &&
+                            notesPopup.definitions.length > 0
+                          ) {
+                            vocabDef = notesPopup.definitions[0];
+                          } else if (notesPopup.definition) {
+                            vocabDef = notesPopup.definition;
+                          }
+
+                          await addSingleToFlashcards(notesPopup.word, ctx, {
+                            pinyin: notesPopup.pinyin,
+                            definition: vocabDef,
+                            hskLevel: undefined, // Notes don't have HSK level info
+                          });
+                          setNotesPopup((p) => ({ ...p, open: false }));
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span className="text-sm font-inter">
+                          Add to Flashcards
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
       </div>
@@ -2810,7 +2911,7 @@ function LessonQuizView({
           return (
             <div
               key={i}
-              className={`relative p-4 border border-white/10 rounded-xl bg-white/[0.02] hover:border-white/20 transition-all duration-200 ${
+              className={`relative p-2 sm:border border-white/10 rounded-xl sm:bg-white/[0.02] hover:border-white/20 transition-all duration-200 ${
                 isCorrect
                   ? "border-green-500/30 bg-green-500/5"
                   : isIncorrect
@@ -2819,6 +2920,9 @@ function LessonQuizView({
               }`}
             >
               <div className="mb-3 text-white">
+                <div className="text-white/60 text-xs mb-2 font-medium">
+                  Question {i + 1}
+                </div>
                 <InlineSegments
                   segments={it.question?.segments}
                   fallbackZh={it.question?.zh}
@@ -2897,7 +3001,7 @@ function LessonQuizView({
         })}
       </div>
 
-      <div className="flex items-center justify-between pt-2">
+      <div className="flex items-center justify-between pt-2 px-4">
         {completed ? (
           <div className="w-full">
             <div className="relative overflow-hidden rounded-xl border border-green-500/40 bg-gradient-to-r from-green-600/20 via-green-500/15 to-emerald-500/15 p-4">
