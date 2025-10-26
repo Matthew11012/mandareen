@@ -213,12 +213,6 @@ export default function UnitDetailPage({
         >
           <ol className="flex items-center gap-2">
             <li>
-              <Link href="/dashboard" className="hover:text-white">
-                Dashboard
-              </Link>
-            </li>
-            <li aria-hidden>›</li>
-            <li>
               <Link href="/curriculum" className="hover:text-white">
                 Curriculum
               </Link>

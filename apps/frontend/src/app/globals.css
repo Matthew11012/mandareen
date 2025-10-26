@@ -151,7 +151,7 @@ a:focus-visible {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-primary-bg);
+  background: #222831;
 }
 
 ::-webkit-scrollbar-thumb {
