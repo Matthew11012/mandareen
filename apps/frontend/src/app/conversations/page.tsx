@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, memo } from "react";
+import { useEffect, useRef, useState, memo, useMemo } from "react";
 import { DashboardLayout } from "@/components/layout";
 import {
   conversationsApi,
@@ -44,6 +44,9 @@ type MessageNotes = {
   tipsRich?: Tip[];
 };
 
+// Enriched conversation type with optional preview
+type EnrichedConversation = ConversationSummary & { preview?: string };
+
 const TranslationBlock = memo(function TranslationBlock({
   show,
   text,
@@ -60,7 +63,9 @@ export default function ConversationsPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [recording, setRecording] = useState(false);
-  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [conversations, setConversations] = useState<EnrichedConversation[]>(
+    []
+  );
   const [aiShowPinyin, setAiShowPinyin] = useState<Record<number, boolean>>({});
   const [aiShowTrans, setAiShowTrans] = useState<Record<number, boolean>>({});
   const [aiShowNotes, setAiShowNotes] = useState<Record<number, boolean>>({});
@@ -80,6 +85,65 @@ export default function ConversationsPage() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [recPrompt, setRecPrompt] = useState<string>("Tap to speak");
   const [uploadingAudio, setUploadingAudio] = useState<boolean>(false);
+  const [loadingPreviews, setLoadingPreviews] = useState<boolean>(false);
+
+  // Memoized date formatter utility
+  const formatConversationDate = useMemo(
+    () =>
+      (dateStr: string): string => {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) return "Today";
+        if (diffDays === 1) return "Yesterday";
+        if (diffDays < 7) return `${diffDays} days ago`;
+
+        return date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      },
+    []
+  );
+
+  // Load conversation previews in parallel
+  const loadConversationPreviews = async (
+    convos: ConversationSummary[]
+  ): Promise<EnrichedConversation[]> => {
+    // Sort by most recent first
+    const sorted = [...convos].sort(
+      (a, b) =>
+        new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+    );
+
+    // Fetch previews for first 15 conversations in parallel
+    const previews = await Promise.allSettled(
+      sorted.slice(0, 15).map(async (conv) => {
+        try {
+          const messages = await conversationsApi.listMessages(conv.id);
+          const firstUserMsg = messages.find((m) => m.role === "user");
+          // Use first user message as title, truncate if too long
+          const preview = firstUserMsg?.hanzi
+            ? firstUserMsg.hanzi.length > 60
+              ? firstUserMsg.hanzi.substring(0, 60) + "..."
+              : firstUserMsg.hanzi
+            : "New conversation";
+          return { ...conv, preview };
+        } catch {
+          return { ...conv, preview: undefined };
+        }
+      })
+    );
+
+    return previews.map((result, idx) =>
+      result.status === "fulfilled"
+        ? result.value
+        : { ...sorted[idx], preview: undefined }
+    );
+  };
   const apiBase = (
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
   ).replace(/\/api$/, "");
@@ -191,17 +255,34 @@ export default function ConversationsPage() {
   useEffect(() => {
     const init = async () => {
       try {
+        setLoadingPreviews(true);
         const list = await conversationsApi.list();
         setConversations(list);
+
+        // Load previews in background
+        loadConversationPreviews(list)
+          .then((enriched) => {
+            setConversations(enriched);
+            setLoadingPreviews(false);
+          })
+          .catch(() => {
+            setLoadingPreviews(false);
+          });
+
         const saved =
           typeof window !== "undefined"
             ? localStorage.getItem("active-conversation-id")
             : null;
         const savedId = saved ? Number(saved) : null;
         if (list.length > 0) {
+          // Sort to find most recent if no saved ID
+          const sorted = list.sort(
+            (a, b) =>
+              new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+          );
           const targetId = list.some((c) => c.id === savedId)
             ? (savedId as number)
-            : list[0].id;
+            : sorted[0].id;
           setConversationId(targetId);
           const msgs = await conversationsApi.listMessages(targetId);
           setMessages(msgs);
@@ -211,12 +292,16 @@ export default function ConversationsPage() {
           const msgs = await conversationsApi.listMessages(id);
           setMessages(msgs);
           const updated = await conversationsApi.list();
-          setConversations(updated);
+          // Load previews for new conversation list
+          loadConversationPreviews(updated).then((enriched) => {
+            setConversations(enriched);
+          });
           if (typeof window !== "undefined")
             localStorage.setItem("active-conversation-id", String(id));
         }
       } catch {
         toast.error("Failed to load conversations");
+        setLoadingPreviews(false);
       }
     };
     init();
@@ -267,7 +352,16 @@ export default function ConversationsPage() {
       const msgs = await conversationsApi.listMessages(id);
       setMessages(msgs);
       const updated = await conversationsApi.list();
-      setConversations(updated);
+      // Sort and load previews for updated list
+      const sorted = updated.sort(
+        (a, b) =>
+          new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+      );
+      setConversations(sorted);
+      // Load previews in background
+      loadConversationPreviews(updated).then((enriched) => {
+        setConversations(enriched);
+      });
       if (typeof window !== "undefined")
         localStorage.setItem("active-conversation-id", String(id));
     } catch {
@@ -1604,29 +1698,150 @@ export default function ConversationsPage() {
           <div className="px-2 text-xs uppercase tracking-wide text-[#8a8f99]">
             Conversations
           </div>
-          <div className="flex flex-col gap-1 overflow-y-auto max-h-[60vh] pr-1">
-            {conversations.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => {
-                  void selectConversation(c.id);
-                  if (isMobile) {
-                    setShowConversationsSidebar(false);
+          <div className="flex flex-col gap-1 overflow-y-auto max-h-[75vh] pr-1">
+            {loadingPreviews && conversations.length === 0 ? (
+              <div className="text-xs text-[#808080] px-3 py-2">
+                Loading conversations...
+              </div>
+            ) : (
+              (() => {
+                // Group conversations by time period
+                const now = new Date();
+                const weekAgo = new Date(
+                  now.getTime() - 7 * 24 * 60 * 60 * 1000
+                );
+                const monthAgo = new Date(
+                  now.getTime() - 30 * 24 * 60 * 60 * 1000
+                );
+
+                const recent: EnrichedConversation[] = [];
+                const lastMonth: EnrichedConversation[] = [];
+                const older: EnrichedConversation[] = [];
+
+                conversations.forEach((c) => {
+                  const date = new Date(c.startedAt);
+                  if (date >= weekAgo) {
+                    recent.push(c);
+                  } else if (date >= monthAgo) {
+                    lastMonth.push(c);
+                  } else {
+                    older.push(c);
                   }
-                }}
-                className={`w-full text-left px-3 py-2 rounded-lg border transition-colors duration-150 cursor-pointer ${
-                  conversationId === c.id
-                    ? "bg-[#232838] border-[#4040f2] text-[#c7cdff]"
-                    : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:border-[#4040f2]"
-                }`}
-                title={new Date(c.startedAt).toLocaleString()}
-              >
-                <div className="text-sm font-medium">Conversation #{c.id}</div>
-                <div className="text-[10px] text-[#808080]">
-                  {new Date(c.startedAt).toLocaleString()}
-                </div>
-              </button>
-            ))}
+                });
+
+                return (
+                  <>
+                    {recent.length > 0 && (
+                      <>
+                        <div className="text-[10px] uppercase tracking-wide text-[#8a8f99] px-3 py-1.5 mt-2">
+                          Recent ({recent.length})
+                        </div>
+                        {recent.map((c) => (
+                          <button
+                            key={c.id}
+                            onClick={() => {
+                              void selectConversation(c.id);
+                              if (isMobile) {
+                                setShowConversationsSidebar(false);
+                              }
+                            }}
+                            className={`w-full text-left px-3 py-2 rounded-lg border transition-colors duration-150 cursor-pointer ${
+                              conversationId === c.id
+                                ? "bg-[#2d3548] border-[#4040f2] text-[#c7cdff] shadow-sm"
+                                : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#4040f2]"
+                            }`}
+                            title={
+                              c.preview ||
+                              new Date(c.startedAt).toLocaleString()
+                            }
+                            aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
+                          >
+                            <div className="text-base font-medium truncate w-full block">
+                              {c.preview || `Conversation #${c.id}`}
+                            </div>
+                            <div className="text-[10px] text-[#808080]">
+                              {formatConversationDate(c.startedAt)}
+                            </div>
+                          </button>
+                        ))}
+                      </>
+                    )}
+
+                    {lastMonth.length > 0 && (
+                      <>
+                        <div className="text-[10px] uppercase tracking-wide text-[#8a8f99] px-3 py-1.5 mt-2">
+                          Last 30 Days ({lastMonth.length})
+                        </div>
+                        {lastMonth.map((c) => (
+                          <button
+                            key={c.id}
+                            onClick={() => {
+                              void selectConversation(c.id);
+                              if (isMobile) {
+                                setShowConversationsSidebar(false);
+                              }
+                            }}
+                            className={`w-full text-left px-3 py-2 rounded-lg border transition-colors duration-150 cursor-pointer ${
+                              conversationId === c.id
+                                ? "bg-[#2d3548] border-[#4040f2] text-[#c7cdff] shadow-sm"
+                                : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#4040f2]"
+                            }`}
+                            title={
+                              c.preview ||
+                              new Date(c.startedAt).toLocaleString()
+                            }
+                            aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
+                          >
+                            <div className="text-base font-medium truncate w-full block">
+                              {c.preview || `Conversation #${c.id}`}
+                            </div>
+                            <div className="text-[10px] text-[#808080]">
+                              {formatConversationDate(c.startedAt)}
+                            </div>
+                          </button>
+                        ))}
+                      </>
+                    )}
+
+                    {older.length > 0 && (
+                      <>
+                        <div className="text-[10px] uppercase tracking-wide text-[#8a8f99] px-3 py-1.5 mt-2">
+                          Older ({older.length})
+                        </div>
+                        {older.map((c) => (
+                          <button
+                            key={c.id}
+                            onClick={() => {
+                              void selectConversation(c.id);
+                              if (isMobile) {
+                                setShowConversationsSidebar(false);
+                              }
+                            }}
+                            className={`w-full text-left px-3 py-2 rounded-lg border transition-colors duration-150 cursor-pointer ${
+                              conversationId === c.id
+                                ? "bg-[#2d3548] border-[#4040f2] text-[#c7cdff] shadow-sm"
+                                : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#4040f2]"
+                            }`}
+                            title={
+                              c.preview ||
+                              new Date(c.startedAt).toLocaleString()
+                            }
+                            aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
+                          >
+                            <div className="text-base font-medium truncate w-full block">
+                              {c.preview || `Conversation #${c.id}`}
+                            </div>
+                            <div className="text-[10px] text-[#808080]">
+                              {formatConversationDate(c.startedAt)}
+                            </div>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </>
+                );
+              })()
+            )}
           </div>
           <button
             onClick={() => {
@@ -1647,8 +1862,8 @@ export default function ConversationsPage() {
             onClick={toggleConversationsSidebar}
             className={`fixed z-30 p-3 rounded-lg transition-all duration-200 cursor-pointer md:hidden ${
               showConversationsSidebar
-                ? "top-20 left-4 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
-                : "top-22 left-4 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
+                ? "top-21 left-4 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
+                : "top-21 left-4 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
             }`}
             title={
               showConversationsSidebar
