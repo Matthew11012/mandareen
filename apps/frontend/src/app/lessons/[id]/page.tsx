@@ -2333,212 +2333,229 @@ export default function LessonViewerPage() {
             )}
 
             {/* Mobile top sheet popup */}
-            {popup.open && (
-              <div className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4">
-                <div className="max-w-sm mx-auto">
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <div className="font-bold text-white text-lg truncate">
-                      {popup.word}
+            <AnimatePresence>
+              {popup.open && (
+                <motion.div
+                  initial={{ y: "-100%" }}
+                  animate={{ y: 0 }}
+                  exit={{ y: "-100%" }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 300,
+                    damping: 30,
+                    duration: 0.3,
+                  }}
+                  className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+                >
+                  <div className="max-w-sm mx-auto">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div className="font-bold text-white text-lg truncate">
+                        {popup.word}
+                      </div>
+                      {typeof popup.hskLevel === "number" && (
+                        <span
+                          className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                            popup.hskLevel
+                          )}`}
+                        >
+                          HSK {popup.hskLevel}
+                        </span>
+                      )}
                     </div>
-                    {typeof popup.hskLevel === "number" && (
-                      <span
-                        className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
-                          popup.hskLevel
-                        )}`}
-                      >
-                        HSK {popup.hskLevel}
-                      </span>
+                    {popup.pinyin && (
+                      <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                        {popup.pinyin}
+                      </div>
                     )}
-                  </div>
-                  {popup.pinyin && (
-                    <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
-                      {popup.pinyin}
-                    </div>
-                  )}
-                  {Array.isArray(popup.definitions) &&
-                  popup.definitions.length > 0 ? (
-                    <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
-                      {popup.definitions.map((d, i) => (
-                        <div key={i}>• {d}</div>
-                      ))}
-                    </div>
-                  ) : popup.definition ? (
-                    <div className="text-xs text-[#a6a6a6] mb-3">
-                      {popup.definition}
-                    </div>
-                  ) : null}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setPopup((p) => ({ ...p, open: false }));
-                      }}
-                      className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
-                    >
-                      Close
-                    </button>
-                    <button
-                      onClick={() => {
-                        // Build sentence-level context for the exact clicked token using stored indices
-                        let ctx:
-                          | {
-                              hanzi?: string;
-                              pinyin?: string;
-                              translation?: string;
-                            }
-                          | undefined;
-                        const paraIndex = popup.paraIndex ?? -1;
-                        const tokenIndex = popup.tokenIndex ?? -1;
-                        if (paraIndex >= 0 && tokenIndex >= 0) {
-                          const paraHanzi = storyParagraphs[paraIndex] || "";
-                          const hanziSentences = paraHanzi
-                            .split(/(?<=[。！？!?])/)
-                            .map((s) => s.trim())
-                            .filter(Boolean);
-                          const tokens = segmentedParagraphs[paraIndex] || [];
-                          const tokenStart = tokens
-                            .slice(0, tokenIndex)
-                            .reduce((acc, s) => acc + (s.text?.length || 0), 0);
-                          let accLen = 0;
-                          let sentenceIdx = 0;
-                          for (let si = 0; si < hanziSentences.length; si++) {
-                            const sTxt = hanziSentences[si];
-                            const sLen = sTxt.length;
-                            if (
-                              tokenStart >= accLen &&
-                              tokenStart < accLen + sLen
-                            ) {
-                              sentenceIdx = si;
-                              break;
-                            }
-                            accLen += sLen;
-                          }
-                          const chosenHanzi =
-                            sentenceIdx >= 0
-                              ? hanziSentences[sentenceIdx]
-                              : hanziSentences[0] || paraHanzi;
-                          const paraTrans =
-                            translationParagraphs[paraIndex] || "";
-                          const transSentences = paraTrans
-                            .split(/(?<=[.!?])\s+/)
-                            .map((s) => s.trim())
-                            .filter(Boolean);
-                          const chosenTrans =
-                            sentenceIdx >= 0 && transSentences[sentenceIdx]
-                              ? transSentences[sentenceIdx]
-                              : undefined;
-                          let chosenPinyin: string | undefined;
-                          if (story?.pinyin) {
-                            const storyCharPinyin = buildStoryCharPinyin(
-                              story.hanzi,
-                              story.pinyin
-                            );
-                            let storyOffset = 0;
-                            for (let i = 0; i < paraIndex; i++) {
-                              storyOffset +=
-                                (storyParagraphs[i] || "").length + 2; // +2 for \n\n
-                            }
-                            const paraStart = storyOffset;
-                            const sentStartInPara = hanziSentences
-                              .slice(0, sentenceIdx)
-                              .join("").length;
-                            const sentGlobalStart = paraStart + sentStartInPara;
-                            const sentLen = chosenHanzi.length;
-                            const slice = storyCharPinyin.slice(
-                              sentGlobalStart,
-                              sentGlobalStart + sentLen
-                            );
-                            chosenPinyin = slice.join(" ");
-                          }
-                          ctx = {
-                            hanzi: chosenHanzi,
-                            pinyin: chosenPinyin,
-                            translation: chosenTrans,
-                          };
-                        } else if (dialogue) {
-                          // Fallback for dialogue popup (no para/token indices): use the turn containing the word
-                          const found = (dialogue.turns || []).find((t) =>
-                            t.hanzi?.includes(popup.word)
-                          );
-                          if (found) {
-                            let perCharPinyin: string | undefined =
-                              found.pinyin;
-                            if (
-                              !perCharPinyin &&
-                              Array.isArray(found.segments)
-                            ) {
-                              const chars = Array.from(found.hanzi || "");
-                              const per: string[] = new Array(
-                                chars.length
-                              ).fill("");
-                              let ci = 0;
-                              for (const s of found.segments) {
-                                const chineseLen = Array.from(
-                                  s.text || ""
-                                ).filter((c) =>
-                                  /[\u3400-\u9FFF]/.test(c)
-                                ).length;
-                                const toks = (s.pinyin || "")
-                                  .split(/\s+/)
-                                  .filter(Boolean);
-                                for (let k = 0; k < chineseLen; k++) {
-                                  while (
-                                    ci < chars.length &&
-                                    !/[\u3400-\u9FFF]/.test(chars[ci])
-                                  )
-                                    ci++;
-                                  if (ci >= chars.length) break;
-                                  per[ci] = toks[k] || toks[0] || "";
-                                  ci++;
-                                }
+                    {Array.isArray(popup.definitions) &&
+                    popup.definitions.length > 0 ? (
+                      <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                        {popup.definitions.map((d, i) => (
+                          <div key={i}>• {d}</div>
+                        ))}
+                      </div>
+                    ) : popup.definition ? (
+                      <div className="text-xs text-[#a6a6a6] mb-3">
+                        {popup.definition}
+                      </div>
+                    ) : null}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setPopup((p) => ({ ...p, open: false }));
+                        }}
+                        className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                      >
+                        Close
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Build sentence-level context for the exact clicked token using stored indices
+                          let ctx:
+                            | {
+                                hanzi?: string;
+                                pinyin?: string;
+                                translation?: string;
                               }
-                              perCharPinyin = per.join(" ");
+                            | undefined;
+                          const paraIndex = popup.paraIndex ?? -1;
+                          const tokenIndex = popup.tokenIndex ?? -1;
+                          if (paraIndex >= 0 && tokenIndex >= 0) {
+                            const paraHanzi = storyParagraphs[paraIndex] || "";
+                            const hanziSentences = paraHanzi
+                              .split(/(?<=[。！？!?])/)
+                              .map((s) => s.trim())
+                              .filter(Boolean);
+                            const tokens = segmentedParagraphs[paraIndex] || [];
+                            const tokenStart = tokens
+                              .slice(0, tokenIndex)
+                              .reduce(
+                                (acc, s) => acc + (s.text?.length || 0),
+                                0
+                              );
+                            let accLen = 0;
+                            let sentenceIdx = 0;
+                            for (let si = 0; si < hanziSentences.length; si++) {
+                              const sTxt = hanziSentences[si];
+                              const sLen = sTxt.length;
+                              if (
+                                tokenStart >= accLen &&
+                                tokenStart < accLen + sLen
+                              ) {
+                                sentenceIdx = si;
+                                break;
+                              }
+                              accLen += sLen;
+                            }
+                            const chosenHanzi =
+                              sentenceIdx >= 0
+                                ? hanziSentences[sentenceIdx]
+                                : hanziSentences[0] || paraHanzi;
+                            const paraTrans =
+                              translationParagraphs[paraIndex] || "";
+                            const transSentences = paraTrans
+                              .split(/(?<=[.!?])\s+/)
+                              .map((s) => s.trim())
+                              .filter(Boolean);
+                            const chosenTrans =
+                              sentenceIdx >= 0 && transSentences[sentenceIdx]
+                                ? transSentences[sentenceIdx]
+                                : undefined;
+                            let chosenPinyin: string | undefined;
+                            if (story?.pinyin) {
+                              const storyCharPinyin = buildStoryCharPinyin(
+                                story.hanzi,
+                                story.pinyin
+                              );
+                              let storyOffset = 0;
+                              for (let i = 0; i < paraIndex; i++) {
+                                storyOffset +=
+                                  (storyParagraphs[i] || "").length + 2; // +2 for \n\n
+                              }
+                              const paraStart = storyOffset;
+                              const sentStartInPara = hanziSentences
+                                .slice(0, sentenceIdx)
+                                .join("").length;
+                              const sentGlobalStart =
+                                paraStart + sentStartInPara;
+                              const sentLen = chosenHanzi.length;
+                              const slice = storyCharPinyin.slice(
+                                sentGlobalStart,
+                                sentGlobalStart + sentLen
+                              );
+                              chosenPinyin = slice.join(" ");
                             }
                             ctx = {
-                              hanzi: found.hanzi,
-                              pinyin: perCharPinyin,
-                              translation: found.translation,
+                              hanzi: chosenHanzi,
+                              pinyin: chosenPinyin,
+                              translation: chosenTrans,
                             };
+                          } else if (dialogue) {
+                            // Fallback for dialogue popup (no para/token indices): use the turn containing the word
+                            const found = (dialogue.turns || []).find((t) =>
+                              t.hanzi?.includes(popup.word)
+                            );
+                            if (found) {
+                              let perCharPinyin: string | undefined =
+                                found.pinyin;
+                              if (
+                                !perCharPinyin &&
+                                Array.isArray(found.segments)
+                              ) {
+                                const chars = Array.from(found.hanzi || "");
+                                const per: string[] = new Array(
+                                  chars.length
+                                ).fill("");
+                                let ci = 0;
+                                for (const s of found.segments) {
+                                  const chineseLen = Array.from(
+                                    s.text || ""
+                                  ).filter((c) =>
+                                    /[\u3400-\u9FFF]/.test(c)
+                                  ).length;
+                                  const toks = (s.pinyin || "")
+                                    .split(/\s+/)
+                                    .filter(Boolean);
+                                  for (let k = 0; k < chineseLen; k++) {
+                                    while (
+                                      ci < chars.length &&
+                                      !/[\u3400-\u9FFF]/.test(chars[ci])
+                                    )
+                                      ci++;
+                                    if (ci >= chars.length) break;
+                                    per[ci] = toks[k] || toks[0] || "";
+                                    ci++;
+                                  }
+                                }
+                                perCharPinyin = per.join(" ");
+                              }
+                              ctx = {
+                                hanzi: found.hanzi,
+                                pinyin: perCharPinyin,
+                                translation: found.translation,
+                              };
+                            }
                           }
-                        }
-                        // Derive vocab metadata from popup/segment
-                        let vocabDef: string | undefined = undefined;
-                        if (
-                          Array.isArray(popup.definitions) &&
-                          popup.definitions.length > 0
-                        ) {
-                          vocabDef = popup.definitions[0];
-                        } else if (popup.definition) {
-                          vocabDef = popup.definition;
-                        }
-                        let vocabHskLevel: number | undefined = undefined;
-                        if (
-                          typeof popup.paraIndex === "number" &&
-                          typeof popup.tokenIndex === "number"
-                        ) {
-                          const seg = (segmentedParagraphs[popup.paraIndex] ||
-                            [])[popup.tokenIndex] as LessonToken | undefined;
-                          if (seg && typeof seg.hskLevel === "number") {
-                            vocabHskLevel = seg.hskLevel;
+                          // Derive vocab metadata from popup/segment
+                          let vocabDef: string | undefined = undefined;
+                          if (
+                            Array.isArray(popup.definitions) &&
+                            popup.definitions.length > 0
+                          ) {
+                            vocabDef = popup.definitions[0];
+                          } else if (popup.definition) {
+                            vocabDef = popup.definition;
                           }
-                        }
-                        void addSingleToFlashcards(popup.word, ctx, {
-                          pinyin: popup.pinyin,
-                          definition: vocabDef,
-                          hskLevel: vocabHskLevel,
-                        });
-                        setPopup((p) => ({ ...p, open: false }));
-                      }}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="text-sm font-inter">
-                        Add to Flashcards
-                      </span>
-                    </button>
+                          let vocabHskLevel: number | undefined = undefined;
+                          if (
+                            typeof popup.paraIndex === "number" &&
+                            typeof popup.tokenIndex === "number"
+                          ) {
+                            const seg = (segmentedParagraphs[popup.paraIndex] ||
+                              [])[popup.tokenIndex] as LessonToken | undefined;
+                            if (seg && typeof seg.hskLevel === "number") {
+                              vocabHskLevel = seg.hskLevel;
+                            }
+                          }
+                          void addSingleToFlashcards(popup.word, ctx, {
+                            pinyin: popup.pinyin,
+                            definition: vocabDef,
+                            hskLevel: vocabHskLevel,
+                          });
+                          setPopup((p) => ({ ...p, open: false }));
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span className="text-sm font-inter">
+                          Add to Flashcards
+                        </span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </div>
-            )}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {notesPopup.open && (
               <div
@@ -3218,77 +3235,90 @@ function InlineSegments({
       )}
 
       {/* Mobile top sheet popup for InlineSegments */}
-      {popup.open && (
-        <div className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4">
-          <div className="max-w-sm mx-auto">
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <div className="font-bold text-white text-lg truncate">
-                {popup.word}
+      <AnimatePresence>
+        {popup.open && (
+          <motion.div
+            initial={{ y: "-100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "-100%" }}
+            transition={{
+              type: "spring",
+              stiffness: 300,
+              damping: 30,
+              duration: 0.3,
+            }}
+            className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+          >
+            <div className="max-w-sm mx-auto">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="font-bold text-white text-lg truncate">
+                  {popup.word}
+                </div>
+                {typeof popup.hskLevel === "number" && (
+                  <span
+                    className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                      popup.hskLevel as number
+                    )}`}
+                    aria-label={`HSK level ${popup.hskLevel}`}
+                  >
+                    HSK {popup.hskLevel}
+                  </span>
+                )}
               </div>
-              {typeof popup.hskLevel === "number" && (
-                <span
-                  className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
-                    popup.hskLevel as number
-                  )}`}
-                  aria-label={`HSK level ${popup.hskLevel}`}
-                >
-                  HSK {popup.hskLevel}
-                </span>
+              {popup.pinyin && (
+                <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                  {popup.pinyin}
+                </div>
               )}
+              {Array.isArray(popup.definitions) &&
+              popup.definitions.length > 0 ? (
+                <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                  {popup.definitions.map((d, i) => (
+                    <div key={i}>• {d}</div>
+                  ))}
+                </div>
+              ) : popup.definition ? (
+                <div className="text-xs text-[#a6a6a6] mb-3">
+                  {popup.definition}
+                </div>
+              ) : null}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setPopup((p) => ({ ...p, open: false }));
+                  }}
+                  className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={async () => {
+                    const ctx = {
+                      hanzi: contextSentenceZh || fallbackZh,
+                      pinyin: undefined,
+                      translation: contextSentenceTranslation,
+                    };
+                    const vocabDef = Array.isArray(popup.definitions)
+                      ? popup.definitions[0]
+                      : popup.definition;
+                    await onAddFlashcard?.(popup.word, ctx, {
+                      pinyin: popup.pinyin,
+                      definition: vocabDef,
+                      hskLevel: popup.hskLevel,
+                    });
+                    setPopup((p) => ({ ...p, open: false }));
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                  type="button"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm font-inter">Add to Flashcards</span>
+                </button>
+              </div>
             </div>
-            {popup.pinyin && (
-              <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
-                {popup.pinyin}
-              </div>
-            )}
-            {Array.isArray(popup.definitions) &&
-            popup.definitions.length > 0 ? (
-              <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
-                {popup.definitions.map((d, i) => (
-                  <div key={i}>• {d}</div>
-                ))}
-              </div>
-            ) : popup.definition ? (
-              <div className="text-xs text-[#a6a6a6] mb-3">
-                {popup.definition}
-              </div>
-            ) : null}
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setPopup((p) => ({ ...p, open: false }));
-                }}
-                className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  const ctx = {
-                    hanzi: contextSentenceZh || fallbackZh,
-                    pinyin: undefined,
-                    translation: contextSentenceTranslation,
-                  };
-                  const vocabDef = Array.isArray(popup.definitions)
-                    ? popup.definitions[0]
-                    : popup.definition;
-                  onAddFlashcard?.(popup.word, ctx, {
-                    pinyin: popup.pinyin,
-                    definition: vocabDef,
-                    hskLevel: popup.hskLevel,
-                  });
-                  setPopup((p) => ({ ...p, open: false }));
-                }}
-                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-                type="button"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="text-sm font-inter">Add to Flashcards</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
