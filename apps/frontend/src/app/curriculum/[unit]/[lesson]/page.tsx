@@ -230,13 +230,10 @@ export default function LessonRunnerPage({
   }
 
   return (
-    <DashboardLayout
-      title={lessonData?.title ?? "Lesson"}
-      subtitle="Deep dive into the explain-first lesson, micro passage, and quiz"
-    >
-      <div className="p-6 pt-0 space-y-6">
+    <DashboardLayout title={lessonData?.title ?? "Lesson"} subtitle="">
+      <div className="p-3 sm:p-6 pt-0 space-y-4 sm:space-y-6">
         <nav
-          className="sticky top-0 z-40 bg-[#222831] py-2 -mx-6 px-6 mb-2"
+          className="sticky top-0 z-40 bg-[#222831] py-2 -mx-3 sm:-mx-6 px-3 sm:px-6 mb-2"
           aria-label="Breadcrumb"
         >
           <ol className="flex items-center gap-2 text-xs font-inter text-white/60">
@@ -252,20 +249,18 @@ export default function LessonRunnerPage({
               </Link>
             </li>
             <li aria-hidden>›</li>
-            <li className="text-white/80">{lessonData?.title ?? "Lesson"}</li>
+            <li className="text-white/80 hidden sm:inline">
+              {lessonData?.title ?? "Lesson"}
+            </li>
+            <li className="text-white/80 sm:hidden">Lesson</li>
           </ol>
         </nav>
 
-        <header className="space-y-2">
-          <h1 className="text-xl sm:text-2xl font-inter font-semibold text-white">
+        <header className="space-y-1.5 sm:space-y-2">
+          <h1 className="text-lg sm:text-xl md:text-2xl font-inter font-semibold text-white leading-tight">
             {lessonData?.title || "Lesson"}
           </h1>
-          {lessonData?.description && (
-            <p className="text-sm sm:text-base text-white/60 font-inter">
-              {lessonData.description}
-            </p>
-          )}
-          <hr />
+          <hr className="my-2" />
         </header>
 
         {error && (
@@ -286,19 +281,22 @@ export default function LessonRunnerPage({
         )}
 
         {!loading && lesson && activities.length === 0 && (
-          <div className="rounded-2xl border border-white/10 bg-[#16181d] p-6">
-            <p className="text-white/80 font-inter">
+          <div className="rounded-2xl border border-white/10 bg-[#16181d] p-4 sm:p-6">
+            <p className="text-white/80 font-inter text-sm sm:text-base">
               No content yet. Generate the lesson activities.
             </p>
             <button
               onClick={onGenerate}
               disabled={generating}
-              className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 cursor-pointer"
+              className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 cursor-pointer text-sm sm:text-base"
             >
               {generating ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Generating lesson (this may take 1-2 minutes)…
+                  <Loader2 className="h-5 w-5 sm:h-4 sm:w-4 animate-spin flex-shrink-0" />
+                  <span className="hidden sm:inline">
+                    Generating lesson (this may take 1-2 minutes)…
+                  </span>
+                  <span className="sm:hidden">Generating…</span>
                 </>
               ) : (
                 "Generate lesson"

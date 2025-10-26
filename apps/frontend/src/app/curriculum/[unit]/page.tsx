@@ -177,7 +177,7 @@ export default function UnitDetailPage({
                   const [, number, rest] = match;
                   return (
                     <>
-                      <span className="text-2xl font-bold text-white mr-2">
+                      <span className="text-xl sm:text-2xl font-bold text-white mr-2">
                         {number}
                       </span>
                       <span className="text-base">{rest}</span>
