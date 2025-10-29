@@ -19,6 +19,7 @@ import {
   Rocket,
   Play,
   RotateCcw,
+  ChevronUp,
 } from "lucide-react";
 import {
   Select,
@@ -46,6 +47,61 @@ export default function CurriculumUnitsPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>("");
   const [sortBy, setSortBy] = useState<string>("order");
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  // Show/hide back-to-top button
+  useEffect(() => {
+    const scrollEl = document.querySelector(
+      'main[class*="overflow-y-auto"]'
+    ) as HTMLElement | null;
+
+    let ticking = false;
+    const handler = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const topCandidates = [
+          window.scrollY || 0,
+          document.documentElement?.scrollTop || 0,
+          document.body?.scrollTop || 0,
+          scrollEl?.scrollTop || 0,
+        ];
+        const top = Math.max(...topCandidates);
+        setShowScrollTop(top > 800);
+        ticking = false;
+      });
+    };
+    scrollEl?.addEventListener("scroll", handler, {
+      passive: true,
+    } as AddEventListenerOptions);
+    window.addEventListener(
+      "scroll",
+      handler as EventListener,
+      {
+        passive: true,
+      } as AddEventListenerOptions
+    );
+    document.addEventListener(
+      "scroll",
+      handler as EventListener,
+      {
+        passive: true,
+        capture: true,
+      } as AddEventListenerOptions
+    );
+    handler();
+    return () => {
+      scrollEl?.removeEventListener("scroll", handler as EventListener);
+      window.removeEventListener("scroll", handler as EventListener);
+      document.removeEventListener(
+        "scroll",
+        handler as EventListener,
+        {
+          capture: true,
+        } as unknown as EventListenerOptions
+      );
+    };
+  }, []);
 
   // Debounce search query
   useEffect(() => {
@@ -195,10 +251,11 @@ export default function CurriculumUnitsPage() {
         );
         break;
       case "incomplete":
-        filtered = units.filter(
-          (unit) =>
-            (unit.completedLessons ?? 0) < Math.max(1, unit.totalLessons ?? 0)
-        );
+        filtered = units.filter((unit) => {
+          const total = unit.totalLessons ?? 0;
+          const done = unit.completedLessons ?? 0;
+          return total > 0 && done > 0 && done < total;
+        });
         break;
       default:
         filtered = units;
@@ -248,10 +305,11 @@ export default function CurriculumUnitsPage() {
         {
           value: "incomplete",
           label: "In progress",
-          count: units.filter(
-            (unit) =>
-              (unit.completedLessons ?? 0) < Math.max(1, unit.totalLessons ?? 0)
-          ).length,
+          count: units.filter((unit) => {
+            const total = unit.totalLessons ?? 0;
+            const done = unit.completedLessons ?? 0;
+            return total > 0 && done > 0 && done < total;
+          }).length,
         },
         {
           value: "completed",
@@ -554,6 +612,42 @@ export default function CurriculumUnitsPage() {
           </div>
         </section>
 
+        <div
+          className={
+            "fixed right-4 md:right-6 z-50 transition-opacity duration-300 ease-out " +
+            (showScrollTop ? "opacity-100" : "opacity-0 pointer-events-none")
+          }
+          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+          aria-hidden={!showScrollTop}
+        >
+          <button
+            type="button"
+            aria-label="Back to top"
+            onClick={() => {
+              const prefersReduced = window.matchMedia(
+                "(prefers-reduced-motion: reduce)"
+              ).matches;
+              const scrollEl = document.querySelector(
+                'main[class*="overflow-y-auto"]'
+              ) as HTMLElement | null;
+              if (scrollEl) {
+                scrollEl.scrollTo({
+                  top: 0,
+                  behavior: prefersReduced ? "auto" : "smooth",
+                });
+              } else {
+                window.scrollTo({
+                  top: 0,
+                  behavior: prefersReduced ? "auto" : "smooth",
+                });
+              }
+            }}
+            className="h-11 w-11 md:h-12 md:w-12 rounded-full bg-[#2e323a] border border-white/10 text-white/80 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 shadow-md cursor-pointer touch-manipulation flex items-center justify-center"
+          >
+            <ChevronUp className="h-5 w-5" />
+          </button>
+        </div>
+
         <section className="space-y-4">
           {/* Source selector and Search bar container */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -646,34 +740,34 @@ export default function CurriculumUnitsPage() {
             <h2 className="text-lg font-inter font-semibold text-white">
               Units
             </h2>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               {/* Sort dropdown */}
               <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-[200px] bg-[#2e323a] border-white/10 text-white hover:bg-[#2e323a]/80 focus:ring-blue-500/50">
+                <SelectTrigger className="w-[200px] min-h-[44px] bg-[#2e323a] border-white/10 text-white hover:bg-[#2e323a]/80 focus:ring-blue-500/50">
                   <SelectValue placeholder="Sort by Order" />
                 </SelectTrigger>
                 <SelectContent className="bg-[#2e323a] border-white/10">
                   <SelectItem
                     value="order"
-                    className="text-white hover:bg-white/10 focus:bg-white/10"
+                    className="text-white hover:bg-white/10 focus:bg-white/10 hover:text-white focus:text-white data-[highlighted]:text-white"
                   >
                     Sort by Order
                   </SelectItem>
                   <SelectItem
                     value="progress-low"
-                    className="text-white hover:bg-white/10 focus:bg-white/10"
+                    className="text-white hover:bg-white/10 focus:bg-white/10 hover:text-white focus:text-white data-[highlighted]:text-white"
                   >
                     Progress (Low to High)
                   </SelectItem>
                   <SelectItem
                     value="progress-high"
-                    className="text-white hover:bg-white/10 focus:bg-white/10"
+                    className="text-white hover:bg-white/10 focus:bg-white/10 hover:text-white focus:text-white data-[highlighted]:text-white"
                   >
                     Progress (High to Low)
                   </SelectItem>
                   <SelectItem
                     value="title"
-                    className="text-white hover:bg-white/10 focus:bg-white/10"
+                    className="text-white hover:bg-white/10 focus:bg-white/10 hover:text-white focus:text-white data-[highlighted]:text-white"
                   >
                     Title (A-Z)
                   </SelectItem>
