@@ -206,7 +206,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
                 <NavItem
                   key={item.id}
                   item={item}
-                  isActive={pathname === item.href}
+                  isActive={
+                    pathname === item.href ||
+                    (item.id === "curriculum" &&
+                      pathname.startsWith("/curriculum/")) ||
+                    (item.id === "lessons" && pathname.startsWith("/lessons/"))
+                  }
                   isCollapsed={isCollapsed}
                   badgeCount={item.id === "flashcards" ? dueCount : undefined}
                 />

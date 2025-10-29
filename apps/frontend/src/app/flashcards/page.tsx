@@ -1019,73 +1019,84 @@ export default function FlashcardsPage() {
                   </div>
                 )}
                 {/* Mobile upper sheet popup */}
-                {popup.open && (
-                  <div
-                    ref={popupMobileRef}
-                    className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
-                  >
-                    <div className="max-w-sm mx-auto">
-                      <div className="flex items-center justify-between gap-3 mb-3">
-                        <div className="font-bold text-white text-lg truncate">
-                          {popup.word}
+                <AnimatePresence>
+                  {popup.open && (
+                    <motion.div
+                      ref={popupMobileRef}
+                      initial={{ y: "-100%" }}
+                      animate={{ y: 0 }}
+                      exit={{ y: "-100%" }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 300,
+                        damping: 30,
+                        duration: 0.3,
+                      }}
+                      className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+                    >
+                      <div className="max-w-sm mx-auto">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                          <div className="font-bold text-white text-lg truncate">
+                            {popup.word}
+                          </div>
+                          {typeof popup.hskLevel === "number" && (
+                            <span
+                              className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(popup.hskLevel)}`}
+                            >
+                              HSK {popup.hskLevel}
+                            </span>
+                          )}
                         </div>
-                        {typeof popup.hskLevel === "number" && (
-                          <span
-                            className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(popup.hskLevel)}`}
-                          >
-                            HSK {popup.hskLevel}
-                          </span>
+                        {popup.pinyin && (
+                          <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                            {popup.pinyin}
+                          </div>
                         )}
+                        {Array.isArray(popup.definitions) &&
+                        popup.definitions.length > 0 ? (
+                          <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                            {popup.definitions.map((d, i) => (
+                              <div key={i}>• {d}</div>
+                            ))}
+                          </div>
+                        ) : popup.definition ? (
+                          <div className="text-xs text-[#a6a6a6] mb-3">
+                            {popup.definition}
+                          </div>
+                        ) : null}
+                        <div className="flex gap-2">
+                          <button
+                            ref={dialogInitialFocusRef}
+                            onClick={() => {
+                              setPopup((p) => ({ ...p, open: false }));
+                              popupTriggerRef.current?.focus();
+                            }}
+                            className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                          >
+                            Close
+                          </button>
+                          <button
+                            onClick={async () => {
+                              await addWordToFlashcards(popup.word, undefined, {
+                                pinyin: popup.pinyin,
+                                definition:
+                                  popup.definition || popup.definitions?.[0],
+                                hskLevel: popup.hskLevel,
+                              });
+                              setPopup((p) => ({ ...p, open: false }));
+                              popupTriggerRef.current?.focus();
+                            }}
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                          >
+                            <span className="text-sm font-inter">
+                              Add to Flashcards
+                            </span>
+                          </button>
+                        </div>
                       </div>
-                      {popup.pinyin && (
-                        <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
-                          {popup.pinyin}
-                        </div>
-                      )}
-                      {Array.isArray(popup.definitions) &&
-                      popup.definitions.length > 0 ? (
-                        <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
-                          {popup.definitions.map((d, i) => (
-                            <div key={i}>• {d}</div>
-                          ))}
-                        </div>
-                      ) : popup.definition ? (
-                        <div className="text-xs text-[#a6a6a6] mb-3">
-                          {popup.definition}
-                        </div>
-                      ) : null}
-                      <div className="flex gap-2">
-                        <button
-                          ref={dialogInitialFocusRef}
-                          onClick={() => {
-                            setPopup((p) => ({ ...p, open: false }));
-                            popupTriggerRef.current?.focus();
-                          }}
-                          className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
-                        >
-                          Close
-                        </button>
-                        <button
-                          onClick={() => {
-                            void addWordToFlashcards(popup.word, undefined, {
-                              pinyin: popup.pinyin,
-                              definition:
-                                popup.definition || popup.definitions?.[0],
-                              hskLevel: popup.hskLevel,
-                            });
-                            setPopup((p) => ({ ...p, open: false }));
-                            popupTriggerRef.current?.focus();
-                          }}
-                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-                        >
-                          <span className="text-sm font-inter">
-                            Add to Flashcards
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
                 {/* Sticky mobile grade bar */}
                 {current && (
                   <div className="sm:hidden fixed inset-x-0 bottom-0 z-30 bg-[#1a1d23]/95 backdrop-blur border-t border-[#2e323a] p-3">

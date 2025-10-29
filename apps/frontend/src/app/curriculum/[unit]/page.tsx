@@ -177,7 +177,7 @@ export default function UnitDetailPage({
                   const [, number, rest] = match;
                   return (
                     <>
-                      <span className="text-2xl font-bold text-white mr-2">
+                      <span className="text-xl sm:text-2xl font-bold text-white mr-2">
                         {number}
                       </span>
                       <span className="text-base">{rest}</span>
@@ -212,12 +212,6 @@ export default function UnitDetailPage({
           aria-label="Breadcrumb"
         >
           <ol className="flex items-center gap-2">
-            <li>
-              <Link href="/dashboard" className="hover:text-white">
-                Dashboard
-              </Link>
-            </li>
-            <li aria-hidden>›</li>
             <li>
               <Link href="/curriculum" className="hover:text-white">
                 Curriculum

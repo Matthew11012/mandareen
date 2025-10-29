@@ -104,7 +104,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             {/* Page Title */}
             <div>
               {title && (
-                <h1 className="text-xl font-inter font-semibold text-white">
+                <h1 className="sm:text-xl font-inter font-semibold text-white">
                   {title}
                 </h1>
               )}
@@ -116,7 +116,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
           {/* User Menu */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-4 py-2.5 bg-[#2e323a] rounded-lg min-h-[44px] cursor-pointer hover:bg-[#3a3e46] transition-colors">
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-[#2e323a] rounded-lg min-h-[44px] cursor-pointer hover:bg-[#3a3e46] transition-colors hidden sm:flex">
               <User className="w-4 h-4 text-[#a6a6a6]" />
               <span className="text-sm font-inter text-[#a6a6a6] hidden sm:block">
                 {user?.email || "User"}

@@ -230,22 +230,13 @@ export default function LessonRunnerPage({
   }
 
   return (
-    <DashboardLayout
-      title={lessonData?.title ?? "Lesson"}
-      subtitle="Deep dive into the explain-first lesson, micro passage, and quiz"
-    >
-      <div className="p-6 space-y-6">
+    <DashboardLayout title={lessonData?.title ?? "Lesson"} subtitle="">
+      <div className="p-3 sm:p-6 pt-0 space-y-4 sm:space-y-6">
         <nav
-          className="text-xs font-inter text-white/60"
+          className="sticky top-0 z-40 bg-[#222831] py-2 -mx-3 sm:-mx-6 px-3 sm:px-6 mb-2"
           aria-label="Breadcrumb"
         >
-          <ol className="flex items-center gap-2">
-            <li>
-              <Link href="/dashboard" className="hover:text-white">
-                Dashboard
-              </Link>
-            </li>
-            <li aria-hidden>›</li>
+          <ol className="flex items-center gap-2 text-xs font-inter text-white/60">
             <li>
               <Link href="/curriculum" className="hover:text-white">
                 Curriculum
@@ -258,20 +249,18 @@ export default function LessonRunnerPage({
               </Link>
             </li>
             <li aria-hidden>›</li>
-            <li className="text-white/80">{lessonData?.title ?? "Lesson"}</li>
+            <li className="text-white/80 hidden sm:inline">
+              {lessonData?.title ?? "Lesson"}
+            </li>
+            <li className="text-white/80 sm:hidden">Lesson</li>
           </ol>
         </nav>
 
-        <header className="space-y-2">
-          <h1 className="text-xl sm:text-2xl font-inter font-semibold text-white">
+        <header className="space-y-1.5 sm:space-y-2">
+          <h1 className="text-lg sm:text-xl md:text-2xl font-inter font-semibold text-white leading-tight">
             {lessonData?.title || "Lesson"}
           </h1>
-          {lessonData?.description && (
-            <p className="text-sm sm:text-base text-white/60 font-inter">
-              {lessonData.description}
-            </p>
-          )}
-          <hr />
+          <hr className="my-2" />
         </header>
 
         {error && (
@@ -292,19 +281,22 @@ export default function LessonRunnerPage({
         )}
 
         {!loading && lesson && activities.length === 0 && (
-          <div className="rounded-2xl border border-white/10 bg-[#16181d] p-6">
-            <p className="text-white/80 font-inter">
+          <div className="rounded-2xl border border-white/10 bg-[#16181d] p-4 sm:p-6">
+            <p className="text-white/80 font-inter text-sm sm:text-base">
               No content yet. Generate the lesson activities.
             </p>
             <button
               onClick={onGenerate}
               disabled={generating}
-              className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 cursor-pointer"
+              className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 cursor-pointer text-sm sm:text-base"
             >
               {generating ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Generating lesson (this may take 1-2 minutes)…
+                  <Loader2 className="h-5 w-5 sm:h-4 sm:w-4 animate-spin flex-shrink-0" />
+                  <span className="hidden sm:inline">
+                    Generating lesson (this may take 1-2 minutes)…
+                  </span>
+                  <span className="sm:hidden">Generating…</span>
                 </>
               ) : (
                 "Generate lesson"
@@ -317,7 +309,7 @@ export default function LessonRunnerPage({
           <div className="space-y-8">
             {/* Explain-first (GRAMMAR) */}
             {hasExplain && (
-              <section className="rounded-xl p-4 sm:p-5">
+              <section className="rounded-xl sm:p-2">
                 <h2 className="text-lg sm:text-xl font-semibold mb-2">
                   Explanation
                 </h2>
@@ -345,7 +337,7 @@ export default function LessonRunnerPage({
 
             {/* Micro Passage (READ) */}
             {hasRead && (
-              <section className="rounded-xl p-4 sm:p-5">
+              <section className="rounded-xl sm:p-2">
                 <h2 className="text-lg sm:text-xl font-semibold mb-2">
                   Micro passage
                 </h2>
@@ -362,7 +354,7 @@ export default function LessonRunnerPage({
 
             {/* Quiz */}
             {hasQuiz && (
-              <section className="rounded-xl p-4 sm:p-5">
+              <section className="rounded-xl sm:p-2">
                 <h2 className="text-lg sm:text-xl font-semibold mb-2">Quiz</h2>
                 {activities
                   .filter(
@@ -383,50 +375,96 @@ export default function LessonRunnerPage({
 
         {/* Navigation */}
         {navigation && (navigation.previous || navigation.next) && (
-          <div className="flex items-center justify-between pt-8 border-t border-white/10">
-            {navigation.previous ? (
-              <Link
-                href={`/curriculum/${navigation.previous.unitId}/${navigation.previous.lessonId}`}
-                className="inline-flex items-center gap-2 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                <div className="text-left">
-                  <div className="text-xs text-white/60">Previous</div>
-                  <div className="text-sm font-medium truncate max-w-[200px]">
-                    {navigation.previous.lessonTitle}
-                  </div>
-                  {navigation.previous.unitTitle !== lessonData?.title && (
-                    <div className="text-xs text-white/50 truncate max-w-[200px]">
-                      {navigation.previous.unitTitle}
+          <div className="pt-8 border-t border-white/10">
+            {/* Desktop: side-by-side */}
+            <div className="hidden md:flex items-center justify-between">
+              {navigation.previous ? (
+                <Link
+                  href={`/curriculum/${navigation.previous.unitId}/${navigation.previous.lessonId}`}
+                  className="inline-flex items-center gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <div className="text-left">
+                    <div className="text-xs text-white/60">Previous</div>
+                    <div className="text-sm font-medium truncate max-w-[200px]">
+                      {navigation.previous.lessonTitle}
                     </div>
-                  )}
-                </div>
-              </Link>
-            ) : (
-              <div></div>
-            )}
+                    {navigation.previous.unitTitle !== lessonData?.title && (
+                      <div className="text-xs text-white/50 truncate max-w-[200px]">
+                        {navigation.previous.unitTitle}
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              ) : (
+                <div></div>
+              )}
 
-            {navigation.next ? (
-              <Link
-                href={`/curriculum/${navigation.next.unitId}/${navigation.next.lessonId}`}
-                className="inline-flex items-center gap-2 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
-              >
-                <div className="text-right">
-                  <div className="text-xs text-white/60">Next</div>
-                  <div className="text-sm font-medium truncate max-w-[200px]">
-                    {navigation.next.lessonTitle}
-                  </div>
-                  {navigation.next.unitTitle !== lessonData?.title && (
-                    <div className="text-xs text-white/50 truncate max-w-[200px]">
-                      {navigation.next.unitTitle}
+              {navigation.next ? (
+                <Link
+                  href={`/curriculum/${navigation.next.unitId}/${navigation.next.lessonId}`}
+                  className="inline-flex items-center gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+                >
+                  <div className="text-right">
+                    <div className="text-xs text-white/60">Next</div>
+                    <div className="text-sm font-medium truncate max-w-[200px]">
+                      {navigation.next.lessonTitle}
                     </div>
-                  )}
-                </div>
-                <ChevronRight className="w-4 h-4" />
-              </Link>
-            ) : (
-              <div></div>
-            )}
+                    {navigation.next.unitTitle !== lessonData?.title && (
+                      <div className="text-xs text-white/50 truncate max-w-[200px]">
+                        {navigation.next.unitTitle}
+                      </div>
+                    )}
+                  </div>
+                  <ChevronRight className="w-4 h-4" />
+                </Link>
+              ) : (
+                <div></div>
+              )}
+            </div>
+
+            {/* Mobile: stacked with Next first */}
+            <div className="flex flex-col gap-3 md:hidden">
+              {navigation.next && (
+                <Link
+                  href={`/curriculum/${navigation.next.unitId}/${navigation.next.lessonId}`}
+                  className="inline-flex items-center justify-between gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+                >
+                  <div className="text-left min-w-0 flex-1">
+                    <div className="text-xs text-white/60">Next</div>
+                    <div className="text-sm font-medium truncate">
+                      {navigation.next.lessonTitle}
+                    </div>
+                    {navigation.next.unitTitle !== lessonData?.title && (
+                      <div className="text-xs text-white/50 truncate">
+                        {navigation.next.unitTitle}
+                      </div>
+                    )}
+                  </div>
+                  <ChevronRight className="w-4 h-4 flex-shrink-0" />
+                </Link>
+              )}
+
+              {navigation.previous && (
+                <Link
+                  href={`/curriculum/${navigation.previous.unitId}/${navigation.previous.lessonId}`}
+                  className="inline-flex items-center gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+                >
+                  <ChevronLeft className="w-4 h-4 flex-shrink-0" />
+                  <div className="text-left min-w-0 flex-1">
+                    <div className="text-xs text-white/60">Previous</div>
+                    <div className="text-sm font-medium truncate">
+                      {navigation.previous.lessonTitle}
+                    </div>
+                    {navigation.previous.unitTitle !== lessonData?.title && (
+                      <div className="text-xs text-white/50 truncate">
+                        {navigation.previous.unitTitle}
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -528,7 +566,7 @@ function ExplainView({ content }: { content: ExplainContent }) {
                       <h4 className="text-white font-medium text-base">
                         Common Pitfalls
                       </h4>
-                      <div className="space-y-3">
+                      <div className="space-y-3 flex flex-col gap-2">
                         {s.pitfalls.map(
                           (
                             p: { bad: string; good: string; note?: string },

@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { get, post, put } from "../http/http";
 
-const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
-
 // Validation schemas matching backend DTOs
 export const registerSchema = z.object({
   email: z.string().email("Please provide a valid email address"),
@@ -109,5 +107,15 @@ export const authApi = {
     return put<{ weeklyGoalLessons: number | null }>("users/weekly-goal", {
       weeklyGoalLessons,
     });
+  },
+
+  /**
+   * Get Google OAuth authentication URL
+   * @returns Google OAuth URL to redirect the user to Google login
+   */
+  getGoogleAuthUrl: (): string => {
+    const apiBase =
+      process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+    return `${apiBase}/auth/google`;
   },
 };
