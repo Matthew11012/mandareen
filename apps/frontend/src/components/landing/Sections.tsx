@@ -45,7 +45,7 @@ export function PricingSection() {
           </ul>
           <div className="mt-6 pt-2">
             <Link
-              href="/auth?mode=signup"
+              href="/signup"
               className="w-full inline-flex items-center justify-center px-4 py-2 rounded-full border border-white/10 text-white hover:bg-white/10"
             >
               Get started
@@ -71,7 +71,7 @@ export function PricingSection() {
           </ul>
           <div className="mt-6 pt-2">
             <Link
-              href="/auth?mode=signup"
+              href="/signup"
               className="w-full inline-flex items-center justify-center px-4 py-2 rounded-full bg-white text-black hover:bg-white/90 border border-white/10"
             >
               Start Pro
@@ -94,7 +94,7 @@ export function PricingSection() {
           </ul>
           <div className="mt-6 pt-2">
             <Link
-              href="/auth?mode=signup"
+              href="/signup"
               className="w-full inline-flex items-center justify-center px-4 py-2 rounded-full border border-white/10 text-white hover:bg-white/10"
             >
               Contact sales
@@ -255,7 +255,7 @@ export function FinalCTA() {
         </div>
         <div className="flex md:justify-end">
           <Link
-            href="/auth?mode=signup"
+            href="/signup"
             className="px-5 py-3 rounded-full bg-white text-black hover:bg-white/90 font-inter border border-white/10"
           >
             Sign up

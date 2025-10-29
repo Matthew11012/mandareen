@@ -52,11 +52,11 @@ export const useAuth = () => {
   const logoutWithRedirect = async () => {
     try {
       await logout();
-      router.push("/auth");
+      router.push("/login");
     } catch (error) {
       // Even if logout fails, redirect to login
       console.error("Logout error:", error);
-      router.push("/auth");
+      router.push("/login");
     }
   };
 
@@ -92,7 +92,7 @@ export const useRequireAuth = () => {
   useEffect(() => {
     // Only decide redirect after initialize() completes
     if (isLoading) return;
-    if (!isAuthenticated) router.push("/auth/login");
+    if (!isAuthenticated) router.push("/login");
   }, [isAuthenticated, isLoading, router]);
 
   return { isAuthenticated, isLoading };

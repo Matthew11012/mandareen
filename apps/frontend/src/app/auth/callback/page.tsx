@@ -47,7 +47,7 @@ export default function AuthCallbackPage() {
       } catch (error) {
         console.error("OAuth callback error:", error);
         toast.error("Authentication failed. Please try again.");
-        router.push("/auth/login");
+        router.push("/login");
       } finally {
         setIsProcessing(false);
       }

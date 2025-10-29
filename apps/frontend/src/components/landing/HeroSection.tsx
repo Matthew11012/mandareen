@@ -78,7 +78,7 @@ export function HeroSection() {
             className="mt-8 flex items-center gap-3"
           >
             <Link
-              href="/auth?mode=signup"
+              href="/signup"
               className="px-5 py-3 rounded-full bg-white text-black hover:bg-white/90 font-inter border border-white/10"
             >
               Sign up
