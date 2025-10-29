@@ -348,51 +348,18 @@ export default async function DashboardPage() {
           <h3 className="text-lg font-inter font-semibold text-white mb-4">
             Getting Started
           </h3>
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-xs font-bold">1</span>
-              </div>
-              <p className="text-[#ffffff] font-inter">
-                Take your placement test to determine your current level
-              </p>
+          <div className="space-y-4">
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-semibold">1</span>
+              <span className="text-sm sm:text-base text-[#ffffff] font-inter">Take your placement test to determine your current level</span>
             </div>
-            <div
-              className={`flex items-center gap-3 ${history.length > 0 ? "" : "opacity-60"}`}
-            >
-              <div
-                className={`w-6 h-6 rounded-full flex items-center justify-center ${history.length > 0 ? "bg-orange-500/80" : "bg-[#404040]"}`}
-              >
-                <span
-                  className={`text-xs font-bold ${history.length > 0 ? "text-white" : "text-[#999999]"}`}
-                >
-                  2
-                </span>
-              </div>
-              <p
-                className={`${history.length > 0 ? "text-white" : "text-[#999999]"} font-inter`}
-              >
-                Start with AI-generated lessons tailored to your level
-              </p>
+            <div className={`flex items-center space-x-3 sm:space-x-4 ${history.length > 0 ? "" : "opacity-60"}`}>
+              <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-sm font-semibold ${history.length > 0 ? "bg-orange-500/80 text-white" : "bg-[#404040] text-[#999999]"}`}>2</span>
+              <span className={`${history.length > 0 ? "text-white" : "text-[#999999]"} text-sm sm:text-base font-inter`}>Start with AI-generated lessons tailored to your level</span>
             </div>
-            <div
-              className={`flex items-center gap-3 ${lessonsCount.finishedCount > 0 ? "" : "opacity-60"}`}
-            >
-              <div
-                className={`w-6 h-6 rounded-full flex items-center justify-center ${lessonsCount.finishedCount > 0 ? "bg-green-500" : "bg-[#404040]"}`}
-              >
-                <span
-                  className={`text-xs font-bold ${lessonsCount.finishedCount > 0 ? "text-white" : "text-[#999999]"}`}
-                >
-                  3
-                </span>
-              </div>
-              <p
-                className={`${lessonsCount.finishedCount > 0 ? "text-white" : "text-[#999999]"} font-inter`}
-              >
-                Mark lessons as finished, then practice with flashcards and
-                conversation AI
-              </p>
+            <div className={`flex items-center space-x-3 sm:space-x-4 ${lessonsCount.finishedCount > 0 ? "" : "opacity-60"}`}>
+              <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-sm font-semibold ${lessonsCount.finishedCount > 0 ? "bg-green-500 text-white" : "bg-[#404040] text-[#999999]"}`}>3</span>
+              <span className={`${lessonsCount.finishedCount > 0 ? "text-white" : "text-[#999999]"} text-sm sm:text-base font-inter`}>Mark lessons as finished, then practice with flashcards and conversation AI</span>
             </div>
           </div>
         </div>

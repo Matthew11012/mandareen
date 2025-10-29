@@ -12,8 +12,6 @@ import {
   Tooltip as ReTooltip,
   ResponsiveContainer,
   Legend,
-  LineChart,
-  Line,
   PieChart,
   Pie,
   LabelList,
@@ -35,7 +33,7 @@ export default function ProgressPage() {
   }>({ points: [], totals: { new: 0, learned: 0 } });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  type LessonsChartType = "bars" | "stacked" | "line";
+  type LessonsChartType = "bars" | "stacked";
   type WordsChartType = "bars" | "pie";
   type WordsTimelineFilter = "all" | "30" | "7";
   const [lessonsChartType, setLessonsChartType] =
@@ -229,11 +227,11 @@ export default function ProgressPage() {
           Progress
         </h1>
 
-        <div className="mt-6 grid gap-4">
-          <section className="bg-[#2e323a] rounded-xl border border-[#404040] p-4">
-            <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="mt-6 grid grid-cols-1 min-[920px]:grid-cols-2 min-[920px]:[grid-template-columns:minmax(0,1fr)_minmax(0,1fr)] gap-4">
+          <section className="bg-[#2e323a] rounded-xl border border-[#404040] p-4 min-w-0 overflow-hidden">
+            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
               <h2 className="text-white font-inter font-medium text-sm md:text-base">
-                Lessons Completed by HSK
+                Lessons Completed (by HSK)
               </h2>
               <div
                 className="inline-flex rounded-lg border border-[#404040] overflow-hidden"
@@ -264,18 +262,6 @@ export default function ProgressPage() {
                 >
                   Stacked
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setLessonsChartType("line")}
-                  className={`px-2 py-1 text-xs font-inter border-l border-[#404040] cursor-pointer ${
-                    lessonsChartType === "line"
-                      ? "bg-[#4040f2]/10 text-[#9aa6ff]"
-                      : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
-                  }`}
-                  aria-pressed={lessonsChartType === "line"}
-                >
-                  Line
-                </button>
               </div>
             </div>
 
@@ -291,13 +277,21 @@ export default function ProgressPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={chartData}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                      margin={{ top: 10, right: 10, left: 0, bottom: 28 }}
                     >
                       <CartesianGrid stroke="#2e323a" strokeDasharray="3 3" />
                       <XAxis
                         dataKey="level"
                         stroke="#a6a6a6"
-                        tick={{ fill: "#a6a6a6", fontSize: 12 }}
+                        tick={{
+                          fill: "#a6a6a6",
+                          fontSize: 12,
+                          textAnchor: "end",
+                        }}
+                        interval={0}
+                        tickMargin={5}
+                        height={38}
+                        angle={-30}
                       />
                       <YAxis
                         stroke="#a6a6a6"
@@ -312,7 +306,12 @@ export default function ProgressPage() {
                           color: "#fff",
                         }}
                       />
-                      <Legend formatter={legendFormatter} wrapperStyle={{}} />
+                      <Legend
+                        formatter={legendFormatter}
+                        verticalAlign="bottom"
+                        align="center"
+                        wrapperStyle={{ paddingTop: 8 }}
+                      />
                       <Bar
                         dataKey="finished"
                         name="Finished"
@@ -337,13 +336,21 @@ export default function ProgressPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={chartData}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                      margin={{ top: 10, right: 10, left: 0, bottom: 28 }}
                     >
                       <CartesianGrid stroke="#2e323a" strokeDasharray="3 3" />
                       <XAxis
                         dataKey="level"
                         stroke="#a6a6a6"
-                        tick={{ fill: "#a6a6a6", fontSize: 12 }}
+                        tick={{
+                          fill: "#a6a6a6",
+                          fontSize: 12,
+                          textAnchor: "end",
+                        }}
+                        interval={0}
+                        tickMargin={5}
+                        height={38}
+                        angle={-30}
                       />
                       <YAxis
                         stroke="#a6a6a6"
@@ -358,7 +365,12 @@ export default function ProgressPage() {
                           color: "#fff",
                         }}
                       />
-                      <Legend formatter={legendFormatter} wrapperStyle={{}} />
+                      <Legend
+                        formatter={legendFormatter}
+                        verticalAlign="bottom"
+                        align="center"
+                        wrapperStyle={{ paddingTop: 8 }}
+                      />
                       <Bar
                         dataKey="finished"
                         name="Finished"
@@ -392,50 +404,13 @@ export default function ProgressPage() {
                     </BarChart>
                   </ResponsiveContainer>
                 )}
-                {lessonsChartType === "line" && (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={chartData}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                    >
-                      <CartesianGrid stroke="#2e323a" strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="level"
-                        stroke="#a6a6a6"
-                        tick={{ fill: "#a6a6a6", fontSize: 12 }}
-                      />
-                      <YAxis
-                        stroke="#a6a6a6"
-                        tick={{ fill: "#a6a6a6", fontSize: 12 }}
-                        allowDecimals={false}
-                        domain={[0, maxValue]}
-                      />
-                      <ReTooltip
-                        contentStyle={{
-                          background: "#2e323a",
-                          border: "1px solid #404040",
-                          color: "#fff",
-                        }}
-                      />
-                      <Legend formatter={legendFormatter} wrapperStyle={{}} />
-                      <Line
-                        type="monotone"
-                        dataKey="finished"
-                        name="Finished"
-                        stroke="#9aa6ff"
-                        strokeWidth={2}
-                        dot={{ r: 3 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                )}
               </div>
             )}
           </section>
 
           {/* Words Read by HSK */}
-          <section className="bg-[#2e323a] rounded-xl border border-[#404040] p-4">
-            <div className="flex items-center justify-between gap-2 mb-3">
+          <section className="bg-[#2e323a] rounded-xl border border-[#404040] p-4 min-w-0 overflow-hidden">
+            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
               <h2 className="text-white font-inter font-medium">
                 Words Read (by HSK)
               </h2>
@@ -480,7 +455,9 @@ export default function ProgressPage() {
               <div className="mt-2 h-64 sm:h-80">
                 {wordsChartType === "pie" ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
+                    <PieChart
+                      margin={{ top: 0, right: 0, left: 0, bottom: 28 }}
+                    >
                       <ReTooltip
                         contentStyle={{
                           background: "#2e323a",
@@ -488,7 +465,12 @@ export default function ProgressPage() {
                           color: "#fff",
                         }}
                       />
-                      <Legend formatter={legendFormatter} />
+                      <Legend
+                        formatter={legendFormatter}
+                        verticalAlign="bottom"
+                        align="center"
+                        wrapperStyle={{ paddingTop: 8 }}
+                      />
                       <Pie
                         data={[
                           ...HSK_LEVELS.map((lvl) => ({
@@ -536,13 +518,21 @@ export default function ProgressPage() {
                           count: wordsByHsk["unknown"] || 0,
                         },
                       ]}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                      margin={{ top: 10, right: 10, left: 0, bottom: 28 }}
                     >
                       <CartesianGrid stroke="#2e323a" strokeDasharray="3 3" />
                       <XAxis
                         dataKey="level"
                         stroke="#a6a6a6"
-                        tick={{ fill: "#a6a6a6", fontSize: 12 }}
+                        tick={{
+                          fill: "#a6a6a6",
+                          fontSize: 12,
+                          textAnchor: "end",
+                        }}
+                        interval={0}
+                        tickMargin={5}
+                        height={38}
+                        angle={-30}
                       />
                       <YAxis
                         stroke="#a6a6a6"
@@ -556,7 +546,12 @@ export default function ProgressPage() {
                           color: "#fff",
                         }}
                       />
-                      <Legend formatter={legendFormatter} wrapperStyle={{}} />
+                      <Legend
+                        formatter={legendFormatter}
+                        verticalAlign="bottom"
+                        align="center"
+                        wrapperStyle={{ paddingTop: 8 }}
+                      />
                       <Bar
                         dataKey="count"
                         name="Words Read"
@@ -585,7 +580,7 @@ export default function ProgressPage() {
           </section>
 
           {/* Words Progress Timeline */}
-          <section className="bg-[#2e323a] rounded-xl border border-[#404040] p-4">
+          <section className="bg-[#2e323a] rounded-xl border border-[#404040] p-4 min-[920px]:col-span-2">
             <div className="flex items-center justify-between gap-2 mb-3">
               <h2 className="text-white font-inter font-medium text-sm md:text-base">
                 Words Progress
