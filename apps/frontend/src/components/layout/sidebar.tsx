@@ -13,8 +13,6 @@ import {
   TrendingUp,
   User,
   Settings,
-  ChevronLeft,
-  ChevronRight,
   Sparkles,
   GraduationCap,
 } from "lucide-react";
@@ -39,7 +37,6 @@ const ICONS = {
 
 interface SidebarProps {
   isCollapsed: boolean;
-  onToggle: () => void;
 }
 
 interface NavItemProps {
@@ -131,7 +128,7 @@ const NavItem: React.FC<NavItemProps> = ({
   );
 };
 
-export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   const pathname = usePathname();
   const [dueCount, setDueCount] = useState<number>(0);
 
@@ -153,7 +150,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
   return (
     <aside
       className={cn(
-        "flex flex-col h-screen bg-[#1a1d23] border-r border-[#2e323a] transition-all duration-300 ease-in-out relative",
+        "flex flex-col h-screen bg-[#1a1d23] border-r border-[#2e323a] transition-all duration-300 ease-in-out relative overflow-x-hidden",
         isCollapsed ? "w-16" : "w-64"
       )}
     >
@@ -178,19 +175,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
       </div>
 
       {/* Toggle Button */}
-      <button
-        onClick={onToggle}
-        className="absolute -right-3 top-20 w-6 h-6 bg-[#2e323a] border border-[#404040] rounded-full flex items-center justify-center hover:bg-[#3a3f47] transition-colors duration-200 z-10 cursor-pointer hidden md:flex "
-      >
-        {isCollapsed ? (
-          <ChevronRight className="w-3 h-3 text-[#a6a6a6]" />
-        ) : (
-          <ChevronLeft className="w-3 h-3 text-[#a6a6a6]" />
-        )}
-      </button>
+      {/* Button removed and rendered outside Sidebar inside dashboard-layout.tsx */}
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-6">
         {NAVIGATION_DATA.map((section) => (
           <div key={section.id} className="space-y-2">
             {/* Section Title */}
