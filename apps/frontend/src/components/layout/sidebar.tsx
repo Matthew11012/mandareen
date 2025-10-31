@@ -158,9 +158,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
       <div className="flex items-center justify-between p-4 border-b border-[#2e323a]">
         {!isCollapsed && (
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-[#4040f2] to-[#6366f1] rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">普</span>
-            </div>
+            <img
+              src="/icons/logo.svg"
+              alt="Mandareen logo"
+              className="w-8 h-8 rounded-lg"
+            />
             <h1 className="font-inter font-bold text-xl text-white">
               Mandareen
             </h1>
@@ -168,9 +170,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
         )}
 
         {isCollapsed && (
-          <div className="w-8 h-8 bg-gradient-to-br from-[#4040f2] to-[#6366f1] rounded-lg flex items-center justify-center mx-auto">
-            <span className="text-white font-bold text-lg">普</span>
-          </div>
+          <img
+            src="/icons/logo.svg"
+            alt="Mandareen logo"
+            className="w-8 h-8 rounded-lg mx-auto"
+          />
         )}
       </div>
 

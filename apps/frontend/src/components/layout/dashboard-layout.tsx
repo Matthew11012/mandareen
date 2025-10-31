@@ -83,10 +83,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           width: isMobile ? undefined : sidebarCollapsed ? "4rem" : "16rem",
         }}
       >
-        <Sidebar
-          isCollapsed={isMobile ? false : sidebarCollapsed}
-          onToggle={toggleSidebar}
-        />
+        <Sidebar isCollapsed={isMobile ? false : sidebarCollapsed} />
         {/* Moved toggle button here (absolute, on desktop only) */}
         {!isMobile && (
           <button
