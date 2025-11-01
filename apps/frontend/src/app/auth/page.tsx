@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -25,7 +25,7 @@ import { authApi } from "@/lib/api/auth";
 const DURATION = 0.36;
 const EASE: number[] = [0.2, 0.8, 0.2, 1];
 
-export default function CombinedAuthPage() {
+function CombinedAuthContent() {
   const router = useRouter();
   const params = useSearchParams();
   const initialMode = (params.get("mode") === "signup" ? "signup" : "login") as
@@ -653,5 +653,19 @@ export default function CombinedAuthPage() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+export default function CombinedAuthPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[var(--color-primary-bg)] flex items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
+        </div>
+      }
+    >
+      <CombinedAuthContent />
+    </Suspense>
   );
 }

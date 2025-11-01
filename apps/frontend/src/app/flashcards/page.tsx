@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, Suspense } from "react";
 import { DashboardLayout } from "@/components/layout";
 import {
   flashcardsApi,
@@ -13,7 +13,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useReducedMotionSafe } from "@/lib/hooks/use-reduced-motion-safe";
 import { useSearchParams } from "next/navigation";
 
-export default function FlashcardsPage() {
+function FlashcardsPageContent() {
   const [cards, setCards] = useState<DueFlashcardItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1376,5 +1376,21 @@ export default function FlashcardsPage() {
         )}
       </AnimatePresence>
     </DashboardLayout>
+  );
+}
+
+export default function FlashcardsPage() {
+  return (
+    <Suspense
+      fallback={
+        <DashboardLayout>
+          <div className="flex items-center justify-center p-6">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          </div>
+        </DashboardLayout>
+      }
+    >
+      <FlashcardsPageContent />
+    </Suspense>
   );
 }

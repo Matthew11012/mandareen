@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   Home,
@@ -158,10 +159,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
       <div className="flex items-center justify-between p-4 border-b border-[#2e323a]">
         {!isCollapsed && (
           <div className="flex items-center gap-2">
-            <img
+            <Image
               src="/icons/logo.svg"
               alt="Mandareen logo"
-              className="w-8 h-8 rounded-lg"
+              width={32}
+              height={32}
+              className="rounded-lg"
             />
             <h1 className="font-inter font-bold text-xl text-white">
               Mandareen
@@ -170,10 +173,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
         )}
 
         {isCollapsed && (
-          <img
+          <Image
             src="/icons/logo.svg"
             alt="Mandareen logo"
-            className="w-8 h-8 rounded-lg mx-auto"
+            width={32}
+            height={32}
+            className="rounded-lg mx-auto"
           />
         )}
       </div>
