@@ -13,6 +13,7 @@ import { FlashcardsModule } from './flashcards/flashcards.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { RagModule } from './rag/rag.module';
 import { CurriculumModule } from './curriculum/curriculum.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { CurriculumModule } from './curriculum/curriculum.module';
     ConversationsModule,
     RagModule,
     CurriculumModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

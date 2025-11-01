@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
@@ -21,7 +21,7 @@ import { authApi } from "@/lib/api/auth";
  * - Redirects to dashboard on success
  * - Handles error cases gracefully
  */
-export default function AuthCallbackPage() {
+function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isProcessing, setIsProcessing] = useState(true);
@@ -90,5 +90,22 @@ export default function AuthCallbackPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#222831] flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <div className="h-12 w-12 animate-spin rounded-full border-2 border-white border-t-transparent mx-auto" />
+            <h2 className="text-white font-inter text-lg">Loading...</h2>
+          </div>
+        </div>
+      }
+    >
+      <AuthCallbackContent />
+    </Suspense>
   );
 }
