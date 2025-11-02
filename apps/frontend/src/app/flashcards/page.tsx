@@ -806,7 +806,7 @@ function FlashcardsPageContent() {
                                 {
                                   name: "Strong",
                                   value: summary.strong,
-                                  color: "#35c28d",
+                                  color: "#22c55e",
                                 },
                                 {
                                   name: "Partial",
@@ -816,7 +816,7 @@ function FlashcardsPageContent() {
                                 {
                                   name: "Weak",
                                   value: summary.weak,
-                                  color: "#ff6b6b",
+                                  color: "#ef4444",
                                 },
                                 {
                                   name: "Not studied",
@@ -826,11 +826,10 @@ function FlashcardsPageContent() {
                               ]}
                               dataKey="value"
                               nameKey="name"
-                              innerRadius={60}
                               outerRadius={90}
                               paddingAngle={1}
                             >
-                              {["#35c28d", "#4cc2f0", "#ff6b6b", "#9aa3af"].map(
+                              {["#22c55e", "#4cc2f0", "#ef4444", "#9aa3af"].map(
                                 (c, i) => (
                                   <Cell key={i} fill={c} />
                                 )
@@ -842,37 +841,64 @@ function FlashcardsPageContent() {
                         <div className="h-full" />
                       )}
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                      <div className="text-[#a6a6a6]">Strong</div>
-                      <div className="text-white text-right">
-                        {summary.strong}
-                      </div>
-                      <div className="text-[#a6a6a6]">Partial</div>
-                      <div className="text-white text-right">
-                        {summary.partial}
-                      </div>
-                      <div className="text-[#a6a6a6]">Weak</div>
-                      <div className="text-white text-right">
-                        {summary.weak}
-                      </div>
-                      <div className="text-[#a6a6a6]">Not studied</div>
-                      <div className="text-white text-right">
-                        {summary.notStudied}
-                      </div>
+                    <div className="mt-3 space-y-3">
+                      {[
+                        {
+                          label: "Strong",
+                          count: summary.strong,
+                          color: "#22c55e",
+                        },
+                        {
+                          label: "Partial",
+                          count: summary.partial,
+                          color: "#4cc2f0",
+                        },
+                        {
+                          label: "Weak",
+                          count: summary.weak,
+                          color: "#ef4444",
+                        },
+                        {
+                          label: "Not studied",
+                          count: summary.notStudied,
+                          color: "#9aa3af",
+                        },
+                      ].map((item) => {
+                        const percentage =
+                          summary.total > 0
+                            ? (item.count / summary.total) * 100
+                            : 0;
+                        return (
+                          <div
+                            key={item.label}
+                            className="w-full h-8 rounded-lg overflow-hidden relative"
+                          >
+                            {/* Colored bar background layer */}
+                            <div
+                              className="h-full absolute left-0 top-0 transition-all duration-300"
+                              style={{
+                                width: `${percentage}%`,
+                                backgroundColor: item.color,
+                              }}
+                            />
+                            {/* Text overlay layer spanning full width */}
+                            <div className="h-full w-full flex items-center justify-between px-3 relative z-10">
+                              <div className="text-white text-sm font-medium whitespace-nowrap">
+                                {item.label}
+                              </div>
+                              <div className="text-white text-sm font-medium whitespace-nowrap">
+                                {item.count}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
                   {/* Stats + CTA */}
                   <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] flex flex-col justify-between">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-[#262a31] rounded-lg p-4 border border-[#3a3a3a]">
-                        <div className="text-[#a6a6a6] text-xs">
-                          All saved words
-                        </div>
-                        <div className="text-2xl text-white mt-1">
-                          {summary.total}
-                        </div>
-                      </div>
+                    <div className="grid grid-rows-2 gap-2">
                       <div className="bg-[#262a31] rounded-lg p-4 border border-[#3a3a3a]">
                         <div className="text-[#a6a6a6] text-xs">
                           Overdue + due now
@@ -1005,10 +1031,22 @@ function FlashcardsPageContent() {
                     </div>
                     <button
                       onClick={toggleDrawer}
-                      className="w-full px-4 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff] transition-colors"
+                      className="w-full h-11 px-4 bg-[#4040f2] hover:bg-[#3636d9] text-white rounded-lg cursor-pointer text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff] transition-colors duration-200 flex items-center justify-center gap-2"
                       aria-label="View all flashcards"
                     >
-                      View all {summary.total} →
+                      <span>View all {summary.total}</span>
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M5 12h14M12 5l7 7-7 7" />
+                      </svg>
                     </button>
                   </div>
                 </div>
