@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { Sidebar } from "./sidebar";
 import { Menu, LogOut, User, ChevronLeft, ChevronRight } from "lucide-react";
@@ -12,15 +13,40 @@ interface DashboardLayoutProps {
   subtitle?: string;
 }
 
+const getInitialMobileState = (): boolean => {
+  if (typeof window === "undefined") return false;
+  return window.innerWidth < 768;
+};
+
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   children,
   title,
   subtitle,
 }) => {
   const { user, logout } = useAuth();
+  const pathname = usePathname();
+  const prevPathnameRef = useRef<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => getInitialMobileState());
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const isInitialMountRef = useRef(true);
+
+  useLayoutEffect(() => {
+    if (!isInitialMountRef.current) {
+      setMounted(false);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setMounted(true);
+        });
+      });
+    } else {
+      requestAnimationFrame(() => {
+        setMounted(true);
+      });
+      isInitialMountRef.current = false;
+    }
+  }, [pathname]);
 
   // Handle responsive behavior
   useEffect(() => {
@@ -29,6 +55,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       setIsMobile(mobile);
       if (mobile) {
         setSidebarCollapsed(true);
+        setShowMobileMenu(false);
       }
     };
 
@@ -37,12 +64,20 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Handle mobile menu toggle
+  useLayoutEffect(() => {
+    if (
+      prevPathnameRef.current !== null &&
+      prevPathnameRef.current !== pathname
+    ) {
+      setShowMobileMenu(() => false);
+    }
+    prevPathnameRef.current = pathname;
+  }, [pathname]);
+
   const toggleMobileMenu = () => {
     setShowMobileMenu(!showMobileMenu);
   };
 
-  // Handle sidebar toggle
   const toggleSidebar = () => {
     if (isMobile) {
       toggleMobileMenu();
@@ -51,7 +86,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     }
   };
 
-  // Close mobile menu when clicking outside
   const handleOverlayClick = () => {
     if (isMobile && showMobileMenu) {
       setShowMobileMenu(false);
@@ -70,8 +104,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
       {/* Sidebar */}
       <div
+        id="sidebar-nav"
+        role="navigation"
+        aria-label="Main navigation"
         className={cn(
-          "transition-all duration-300 ease-in-out z-50",
+          "z-50",
+          mounted && "transition-all duration-300 ease-in-out",
           isMobile
             ? cn(
                 "fixed inset-y-0 left-0",
@@ -84,17 +122,26 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         }}
       >
         <Sidebar isCollapsed={isMobile ? false : sidebarCollapsed} />
-        {/* Moved toggle button here (absolute, on desktop only) */}
         {!isMobile && (
           <button
             onClick={toggleSidebar}
+            aria-label={
+              sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+            }
+            aria-expanded={!sidebarCollapsed}
             className="absolute -right-3 top-20 w-6 h-6 bg-[#2e323a] border border-[#404040] rounded-full flex items-center justify-center hover:bg-[#3a3f47] transition-colors duration-200 z-50 cursor-pointer hidden md:flex"
             style={{ zIndex: 9999 }}
           >
             {sidebarCollapsed ? (
-              <ChevronRight className="w-3 h-3 text-[#a6a6a6]" />
+              <ChevronRight
+                className="w-3 h-3 text-[#a6a6a6]"
+                aria-hidden="true"
+              />
             ) : (
-              <ChevronLeft className="w-3 h-3 text-[#a6a6a6]" />
+              <ChevronLeft
+                className="w-3 h-3 text-[#a6a6a6]"
+                aria-hidden="true"
+              />
             )}
           </button>
         )}
@@ -109,9 +156,16 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             {isMobile && (
               <button
                 onClick={toggleMobileMenu}
-                className="p-2 hover:bg-[#2e323a] rounded-lg transition-colors duration-200 cursor-pointer"
+                aria-label={
+                  showMobileMenu
+                    ? "Close navigation menu"
+                    : "Open navigation menu"
+                }
+                aria-expanded={showMobileMenu}
+                aria-controls="sidebar-nav"
+                className="p-2 hover:bg-[#2e323a] rounded-lg transition-colors duration-200 cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
               >
-                <Menu className="w-5 h-5 text-[#a6a6a6]" />
+                <Menu className="w-5 h-5 text-[#a6a6a6]" aria-hidden="true" />
               </button>
             )}
 
@@ -139,10 +193,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
             <button
               onClick={logout}
+              aria-label="Logout"
               className="p-3 min-w-[44px] min-h-[44px] hover:bg-red-600/20 hover:text-red-400 rounded-lg transition-all duration-200 group cursor-pointer"
-              title="Logout"
             >
-              <LogOut className="w-5 h-5 text-[#a6a6a6] group-hover:text-red-400" />
+              <LogOut
+                className="w-5 h-5 text-[#a6a6a6] group-hover:text-red-400"
+                aria-hidden="true"
+              />
             </button>
           </div>
         </header>
