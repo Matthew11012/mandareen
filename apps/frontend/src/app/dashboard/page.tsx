@@ -142,7 +142,7 @@ export default async function DashboardPage() {
         <section className="bg-[#2e323a] rounded-2xl border border-white/10 p-6 shadow-md">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-start gap-3">
-              <div className="w-12 h-12 flex items-center justify-center rounded-lg bg-amber-500/15 border border-amber-500/30">
+              <div className="w-12 h-12 flex items-center justify-center rounded-lg bg-amber-500/15 border border-amber-500/30 shrink-0">
                 <Compass className="w-6 h-6 text-amber-400" />
               </div>
               <div>

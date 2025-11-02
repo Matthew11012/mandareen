@@ -14,6 +14,9 @@ import {
   X,
   Bell,
   BellOff,
+  ChevronDown,
+  ChevronUp,
+  Info,
 } from "lucide-react";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import {
@@ -35,6 +38,7 @@ export default function ProfilePage() {
   const [pushSupported, setPushSupported] = useState<boolean | null>(null);
   const [pushSubscribed, setPushSubscribed] = useState<boolean | null>(null);
   const [pushToggling, setPushToggling] = useState(false);
+  const [showTroubleshooting, setShowTroubleshooting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -229,10 +233,10 @@ export default function ProfilePage() {
         {/* Weekly Goal Section */}
         <div
           id="weekly-goal"
-          className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] w-fit max-w-full"
+          className="bg-[#2e323a] rounded-xl p-6 border border-[#404040]"
         >
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center shrink-0">
               <Target className="w-5 h-5 text-blue-400" />
             </div>
             <div>
@@ -252,7 +256,7 @@ export default function ProfilePage() {
           )}
 
           <div className="space-y-4">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center gap-3">
               <button
                 onClick={() =>
                   setWeeklyGoalValue((prev) => Math.max(1, (prev || 1) - 1))
@@ -264,7 +268,7 @@ export default function ProfilePage() {
                 <Minus className="w-4 h-4 text-white" />
               </button>
 
-              <div className="w-24">
+              <div className="w-32 sm:w-40">
                 <input
                   type="number"
                   min="1"
@@ -301,13 +305,13 @@ export default function ProfilePage() {
               </button>
             </div>
 
-            <div className="flex items-center gap-2 w-fit">
+            <div className="flex flex-col sm:flex-row-reverse sm:justify-between gap-2">
               <button
                 onClick={saveWeeklyGoal}
                 disabled={
                   savingGoal || weeklyGoalValue === data?.weeklyGoalLessons
                 }
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-inter rounded-lg transition-colors duration-200 flex items-center gap-2 cursor-pointer"
+                className="w-full sm:flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-inter rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Save className="w-4 h-4" />
                 {savingGoal ? "Saving..." : "Save"}
@@ -317,7 +321,7 @@ export default function ProfilePage() {
                 <button
                   onClick={clearWeeklyGoal}
                   disabled={savingGoal}
-                  className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 text-sm font-inter rounded-lg transition-colors duration-200 flex items-center gap-2 cursor-pointer"
+                  className="w-full sm:flex-1 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 text-sm font-inter rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                   Clear
@@ -335,7 +339,7 @@ export default function ProfilePage() {
         {/* Push Notifications Section */}
         <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040]">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center shrink-0">
               {pushSubscribed ? (
                 <Bell className="w-5 h-5 text-blue-400" />
               ) : (
@@ -360,21 +364,22 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
+              {/* Status and Toggle - Stack on mobile */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex-1">
                   <p className="text-white font-inter font-medium">
                     {pushSubscribed ? "Enabled" : "Disabled"}
                   </p>
                   <p className="text-[#a6a6a6] font-inter text-xs mt-1">
                     {pushSubscribed
-                      ? "You'll receive notifications on your mobile device when lessons are generated."
+                      ? "You'll receive notifications when lessons are generated."
                       : "Enable to receive notifications when lessons are ready."}
                   </p>
                 </div>
                 <button
                   onClick={handlePushToggle}
                   disabled={pushToggling || pushSupported === null}
-                  className={`px-4 py-2 text-sm font-inter rounded-lg transition-colors duration-200 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                  className={`w-full sm:w-auto px-4 py-2 text-sm font-inter rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                     pushSubscribed
                       ? "bg-red-500/20 hover:bg-red-500/30 text-red-400"
                       : "bg-blue-500 hover:bg-blue-600 text-white"
@@ -398,6 +403,17 @@ export default function ProfilePage() {
                   )}
                 </button>
               </div>
+
+              {/* Cross-device note - subtle info */}
+              <div className="flex items-center gap-2 p-2 bg-[#24262b]/50 rounded-lg">
+                <Info className="w-4 h-4 text-[#6b7280] shrink-0" />
+                <p className="text-[#6b7280] font-inter text-xs">
+                  Each browser/device needs its own subscription. Enabling here
+                  won&apos;t affect other browsers or devices.
+                </p>
+              </div>
+
+              {/* VAPID key warning */}
               {!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && (
                 <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                   <p className="text-yellow-400 font-inter text-xs">
@@ -407,30 +423,67 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              {/* Help: Browser requirements for push services */}
-              <div className="p-3 bg-[#24262b] border border-[#3a3a3a] rounded-lg">
-                <p className="text-[#a6a6a6] font-inter text-xs">
-                  If enabling fails or does nothing, some browsers and
-                  extensions may block push services (e.g., Google FCM). Try:
-                </p>
-                <ul className="mt-2 list-disc pl-4 space-y-1">
-                  <li className="text-[#a6a6a6] font-inter text-xs">
-                    Allow notifications for this site in your browser settings.
-                  </li>
-                  <li className="text-[#a6a6a6] font-inter text-xs">
-                    In Brave: enable “Use Google services for push messaging”
-                    (Privacy & security) and allow notifications; reduce Shields
-                    for this site if needed.
-                  </li>
-                  <li className="text-[#a6a6a6] font-inter text-xs">
-                    Temporarily disable ad blockers/VPN/firewall that may block
-                    <code className="ml-1">fcm.googleapis.com</code> and reload.
-                  </li>
-                  <li className="text-[#a6a6a6] font-inter text-xs">
-                    Each browser/device needs its own subscription. Enabling in
-                    one does not auto-enable others.
-                  </li>
-                </ul>
+              {/* Collapsible Troubleshooting Section */}
+              <div className="border border-[#3a3a3a] rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setShowTroubleshooting(!showTroubleshooting)}
+                  className="w-full p-3 bg-[#24262b] hover:bg-[#2a2c32] transition-colors duration-200 flex items-center justify-between cursor-pointer"
+                  aria-expanded={showTroubleshooting}
+                >
+                  <span className="text-[#a6a6a6] font-inter text-xs font-medium">
+                    Having trouble enabling notifications?
+                  </span>
+                  {showTroubleshooting ? (
+                    <ChevronUp className="w-4 h-4 text-[#a6a6a6]" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-[#a6a6a6]" />
+                  )}
+                </button>
+                {showTroubleshooting && (
+                  <div className="p-3 bg-[#24262b] border-t border-[#3a3a3a]">
+                    <p className="text-[#a6a6a6] font-inter text-xs mb-3">
+                      If enabling fails, browsers or extensions may block push
+                      services (like Google FCM). Try:
+                    </p>
+                    <ul className="space-y-2">
+                      <li className="flex items-start gap-2">
+                        <span className="text-[#6b7280] font-inter text-xs mt-0.5">
+                          •
+                        </span>
+                        <p className="text-[#a6a6a6] font-inter text-xs flex-1">
+                          Allow notifications for this site in your browser
+                          settings
+                        </p>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-[#6b7280] font-inter text-xs mt-0.5">
+                          •
+                        </span>
+                        <p className="text-[#a6a6a6] font-inter text-xs flex-1">
+                          Temporarily disable ad blockers, VPNs, or firewalls
+                          that may block{" "}
+                          <code className="text-[#6b7280]">
+                            fcm.googleapis.com
+                          </code>
+                        </p>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-[#6b7280] font-inter text-xs mt-0.5">
+                          •
+                        </span>
+                        <div className="flex-1">
+                          <p className="text-[#a6a6a6] font-inter text-xs">
+                            <strong className="text-[#9ca3af]">
+                              Brave Browser:
+                            </strong>{" "}
+                            Enable &quot;Use Google services for push
+                            messaging&quot; in Privacy &amp; security settings
+                          </p>
+                        </div>
+                      </li>
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
           )}
