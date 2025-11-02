@@ -1,10 +1,30 @@
 import { Body, Controller, Delete, Post, Req, UseGuards } from '@nestjs/common';
+import { IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { NotificationsService } from './notifications.service';
 
+class SubscriptionKeysDto {
+  @IsString()
+  @IsNotEmpty()
+  p256dh!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  auth!: string;
+}
+
 class SubscribeDto {
+  @IsString()
+  @IsNotEmpty()
   endpoint!: string;
-  keys!: { p256dh: string; auth: string };
+
+  @ValidateNested()
+  @Type(() => SubscriptionKeysDto)
+  keys!: SubscriptionKeysDto;
+
+  @IsOptional()
+  @IsString()
   userAgent?: string;
 }
 

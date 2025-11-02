@@ -1,18 +1,35 @@
 import { notificationsApi } from "@/lib/api/notifications";
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
+  // Remove any whitespace
+  const clean = base64String.trim();
+
+  // Convert base64url to standard base64
+  // Base64url uses - and _ instead of + and /
+  let base64 = clean.replace(/-/g, "+").replace(/_/g, "/");
+
+  // Add padding if needed (base64 requires length to be multiple of 4)
+  const padLength = (4 - (base64.length % 4)) % 4;
+  base64 = base64 + "=".repeat(padLength);
+
+  try {
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  } catch (err) {
+    throw new Error(
+      `Failed to decode VAPID public key. Make sure it's in base64url format. Error: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
-  return outputArray;
 }
 
 function getVapidPublicKey(): string {
-  return process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+  const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+  // Trim whitespace that might be in the env variable
+  return key.trim();
 }
 
 export async function isPushSupported(): Promise<boolean> {
@@ -30,17 +47,25 @@ export async function subscribeToPush(): Promise<PushSubscription | null> {
   }
 
   try {
-    // Ensure service worker is registered
-    if (
-      !navigator.serviceWorker.controller &&
-      !(await navigator.serviceWorker.getRegistration())
-    ) {
+    // Ensure service worker is registered and ready
+    // Wait for the service worker to be fully activated
+    const reg = await navigator.serviceWorker.ready;
+
+    // Verify the registration has an active service worker
+    if (!reg.active && !reg.installing && !reg.waiting) {
       throw new Error(
-        "Service worker is not registered. Please ensure PWA is properly installed."
+        "Service worker is not active. Please refresh the page and try again."
       );
     }
 
-    const reg = await navigator.serviceWorker.ready;
+    // Log registration info for debugging
+    console.log("Service worker registration:", {
+      scope: reg.scope,
+      active: !!reg.active,
+      installing: !!reg.installing,
+      waiting: !!reg.waiting,
+      updateViaCache: reg.updateViaCache,
+    });
 
     const existing = await reg.pushManager.getSubscription();
     if (existing) {
@@ -69,18 +94,56 @@ export async function subscribeToPush(): Promise<PushSubscription | null> {
       );
     }
 
+    // Validate key format (should be base64url, typically 87 characters)
+    if (publicKey.length !== 87) {
+      console.warn(
+        `VAPID public key length is ${publicKey.length}, expected 87 characters. This might still work if the key format is correct.`
+      );
+    }
+
+    // Check for invalid characters (base64url uses A-Z, a-z, 0-9, -, _)
+    if (!/^[A-Za-z0-9_-]+$/.test(publicKey)) {
+      throw new Error(
+        "VAPID public key contains invalid characters. It should only contain A-Z, a-z, 0-9, -, and _ characters (base64url format)."
+      );
+    }
+
     let sub: PushSubscription;
     try {
+      // Convert VAPID public key from base64url to Uint8Array
       const keyArray = urlBase64ToUint8Array(publicKey);
-      // Create a new Uint8Array with ArrayBuffer to ensure proper typing
-      const buffer = new ArrayBuffer(keyArray.length);
-      const view = new Uint8Array(buffer);
-      view.set(keyArray);
+
+      // Validate key length (VAPID public key should be 65 bytes)
+      if (keyArray.length !== 65) {
+        console.error("VAPID key validation failed:", {
+          encodedLength: publicKey.length,
+          decodedLength: keyArray.length,
+          expectedLength: 65,
+          keyPreview: publicKey.substring(0, 30) + "...",
+        });
+        throw new Error(
+          `Invalid VAPID public key length: ${keyArray.length} bytes (expected 65). The encoded key should be 87 characters. Please verify your NEXT_PUBLIC_VAPID_PUBLIC_KEY is correct.`
+        );
+      }
+
+      console.log("VAPID key conversion successful:", {
+        encodedLength: publicKey.length,
+        decodedLength: keyArray.length,
+        firstBytes: Array.from(keyArray.slice(0, 5)),
+      });
+
+      // Use the converted key array directly (TypeScript type assertion needed)
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: view,
+        applicationServerKey: keyArray as BufferSource,
       });
     } catch (err) {
+      console.error("Push subscription error details:", {
+        error: err,
+        publicKeyLength: publicKey.length,
+        publicKeyPreview: publicKey.substring(0, 20) + "...",
+      });
+
       if (err instanceof Error) {
         if (
           err.message.includes("permission") ||
@@ -90,6 +153,14 @@ export async function subscribeToPush(): Promise<PushSubscription | null> {
             "Notification permission denied. Please allow notifications in your browser settings."
           );
         }
+
+        // Provide more specific error messages
+        if (err.message.includes("push service error")) {
+          throw new Error(
+            `Failed to subscribe to push: Registration failed - push service error. This usually means the VAPID key is invalid. Please verify NEXT_PUBLIC_VAPID_PUBLIC_KEY is correct and matches your backend VAPID public key. Error: ${err.message}`
+          );
+        }
+
         throw new Error(`Failed to subscribe to push: ${err.message}`);
       }
       throw new Error("Failed to subscribe to push notifications");

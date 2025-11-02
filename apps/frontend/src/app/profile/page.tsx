@@ -406,6 +406,32 @@ export default function ProfilePage() {
                   </p>
                 </div>
               )}
+
+              {/* Help: Browser requirements for push services */}
+              <div className="p-3 bg-[#24262b] border border-[#3a3a3a] rounded-lg">
+                <p className="text-[#a6a6a6] font-inter text-xs">
+                  If enabling fails or does nothing, some browsers and
+                  extensions may block push services (e.g., Google FCM). Try:
+                </p>
+                <ul className="mt-2 list-disc pl-4 space-y-1">
+                  <li className="text-[#a6a6a6] font-inter text-xs">
+                    Allow notifications for this site in your browser settings.
+                  </li>
+                  <li className="text-[#a6a6a6] font-inter text-xs">
+                    In Brave: enable “Use Google services for push messaging”
+                    (Privacy & security) and allow notifications; reduce Shields
+                    for this site if needed.
+                  </li>
+                  <li className="text-[#a6a6a6] font-inter text-xs">
+                    Temporarily disable ad blockers/VPN/firewall that may block
+                    <code className="ml-1">fcm.googleapis.com</code> and reload.
+                  </li>
+                  <li className="text-[#a6a6a6] font-inter text-xs">
+                    Each browser/device needs its own subscription. Enabling in
+                    one does not auto-enable others.
+                  </li>
+                </ul>
+              </div>
             </div>
           )}
         </div>
