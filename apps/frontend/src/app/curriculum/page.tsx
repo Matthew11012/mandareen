@@ -478,17 +478,17 @@ export default function CurriculumUnitsPage() {
 
         <div className="flex items-start gap-3 relative z-10">
           <div className="flex-1 min-w-0 space-y-2">
-            <h3 className="text-lg font-inter font-semibold text-white group-hover:text-white/90 leading-tight">
+            <h3 className="font-inter font-semibold text-white group-hover:text-white/90 leading-tight">
               {(() => {
                 const match = unit.title.match(/^(\d+)\.?\s*(.*)$/);
                 if (match) {
                   const [, number, rest] = match;
                   return (
                     <>
-                      <span className="text-2xl font-bold text-white/90">
+                      <span className="sm:text-2xl text-lg font-bold text-white/90">
                         {number}{" "}
                       </span>
-                      <span>{rest}</span>
+                      <span className="sm:text-xl text-md">{rest}</span>
                     </>
                   );
                 }
@@ -545,7 +545,7 @@ export default function CurriculumUnitsPage() {
         <section className="grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-[#2e323a] p-5 shadow-md">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/15 border border-amber-500/30">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/15 border border-amber-500/30 shrink-0">
                 <Compass className="h-5 w-5 text-amber-400" />
               </div>
               <div>

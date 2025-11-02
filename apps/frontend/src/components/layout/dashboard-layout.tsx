@@ -13,11 +13,6 @@ interface DashboardLayoutProps {
   subtitle?: string;
 }
 
-const getInitialMobileState = (): boolean => {
-  if (typeof window === "undefined") return false;
-  return window.innerWidth < 768;
-};
-
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   children,
   title,
@@ -27,7 +22,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const pathname = usePathname();
   const prevPathnameRef = useRef<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [isMobile, setIsMobile] = useState(() => getInitialMobileState());
+  // Initialize as false to match SSR - will be updated after hydration
+  const [isMobile, setIsMobile] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [mounted, setMounted] = useState(false);
   const isInitialMountRef = useRef(true);
@@ -48,7 +44,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     }
   }, [pathname]);
 
-  // Handle responsive behavior
+  // Handle responsive behavior - runs after hydration to prevent SSR mismatch
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
@@ -59,6 +55,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       }
     };
 
+    // Initial detection after mount to match client state
     handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
@@ -107,6 +104,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         id="sidebar-nav"
         role="navigation"
         aria-label="Main navigation"
+        suppressHydrationWarning
         className={cn(
           "z-50",
           mounted && "transition-all duration-300 ease-in-out",
@@ -122,7 +120,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         }}
       >
         <Sidebar isCollapsed={isMobile ? false : sidebarCollapsed} />
-        {!isMobile && (
+        {!isMobile && mounted && (
           <button
             onClick={toggleSidebar}
             aria-label={
