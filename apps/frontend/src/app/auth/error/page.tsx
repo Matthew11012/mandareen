@@ -18,7 +18,7 @@ export default function AuthErrorPage() {
   // Auto-redirect to login after 10 seconds
   useEffect(() => {
     const timer = setTimeout(() => {
-      router.push('/auth/login');
+      router.push('/login');
     }, 10000);
 
     return () => clearTimeout(timer);
@@ -51,13 +51,13 @@ export default function AuthErrorPage() {
 
         {/* Action Buttons */}
         <div className="space-y-3 pt-4">
-          <Link href="/auth/login">
+          <Link href="/login">
             <Button variant="primary" size="full">
               Try Again
             </Button>
           </Link>
           
-          <Link href="/auth/signup">
+          <Link href="/signup">
             <Button variant="link" size="sm">
               Create a New Account
             </Button>

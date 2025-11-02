@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   Home,
@@ -13,8 +14,6 @@ import {
   TrendingUp,
   User,
   Settings,
-  ChevronLeft,
-  ChevronRight,
   Sparkles,
   GraduationCap,
 } from "lucide-react";
@@ -39,7 +38,6 @@ const ICONS = {
 
 interface SidebarProps {
   isCollapsed: boolean;
-  onToggle: () => void;
 }
 
 interface NavItemProps {
@@ -131,7 +129,7 @@ const NavItem: React.FC<NavItemProps> = ({
   );
 };
 
-export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   const pathname = usePathname();
   const [dueCount, setDueCount] = useState<number>(0);
 
@@ -153,7 +151,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
   return (
     <aside
       className={cn(
-        "flex flex-col h-screen bg-[#1a1d23] border-r border-[#2e323a] transition-all duration-300 ease-in-out relative",
+        "flex flex-col h-screen bg-[#1a1d23] border-r border-[#2e323a] transition-all duration-300 ease-in-out relative overflow-x-hidden",
         isCollapsed ? "w-16" : "w-64"
       )}
     >
@@ -161,9 +159,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
       <div className="flex items-center justify-between p-4 border-b border-[#2e323a]">
         {!isCollapsed && (
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-[#4040f2] to-[#6366f1] rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">普</span>
-            </div>
+            <Image
+              src="/icons/logo.svg"
+              alt="Mandareen logo"
+              width={32}
+              height={32}
+              className="rounded-lg"
+            />
             <h1 className="font-inter font-bold text-xl text-white">
               Mandareen
             </h1>
@@ -171,26 +173,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
         )}
 
         {isCollapsed && (
-          <div className="w-8 h-8 bg-gradient-to-br from-[#4040f2] to-[#6366f1] rounded-lg flex items-center justify-center mx-auto">
-            <span className="text-white font-bold text-lg">普</span>
-          </div>
+          <Image
+            src="/icons/logo.svg"
+            alt="Mandareen logo"
+            width={32}
+            height={32}
+            className="rounded-lg mx-auto"
+          />
         )}
       </div>
 
       {/* Toggle Button */}
-      <button
-        onClick={onToggle}
-        className="absolute -right-3 top-20 w-6 h-6 bg-[#2e323a] border border-[#404040] rounded-full flex items-center justify-center hover:bg-[#3a3f47] transition-colors duration-200 z-10 cursor-pointer hidden md:flex "
-      >
-        {isCollapsed ? (
-          <ChevronRight className="w-3 h-3 text-[#a6a6a6]" />
-        ) : (
-          <ChevronLeft className="w-3 h-3 text-[#a6a6a6]" />
-        )}
-      </button>
+      {/* Button removed and rendered outside Sidebar inside dashboard-layout.tsx */}
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-6">
         {NAVIGATION_DATA.map((section) => (
           <div key={section.id} className="space-y-2">
             {/* Section Title */}

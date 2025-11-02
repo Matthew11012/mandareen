@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { Sidebar } from "./sidebar";
-import { Menu, LogOut, User } from "lucide-react";
+import { Menu, LogOut, User, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DashboardLayoutProps {
@@ -63,7 +63,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       {/* Mobile Overlay */}
       {isMobile && showMobileMenu && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
           onClick={handleOverlayClick}
         />
       )}
@@ -79,11 +79,25 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               )
             : "relative"
         )}
+        style={{
+          width: isMobile ? undefined : sidebarCollapsed ? "4rem" : "16rem",
+        }}
       >
-        <Sidebar
-          isCollapsed={isMobile ? false : sidebarCollapsed}
-          onToggle={toggleSidebar}
-        />
+        <Sidebar isCollapsed={isMobile ? false : sidebarCollapsed} />
+        {/* Moved toggle button here (absolute, on desktop only) */}
+        {!isMobile && (
+          <button
+            onClick={toggleSidebar}
+            className="absolute -right-3 top-20 w-6 h-6 bg-[#2e323a] border border-[#404040] rounded-full flex items-center justify-center hover:bg-[#3a3f47] transition-colors duration-200 z-50 cursor-pointer hidden md:flex"
+            style={{ zIndex: 9999 }}
+          >
+            {sidebarCollapsed ? (
+              <ChevronRight className="w-3 h-3 text-[#a6a6a6]" />
+            ) : (
+              <ChevronLeft className="w-3 h-3 text-[#a6a6a6]" />
+            )}
+          </button>
+        )}
       </div>
 
       {/* Main Content */}

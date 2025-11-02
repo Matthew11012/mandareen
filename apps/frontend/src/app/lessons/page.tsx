@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useLessonsGenerationStore } from "@/lib/stores/lessons-generation-store";
 import { useLessonGenerationStream } from "@/lib/hooks/use-lesson-generation-stream";
 import { LayoutGroup } from "framer-motion";
+import { notifyLessonReady } from "@/lib/notifications/notify-lesson-ready";
 import { ProgressBanner } from "@/components/lessons/ProgressBanner";
 import { LessonCard } from "@/components/lessons/LessonCard";
 import { Carousel } from "@/components/lessons/Carousel";
@@ -346,14 +347,80 @@ export default function LessonsPage() {
 
   const { start: startStream, attach: attachStream } =
     useLessonGenerationStream();
+  const genStore = useLessonsGenerationStore();
+  const [progressOpen, setProgressOpen] = useState(false);
+  const progressStep = genStore.progressStep as string | null;
+  const completedSteps = genStore.completedSteps as Record<string, boolean>;
+  const progressStepsOrder = [
+    "openai_generate_dialogue",
+    "segment_dialogue",
+    "rag_retrieve_context",
+    "openai_generate_grammar_notes",
+    "segment_grammar_notes_and_tips",
+    "persist_lesson",
+  ];
+
+  // Track notified lesson IDs to prevent duplicates
+  const notifiedLessonIdsRef = useRef<Set<number>>(new Set());
+
+  const handleLessonReady = useCallback(
+    async (meta: {
+      id: number;
+      type: "story" | "dialogue";
+      topic?: string;
+    }) => {
+      if (!meta.id) return;
+
+      // Check if we've already notified for this lesson ID
+      if (notifiedLessonIdsRef.current.has(meta.id)) {
+        return;
+      }
+
+      // Mark as notified immediately to prevent race conditions
+      notifiedLessonIdsRef.current.add(meta.id);
+
+      const effectiveTopic =
+        meta.topic ??
+        genStore.params?.topic ??
+        genStore.lastCompletedLessonTopic ??
+        null;
+
+      let resolvedTitle: string | null = genStore.lastCompletedLessonTitle;
+
+      if (!resolvedTitle || genStore.lastCompletedLessonId !== meta.id) {
+        try {
+          const detail = await lessonsApi.getById(meta.id);
+          resolvedTitle = detail.title ?? null;
+        } catch (error) {
+          console.error("Failed to fetch lesson details:", error);
+        }
+      }
+
+      notifyLessonReady({
+        id: meta.id,
+        title: resolvedTitle,
+        topic: effectiveTopic ?? undefined,
+        type: meta.type,
+        onOpen: () => router.push(`/lessons/${meta.id}`),
+      });
+
+      genStore.setLastCompletedLesson({
+        id: meta.id,
+        title: resolvedTitle,
+        topic: effectiveTopic,
+      });
+    },
+    [genStore, router]
+  );
 
   const handleGenerate = async () => {
     setError(null);
     setGenerating(true);
     setProgressOpen(true);
+    const requestTopic = topic.trim() || undefined;
     startStream({
       level: genLevel ?? null,
-      topic: topic.trim() || undefined,
+      topic: requestTopic,
       readTimeMinutes: 10,
       type: "story",
       timeframe,
@@ -362,18 +429,23 @@ export default function LessonsPage() {
       await attachStream({
         params: {
           level: genLevel ?? null,
-          topic: topic.trim() || undefined,
+          topic: requestTopic,
           readTimeMinutes: 10,
           type: "story",
           timeframe,
         },
-        onComplete: async (id?: number) => {
+        onComplete: async ({ id, topic: completedTopic }) => {
           await load();
           setProgressOpen(false);
-          if (id) {
-            genStore.setLessonId(null);
-            genStore.finish();
-            router.push(`/lessons/${id}`);
+          setGenerating(false);
+          genStore.setLessonId(null);
+          genStore.finish();
+          if (typeof id === "number") {
+            await handleLessonReady({
+              id,
+              type: "story",
+              topic: completedTopic ?? requestTopic,
+            });
           }
         },
         onError: async () => {
@@ -392,10 +464,16 @@ export default function LessonsPage() {
                   new Date(a.createdAt).getTime()
               );
             if (recentMine.length > 0) {
+              const recentId = recentMine[0].id;
               setProgressOpen(false);
               setGenerating(false);
+              genStore.setLessonId(null);
               genStore.finish();
-              router.push(`/lessons/${recentMine[0].id}`);
+              await handleLessonReady({
+                id: recentId,
+                type: "story",
+                topic: genStore.params?.topic ?? requestTopic,
+              });
               return;
             }
           } catch {}
@@ -422,26 +500,14 @@ export default function LessonsPage() {
     }
   };
 
-  const genStore = useLessonsGenerationStore();
-  const [progressOpen, setProgressOpen] = useState(false);
-  const progressStep = genStore.progressStep as string | null;
-  const completedSteps = genStore.completedSteps as Record<string, boolean>;
-  const progressStepsOrder = [
-    "openai_generate_dialogue",
-    "segment_dialogue",
-    "rag_retrieve_context",
-    "openai_generate_grammar_notes",
-    "segment_grammar_notes_and_tips",
-    "persist_lesson",
-  ];
-
   const handleGenerateDialogue = async () => {
     setError(null);
     setGenerating(true);
     setProgressOpen(true);
+    const requestTopic = topic.trim() || undefined;
     startStream({
       level: genLevel ?? null,
-      topic: topic.trim() || undefined,
+      topic: requestTopic,
       readTimeMinutes: 8,
       type: "dialogue",
       timeframe,
@@ -450,20 +516,24 @@ export default function LessonsPage() {
       await attachStream({
         params: {
           level: genLevel ?? null,
-          topic: topic.trim() || undefined,
+          topic: requestTopic,
           readTimeMinutes: 8,
           type: "dialogue",
           timeframe,
         },
-        onComplete: async (id?: number) => {
+        onComplete: async ({ id, topic: completedTopic }) => {
           await load();
           setProgressOpen(false);
-          if (id) {
-            genStore.setLessonId(null);
-            router.push(`/lessons/${id}`);
-          }
           setGenerating(false);
+          genStore.setLessonId(null);
           genStore.finish();
+          if (typeof id === "number") {
+            await handleLessonReady({
+              id,
+              type: "dialogue",
+              topic: completedTopic ?? requestTopic,
+            });
+          }
         },
         onError: async () => {
           try {
@@ -481,10 +551,16 @@ export default function LessonsPage() {
                   new Date(a.createdAt).getTime()
               );
             if (recentMine.length > 0) {
+              const recentId = recentMine[0].id;
               setProgressOpen(false);
               setGenerating(false);
+              genStore.setLessonId(null);
               genStore.finish();
-              router.push(`/lessons/${recentMine[0].id}`);
+              await handleLessonReady({
+                id: recentId,
+                type: "dialogue",
+                topic: genStore.params?.topic ?? requestTopic,
+              });
               return;
             }
           } catch {}
@@ -542,14 +618,23 @@ export default function LessonsPage() {
             );
           if (candidates.length > 0) {
             const id = candidates[0].id;
-            genStore.setLessonId(null);
-            genStore.finish();
-            setProgressOpen(false);
-            if (interval) {
-              clearInterval(interval);
-              interval = null;
+            // Skip if we've already notified for this lesson
+            if (!notifiedLessonIdsRef.current.has(id)) {
+              genStore.setLessonId(null);
+              genStore.finish();
+              setProgressOpen(false);
+              if (interval) {
+                clearInterval(interval);
+                interval = null;
+              }
+              setGenerating(false);
+              await load();
+              await handleLessonReady({
+                id,
+                type,
+                topic: params.topic ?? undefined,
+              });
             }
-            router.push(`/lessons/${id}`);
           }
         } catch {}
       };
@@ -560,7 +645,7 @@ export default function LessonsPage() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [genStore, router]);
+  }, [genStore, handleLessonReady, load]);
 
   // rAF-throttled scroll handlers to reduce layout work
   const myStoriesRaf = useRef<number | null>(null);

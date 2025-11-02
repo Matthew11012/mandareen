@@ -7,6 +7,7 @@ import { OpenAIModule } from '../openai/openai.module';
 import { VocabularyModule } from '../vocabulary/vocabulary.module';
 import { JwtModule } from '@nestjs/jwt';
 import { RagModule } from '../rag/rag.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { RagModule } from '../rag/rag.module';
     OpenAIModule,
     VocabularyModule,
     RagModule,
+    NotificationsModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: { expiresIn: '1d' },
