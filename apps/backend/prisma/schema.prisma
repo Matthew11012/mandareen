@@ -129,6 +129,7 @@ model Flashcard {
 
   @@index([userId, nextReview])
   @@index([userId, createdAt])
+  @@index([userId, easiness])
 }
 
 model Review {
@@ -137,6 +138,8 @@ model Review {
   reviewedAt  DateTime  @default(now())
   quality     Int
   flashcard   Flashcard @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
+
+  @@index([flashcardId])
 }
 
 model FlashcardSentence {
