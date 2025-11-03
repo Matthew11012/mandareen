@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { toToneMarks } from '../utils/pinyin';
 import { PrismaService } from '../prisma/prisma.service';
 import { OpenAIService } from '../openai/openai.service';
@@ -94,6 +94,22 @@ export class ConversationsService {
         },
       },
     });
+  }
+
+  async deleteUserConversation(
+    userId: number,
+    conversationId: number,
+  ): Promise<boolean> {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, userId },
+    });
+    if (!conv) {
+      throw new NotFoundException();
+    }
+    await this.prisma.conversation.delete({
+      where: { id: conversationId },
+    });
+    return true;
   }
 
   async sendUserMessage({
