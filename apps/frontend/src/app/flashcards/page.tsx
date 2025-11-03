@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { AnimatePresence, motion } from "framer-motion";
 import { useReducedMotionSafe } from "@/lib/hooks/use-reduced-motion-safe";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 function FlashcardsPageContent() {
@@ -50,6 +50,8 @@ function FlashcardsPageContent() {
   >();
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const router = useRouter();
+  const pathname = usePathname();
 
   // Preview cards for dashboard
   const [previewCards, setPreviewCards] = useState<FlashcardListItem[]>([]);
@@ -72,8 +74,8 @@ function FlashcardsPageContent() {
   };
 
   // Load preview cards (recent 3 flashcards for dashboard)
-  const loadPreviewCards = useCallback(async () => {
-    setPreviewCardsLoading(true);
+  const loadPreviewCards = useCallback(async (showLoading: boolean = true) => {
+    if (showLoading) setPreviewCardsLoading(true);
     try {
       const result = await flashcardsApi.listAll(3);
       setPreviewCards(result.items);
@@ -81,7 +83,7 @@ function FlashcardsPageContent() {
       // Silent fail for preview - not critical
       setPreviewCards([]);
     } finally {
-      setPreviewCardsLoading(false);
+      if (showLoading) setPreviewCardsLoading(false);
     }
   }, []);
 
@@ -129,13 +131,13 @@ function FlashcardsPageContent() {
   // Avoid hydration mismatches from client-only chart libs
   useEffect(() => setMounted(true), []);
 
-  const refreshSummary = useCallback(async () => {
+  const refreshSummary = useCallback(async (showLoading: boolean = true) => {
     try {
-      setSummaryLoading(true);
+      if (showLoading) setSummaryLoading(true);
       const s = await flashcardsApi.summary();
       setSummary(s);
     } finally {
-      setSummaryLoading(false);
+      if (showLoading) setSummaryLoading(false);
     }
   }, []);
 
@@ -221,13 +223,17 @@ function FlashcardsPageContent() {
   const toggleDrawer = () => {
     const newOpen = !drawerOpen;
     setDrawerOpen(newOpen);
-    const url = new URL(window.location.href);
+    const params = new URLSearchParams(searchParams.toString());
     if (newOpen) {
-      url.searchParams.set("cards", "1");
+      params.set("cards", "1");
     } else {
-      url.searchParams.delete("cards");
+      params.delete("cards");
+      // Clear selection state when closing to avoid sticky modes affecting UX
+      setMultiSelectMode(false);
+      setSelectedIds(new Set());
     }
-    window.history.replaceState({}, "", url.toString());
+    const href = `${pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+    router.replace(href, { scroll: false });
   };
 
   const loadAllCards = useCallback(
@@ -281,6 +287,11 @@ function FlashcardsPageContent() {
         return newSet;
       });
 
+      // Refresh summary and dashboard-derived views so counts and CTAs are accurate
+      await refreshSummary(false);
+      void loadPreviewCards(false);
+      void loadStatsCards();
+
       toast.success("Flashcard deleted", {
         action: {
           label: "Undo",
@@ -289,6 +300,9 @@ function FlashcardsPageContent() {
               await flashcardsApi.create({ vocabId });
               // Refresh due list to potentially add back if due
               await load();
+              await refreshSummary(false);
+              void loadPreviewCards(false);
+              void loadStatsCards();
               toast.success("Flashcard restored");
             } catch {
               toast.error("Failed to restore flashcard");
@@ -317,6 +331,11 @@ function FlashcardsPageContent() {
       setStatsCards((prev) => prev.filter((c) => !selectedIds.has(c.id)));
       setSelectedIds(new Set());
 
+      // Keep dashboard and summary in sync after bulk deletion
+      await refreshSummary(false);
+      void loadPreviewCards(false);
+      void loadStatsCards();
+
       toast.success(`Deleted ${result.deleted} flashcards`, {
         action: {
           label: "Undo",
@@ -327,6 +346,9 @@ function FlashcardsPageContent() {
                 vocabIds.map((vocabId) => flashcardsApi.create({ vocabId }))
               );
               await load(); // Refresh due list
+              await refreshSummary();
+              void loadPreviewCards();
+              void loadStatsCards();
               toast.success("Flashcards restored");
             } catch {
               toast.error("Failed to restore flashcards");
@@ -1604,18 +1626,29 @@ function FlashcardsPageContent() {
           <>
             {/* Backdrop */}
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0, pointerEvents: "none" }}
+              animate={{ opacity: 1, pointerEvents: "auto" }}
+              exit={{ opacity: 0, transitionEnd: { pointerEvents: "none" } }}
               className="fixed inset-0 bg-black/50 z-40"
               onClick={toggleDrawer}
             />
 
             {/* Drawer */}
             <motion.div
-              initial={prefersReducedMotion ? false : { x: "100%" }}
-              animate={prefersReducedMotion ? {} : { x: 0 }}
-              exit={prefersReducedMotion ? {} : { x: "100%" }}
+              initial={
+                prefersReducedMotion
+                  ? { pointerEvents: "none" }
+                  : { x: "100%", pointerEvents: "none" }
+              }
+              animate={{
+                ...(prefersReducedMotion ? {} : { x: 0 }),
+                pointerEvents: "auto",
+              }}
+              exit={
+                prefersReducedMotion
+                  ? { transitionEnd: { pointerEvents: "none" } }
+                  : { x: "100%", transitionEnd: { pointerEvents: "none" } }
+              }
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
               className="fixed inset-y-0 right-0 z-50 w-full sm:w-96 bg-[#1a1d23]/95 backdrop-blur border-l border-[#2e323a] flex flex-col"
               onClick={(e) => e.stopPropagation()}
@@ -1694,7 +1727,36 @@ function FlashcardsPageContent() {
                           {group.cards.map((card) => (
                             <motion.div
                               key={card.id}
-                              className="flex items-center gap-3 p-3 bg-[#2e323a] rounded-lg border border-[#404040] hover:border-[#4040f2] transition-colors"
+                              className={`flex items-center gap-3 p-3 bg-[#2e323a] rounded-lg border border-[#404040] hover:border-[#4040f2] transition-colors${multiSelectMode ? " cursor-pointer" : ""}`}
+                              onClick={(e) => {
+                                if (!multiSelectMode) return;
+                                const target = e.target as HTMLElement;
+                                if (target.closest('input[type="checkbox"]'))
+                                  return;
+                                const isSelected = selectedIds.has(card.id);
+                                const newSet = new Set(selectedIds);
+                                if (isSelected) newSet.delete(card.id);
+                                else newSet.add(card.id);
+                                setSelectedIds(newSet);
+                              }}
+                              role={multiSelectMode ? "checkbox" : undefined}
+                              aria-checked={
+                                multiSelectMode
+                                  ? selectedIds.has(card.id)
+                                  : undefined
+                              }
+                              tabIndex={multiSelectMode ? 0 : -1}
+                              onKeyDown={(e) => {
+                                if (!multiSelectMode) return;
+                                if (e.key === " " || e.key === "Enter") {
+                                  e.preventDefault();
+                                  const isSelected = selectedIds.has(card.id);
+                                  const newSet = new Set(selectedIds);
+                                  if (isSelected) newSet.delete(card.id);
+                                  else newSet.add(card.id);
+                                  setSelectedIds(newSet);
+                                }
+                              }}
                               layout
                               transition={{
                                 type: "spring",
@@ -1736,6 +1798,7 @@ function FlashcardsPageContent() {
                                           }
                                           setSelectedIds(newSet);
                                         }}
+                                        onClick={(e) => e.stopPropagation()}
                                         className="w-4 h-4 text-[#4040f2] bg-[#2e323a] border-[#404040] rounded focus:ring-[#6b6bff] focus:ring-2 cursor-pointer"
                                         initial={{ opacity: 0, x: -20 }}
                                         animate={{ opacity: 1, x: 0 }}
@@ -1838,7 +1901,7 @@ function FlashcardsPageContent() {
                     </span>
                     <button
                       onClick={deleteSelected}
-                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 cursor-pointer"
                     >
                       Delete selected
                     </button>
