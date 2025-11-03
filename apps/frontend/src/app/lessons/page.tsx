@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardLayout } from "@/components/layout";
-import { useRequireAuth } from "@/lib/hooks/use-auth";
+import { useAuth, useRequireAuth } from "@/lib/hooks/use-auth";
 import { lessonsApi, type LessonListItem } from "@/lib/api/lessons";
 import { RefreshCw } from "lucide-react";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
@@ -23,8 +23,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// SessionStorage persistence (no URL params)
+const LS_KEYS = {
+  mode: "mandareen.lessons.mode.v1",
+  hsk: "mandareen.lessons.hsk.v1",
+  time: "mandareen.lessons.time.v1",
+  tags: "mandareen.lessons.tags.v1",
+} as const;
+
 export default function LessonsPage() {
   const { isLoading: authLoading } = useRequireAuth();
+  const { user } = useAuth();
   const router = useRouter();
   const [allStories, setAllStories] = useState<LessonListItem[]>([]);
   const [allDialogues, setAllDialogues] = useState<LessonListItem[]>([]);
@@ -91,13 +100,16 @@ export default function LessonsPage() {
     content: Array<{ tag: string; count: number }>;
   } | null>(null);
 
-  // LocalStorage persistence (no URL params)
-  const LS_KEYS = {
-    mode: "mandareen.lessons.mode.v1",
-    hsk: "mandareen.lessons.hsk.v1",
-    time: "mandareen.lessons.time.v1",
-    tags: "mandareen.lessons.tags.v1",
-  } as const;
+  // Clear filters when user changes (prevents cross-account leakage in same tab)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      sessionStorage.removeItem(LS_KEYS.mode);
+      sessionStorage.removeItem(LS_KEYS.hsk);
+      sessionStorage.removeItem(LS_KEYS.time);
+      sessionStorage.removeItem(LS_KEYS.tags);
+    } catch {}
+  }, [user?.id]);
 
   type TimeframeKey = typeof timeframe;
   const isValidTimeframe = (v: string | null): v is TimeframeKey =>
@@ -107,23 +119,25 @@ export default function LessonsPage() {
     v === "pre_modern" ||
     v === "futuristic";
 
-  // Hydrate once on mount
+  // Hydrate on first load and whenever the authenticated user changes
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const m = localStorage.getItem(LS_KEYS.mode);
+      // Hydrate from sessionStorage
+      const m = sessionStorage.getItem(LS_KEYS.mode);
       if (m === "story" || m === "dialogue") setOutputMode(m);
-      const h = localStorage.getItem(LS_KEYS.hsk);
+
+      const h = sessionStorage.getItem(LS_KEYS.hsk);
       if (h === "auto" || h === null) {
         // keep null (auto)
       } else if (!Number.isNaN(parseInt(h))) {
         setGenLevel(parseInt(h));
       }
-      const t = localStorage.getItem(LS_KEYS.time);
+
+      const t = sessionStorage.getItem(LS_KEYS.time);
       if (isValidTimeframe(t)) setTimeframe(t);
 
-      // Load tag filtering state
-      const tags = localStorage.getItem(LS_KEYS.tags);
+      const tags = sessionStorage.getItem(LS_KEYS.tags);
       if (tags) {
         try {
           const parsed = JSON.parse(tags);
@@ -132,25 +146,23 @@ export default function LessonsPage() {
       }
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id]);
 
-  // Debounced save on change
+  // Debounced save on change (sessionStorage)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const id = window.setTimeout(() => {
       try {
-        localStorage.setItem(LS_KEYS.mode, outputMode);
-        localStorage.setItem(
+        sessionStorage.setItem(LS_KEYS.mode, outputMode);
+        sessionStorage.setItem(
           LS_KEYS.hsk,
           genLevel == null ? "auto" : String(genLevel)
         );
-        localStorage.setItem(LS_KEYS.time, timeframe);
-        localStorage.setItem(LS_KEYS.tags, JSON.stringify(selectedTags));
+        sessionStorage.setItem(LS_KEYS.time, timeframe);
+        sessionStorage.setItem(LS_KEYS.tags, JSON.stringify(selectedTags));
       } catch {}
     }, 250);
     return () => window.clearTimeout(id);
-    // we intentionally omit LS_KEYS refs to keep stable keys
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outputMode, genLevel, timeframe, selectedTags]);
 
   // Per-section finished status filters
