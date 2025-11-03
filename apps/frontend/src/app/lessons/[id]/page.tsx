@@ -94,6 +94,14 @@ export default function LessonViewerPage() {
   // Scroll detection for header auto-hide
   useEffect(() => {
     const handleScroll = () => {
+      // Only enable auto-hide on mobile; keep header always visible on desktop
+      const isDesktop =
+        typeof window !== "undefined" ? window.innerWidth >= 640 : false;
+      if (isDesktop) {
+        if (!isHeaderVisible) setIsHeaderVisible(true);
+        setLastScrollY(0);
+        return;
+      }
       // The scroll is happening on the main element, not window
       const mainElement = document.querySelector("main");
       const currentScrollY = mainElement?.scrollTop || 0;
@@ -167,6 +175,17 @@ export default function LessonViewerPage() {
     isHeaderVisible,
     isContentChanging,
   ]);
+
+  // Ensure header is visible on desktop when resizing between breakpoints
+  useEffect(() => {
+    const onResize = () => {
+      if (typeof window !== "undefined" && window.innerWidth >= 640) {
+        setIsHeaderVisible(true);
+      }
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // Tap to show header when hidden
   const handleTapToShowHeader = () => {
@@ -498,7 +517,15 @@ export default function LessonViewerPage() {
     setSelectedWords((prev) => {
       const next = { ...prev };
       if (next[key]) delete next[key];
-      else next[key] = { text, pinyin, paraIndex, tokenIndex, contextZh, contextEn };
+      else
+        next[key] = {
+          text,
+          pinyin,
+          paraIndex,
+          tokenIndex,
+          contextZh,
+          contextEn,
+        };
       return next;
     });
   };
@@ -955,7 +982,7 @@ export default function LessonViewerPage() {
       title={data?.title || `Lesson #${id}`}
       subtitle={`HSK ${data?.level ?? ""}`}
     >
-      <div className="p-4 sm:p-6 pt-0 space-y-6">
+      <div className="p-4 sm:p-6 sm:pt-0 pt-0 space-y-6">
         <motion.div
           className="flex flex-wrap items-center justify-between gap-2 sticky top-0 z-20 -mx-6 px-6 py-2 bg-[#222831]/80 backdrop-blur border-b border-[#30333a]"
           role="toolbar"
@@ -2624,9 +2651,9 @@ export default function LessonViewerPage() {
                     onClick={async () => {
                       // Create context from the notes popup data
                       const ctx = {
-                      hanzi: notesPopup.contextZh || notesPopup.word,
-                      pinyin: undefined,
-                      translation: notesPopup.contextEn,
+                        hanzi: notesPopup.contextZh || notesPopup.word,
+                        pinyin: undefined,
+                        translation: notesPopup.contextEn,
                       };
 
                       // Derive vocab metadata from popup
@@ -2718,9 +2745,9 @@ export default function LessonViewerPage() {
                         onClick={async () => {
                           // Create context from the notes popup data
                           const ctx = {
-                      hanzi: notesPopup.contextZh || notesPopup.word,
-                      pinyin: undefined,
-                      translation: notesPopup.contextEn,
+                            hanzi: notesPopup.contextZh || notesPopup.word,
+                            pinyin: undefined,
+                            translation: notesPopup.contextEn,
                           };
 
                           // Derive vocab metadata from popup
