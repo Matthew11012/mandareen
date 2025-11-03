@@ -1186,7 +1186,7 @@ export default function LessonViewerPage() {
           data?.title) && (
           <div className="bg-[#2e323a] rounded-lg p-4 border border-[#404040]">
             {data?.title ? (
-              <div className="text-white font-inter text-base mb-1">
+              <div className="text-white font-inter text-xl mb-1">
                 {data.title}
               </div>
             ) : null}
@@ -1215,10 +1215,10 @@ export default function LessonViewerPage() {
         ) : (
           <div
             ref={contentRef}
-            className="bg-[#2e323a] rounded-xl sm:p-6 border border-[#404040] relative"
+            className="sm:bg-[#2e323a] rounded-xl sm:p-6 sm:border sm:border-[#404040] relative"
           >
             {story && (
-              <div className="space-y-6 p-2">
+              <div className="space-y-6 pr-0 py-2 ">
                 {segmentedParagraphs.map((segChunk, ci) => (
                   <div key={ci} className="space-y-2">
                     <div className="flex items-center gap-2 justify-end">
@@ -1275,7 +1275,7 @@ export default function LessonViewerPage() {
                         </svg>
                       </button>
                     </div>
-                    <div className="leading-8 text-white font-inter sm:text-[18px] text-[16px]">
+                    <div className="leading-10 font-thin sm:font-light text-white font-inter sm:text-[18px] text-xl">
                       {segChunk.map((seg: LessonToken, idx) => {
                         const isWord = Boolean(seg.isWord);
                         return (
@@ -1285,7 +1285,7 @@ export default function LessonViewerPage() {
                           >
                             {isChunkPinyinOn(ci) ? (
                               isWord && seg.pinyin ? (
-                                <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
+                                <span className="text-xs text-[#9aa6ff] font-normal leading-none">
                                   {seg.pinyin}
                                 </span>
                               ) : (
@@ -1295,7 +1295,7 @@ export default function LessonViewerPage() {
                               )
                             ) : null}
                             <span
-                              className={`px-[1px] rounded ${isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
+                              className={`flex items-start px-[1px] rounded ${isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
                               title={seg.definition || ""}
                               onClick={(
                                 e: ReactMouseEvent<HTMLSpanElement>
@@ -1443,7 +1443,7 @@ export default function LessonViewerPage() {
                       </div>
                     </div>
                     <Separator className="mb-1 border-1 opacity-50 sm:hidden" />
-                    <div className="leading-8 text-white font-inter text-[18px]">
+                    <div className="leading-10 font-thin sm:font-light text-white font-inter text-[18px]">
                       {(turn.segments ?? []).map((seg: LessonToken, idx) => {
                         const isWord = Boolean(seg.isWord);
                         return (
@@ -1453,7 +1453,7 @@ export default function LessonViewerPage() {
                           >
                             {isTurnPinyinOn(ti) ? (
                               isWord && seg.pinyin ? (
-                                <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
+                                <span className="text-xs font-normal text-[#9aa6ff] leading-none">
                                   {seg.pinyin}
                                 </span>
                               ) : (
