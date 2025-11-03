@@ -52,7 +52,14 @@ export default function LessonViewerPage() {
   const [selectedWords, setSelectedWords] = useState<
     Record<
       string,
-      { text: string; pinyin?: string; paraIndex?: number; tokenIndex?: number }
+      {
+        text: string;
+        pinyin?: string;
+        paraIndex?: number;
+        tokenIndex?: number;
+        contextZh?: string; // for notes selections
+        contextEn?: string; // for notes selections
+      }
     >
   >({});
   const [finishLoading, setFinishLoading] = useState(false);
@@ -484,12 +491,14 @@ export default function LessonViewerPage() {
     text: string,
     pinyin: string | undefined,
     paraIndex: number,
-    tokenIndex: number
+    tokenIndex: number,
+    contextZh?: string,
+    contextEn?: string
   ) => {
     setSelectedWords((prev) => {
       const next = { ...prev };
       if (next[key]) delete next[key];
-      else next[key] = { text, pinyin, paraIndex, tokenIndex };
+      else next[key] = { text, pinyin, paraIndex, tokenIndex, contextZh, contextEn };
       return next;
     });
   };
@@ -527,11 +536,11 @@ export default function LessonViewerPage() {
 
         // Handle notes words (paraIndex = -1)
         if (w.paraIndex === -1) {
-          // For notes words, use the word itself as context
+          // For notes words, use the full note context when available
           sentenceCtx = {
-            hanzi: w.text,
-            pinyin: w.pinyin,
-            translation: undefined,
+            hanzi: w.contextZh ?? w.text,
+            pinyin: undefined,
+            translation: w.contextEn,
           };
         } else if (
           typeof w.paraIndex === "number" &&
@@ -742,6 +751,8 @@ export default function LessonViewerPage() {
     definition?: string;
     definitions?: string[];
     hskLevel?: number;
+    contextZh?: string;
+    contextEn?: string;
   }>({ open: false, x: 0, y: 0, word: "" });
 
   useEffect(() => {
@@ -884,7 +895,9 @@ export default function LessonViewerPage() {
                       seg.text,
                       seg.pinyin,
                       -1, // Use -1 to indicate notes (not main content)
-                      idx
+                      idx,
+                      fallbackZh,
+                      fallbackEn
                     );
                     return;
                   }
@@ -909,6 +922,8 @@ export default function LessonViewerPage() {
                     definitions: seg.definitions,
                     hskLevel: (seg as unknown as { hskLevel?: number })
                       .hskLevel,
+                    contextZh: fallbackZh,
+                    contextEn: fallbackEn,
                   });
                 }}
               >
@@ -2609,14 +2624,9 @@ export default function LessonViewerPage() {
                     onClick={async () => {
                       // Create context from the notes popup data
                       const ctx = {
-                        hanzi: notesPopup.word,
-                        pinyin: notesPopup.pinyin,
-                        translation:
-                          notesPopup.definition ||
-                          (Array.isArray(notesPopup.definitions) &&
-                          notesPopup.definitions.length > 0
-                            ? notesPopup.definitions[0]
-                            : undefined),
+                      hanzi: notesPopup.contextZh || notesPopup.word,
+                      pinyin: undefined,
+                      translation: notesPopup.contextEn,
                       };
 
                       // Derive vocab metadata from popup
@@ -2708,14 +2718,9 @@ export default function LessonViewerPage() {
                         onClick={async () => {
                           // Create context from the notes popup data
                           const ctx = {
-                            hanzi: notesPopup.word,
-                            pinyin: notesPopup.pinyin,
-                            translation:
-                              notesPopup.definition ||
-                              (Array.isArray(notesPopup.definitions) &&
-                              notesPopup.definitions.length > 0
-                                ? notesPopup.definitions[0]
-                                : undefined),
+                      hanzi: notesPopup.contextZh || notesPopup.word,
+                      pinyin: undefined,
+                      translation: notesPopup.contextEn,
                           };
 
                           // Derive vocab metadata from popup
