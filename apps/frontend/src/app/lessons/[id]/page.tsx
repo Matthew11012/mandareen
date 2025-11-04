@@ -32,6 +32,7 @@ import {
 } from "framer-motion";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { Separator } from "@/components/ui/separator";
+import { useLessonData } from "@/hooks/useLessonData";
 
 type ParagraphToken = {
   text: string;
@@ -513,24 +514,34 @@ export default function LessonViewerPage() {
   const showThreshold = 30; // Show when scrolling up 20px
   const minScrollDelta = 10; // Minimum scroll delta to trigger direction change
 
-  const load = async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const detail = await lessonsApi.getById(id);
-      setData(detail);
-    } catch {
-      setError("Failed to load lesson");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    data: queried,
+    isLoading: queryLoading,
+    isError: queryIsError,
+    error: queryError,
+    refetch,
+    isFetching,
+  } = useLessonData(Number.isFinite(id) ? id : null);
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+    if (queried) setData(queried);
+  }, [queried]);
+
+  useEffect(() => {
+    setLoading(Boolean(queryLoading || isFetching));
+  }, [queryLoading, isFetching]);
+
+  useEffect(() => {
+    if (queryIsError) {
+      setError(
+        queryError instanceof Error
+          ? queryError.message
+          : "Failed to load lesson"
+      );
+    } else {
+      setError(null);
+    }
+  }, [queryIsError, queryError]);
 
   // Scroll detection for header auto-hide
   useEffect(() => {
@@ -1595,15 +1606,15 @@ export default function LessonViewerPage() {
               </button>
             )}
             <button
-              onClick={load}
-              disabled={loading}
+              onClick={() => void refetch()}
+              disabled={loading || isFetching}
               className="p-2 hover:bg-[#404040] rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831]"
               title="Refresh"
               type="button"
               aria-label="Refresh lesson"
             >
               <RefreshCw
-                className={`w-4 h-4 text-[#a6a6a6] ${loading ? "motion-safe:animate-spin" : ""}`}
+                className={`w-4 h-4 text-[#a6a6a6] ${loading || isFetching ? "motion-safe:animate-spin" : ""}`}
                 aria-hidden="true"
               />
             </button>
@@ -1644,13 +1655,35 @@ export default function LessonViewerPage() {
           </div>
         )}
 
-        {loading ? (
-          <div className="flex items-center gap-2 text-[#a6a6a6]">
-            <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-            <span className="font-inter text-sm">Loading...</span>
-          </div>
-        ) : error ? (
+        {error ? (
           <p className="text-red-400 font-inter text-sm">{error}</p>
+        ) : !data && (loading || isFetching) ? (
+          <div
+            className="sm:bg-[#2e323a] rounded-xl sm:p-6 sm:border sm:border-[#404040]"
+            aria-busy="true"
+          >
+            {/* Title skeletons */}
+            <div className="space-y-2 mb-4">
+              <div className="h-6 w-2/3 bg-[#353a42] rounded motion-safe:animate-pulse" />
+              <div className="h-4 w-1/2 bg-[#30343b] rounded motion-safe:animate-pulse" />
+            </div>
+            {/* Content skeletons - mobile & desktop share structure */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="h-4 w-full bg-[#30343b] rounded motion-safe:animate-pulse" />
+                <div className="h-4 w-11/12 bg-[#30343b] rounded motion-safe:animate-pulse" />
+                <div className="h-4 w-10/12 bg-[#30343b] rounded motion-safe:animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-4 w-full bg-[#30343b] rounded motion-safe:animate-pulse" />
+                <div className="h-4 w-9/12 bg-[#30343b] rounded motion-safe:animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-4 w-10/12 bg-[#30343b] rounded motion-safe:animate-pulse" />
+                <div className="h-4 w-8/12 bg-[#30343b] rounded motion-safe:animate-pulse" />
+              </div>
+            </div>
+          </div>
         ) : !data ? (
           <p className="text-[#a6a6a6] font-inter text-sm">No content</p>
         ) : (
