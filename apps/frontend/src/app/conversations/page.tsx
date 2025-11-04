@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   Volume2,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "framer-motion";
@@ -86,6 +87,15 @@ export default function ConversationsPage() {
   const [recPrompt, setRecPrompt] = useState<string>("Tap to speak");
   const [uploadingAudio, setUploadingAudio] = useState<boolean>(false);
   const [loadingPreviews, setLoadingPreviews] = useState<boolean>(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    open: boolean;
+    conversationId: number | null;
+  }>({ open: false, conversationId: null });
+  const [deleting, setDeleting] = useState<boolean>(false);
+  const deleteModalRef = useRef<HTMLDivElement | null>(null);
+  const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const deleteTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // Memoized date formatter utility
   const formatConversationDate = useMemo(
@@ -332,6 +342,37 @@ export default function ConversationsPage() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Keyboard handling for delete confirmation modal
+  useEffect(() => {
+    if (!deleteConfirm.open) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !deleting) {
+        setDeleteConfirm({ open: false, conversationId: null });
+        // Return focus to trigger button
+        deleteTriggerRef.current?.focus();
+      }
+      if (e.key === "Enter" && e.target === cancelButtonRef.current) {
+        e.preventDefault();
+        if (!deleting) {
+          setDeleteConfirm({ open: false, conversationId: null });
+          deleteTriggerRef.current?.focus();
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    // Focus first button when modal opens
+    setTimeout(() => {
+      cancelButtonRef.current?.focus();
+    }, 100);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [deleteConfirm.open, deleting]);
+
   const selectConversation = async (id: number) => {
     if (conversationId === id) return;
     setConversationId(id);
@@ -366,6 +407,97 @@ export default function ConversationsPage() {
         localStorage.setItem("active-conversation-id", String(id));
     } catch {
       toast.error("Failed to start conversation");
+    }
+  };
+
+  const handleDeleteConversation = async (id: number) => {
+    if (deleting) return;
+
+    const wasActive = conversationId === id;
+    const deletedIndex = conversations.findIndex((c) => c.id === id);
+    const deletedItem = conversations[deletedIndex];
+
+    // Optimistic removal
+    const updated = conversations.filter((c) => c.id !== id);
+    setConversations(updated);
+
+    // If deleting active conversation, switch to next most recent or create new
+    if (wasActive) {
+      if (updated.length > 0) {
+        const sorted = [...updated].sort(
+          (a, b) =>
+            new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+        );
+        const nextId = sorted[0].id;
+        setConversationId(nextId);
+        try {
+          const msgs = await conversationsApi.listMessages(nextId);
+          setMessages(msgs);
+          if (typeof window !== "undefined")
+            localStorage.setItem("active-conversation-id", String(nextId));
+        } catch {
+          toast.error("Failed to load next conversation");
+        }
+      } else {
+        // No conversations left, create new one
+        setConversationId(null);
+        setMessages([]);
+        try {
+          const { id: newId } = await conversationsApi.start();
+          setConversationId(newId);
+          const msgs = await conversationsApi.listMessages(newId);
+          setMessages(msgs);
+          const freshList = await conversationsApi.list();
+          setConversations(freshList);
+          loadConversationPreviews(freshList).then((enriched) => {
+            setConversations(enriched);
+          });
+          if (typeof window !== "undefined")
+            localStorage.setItem("active-conversation-id", String(newId));
+        } catch {
+          toast.error("Failed to create new conversation");
+        }
+      }
+    }
+
+    // Perform actual delete
+    setDeleting(true);
+    try {
+      await conversationsApi.delete(id);
+      toast.success("Conversation deleted", {
+        duration: 3000,
+      });
+      setDeleteConfirm({ open: false, conversationId: null });
+      // Focus moves to next conversation automatically via selectConversation
+    } catch {
+      // Rollback on failure
+      const restored = [...conversations];
+      restored.splice(deletedIndex, 0, deletedItem);
+      setConversations(restored);
+
+      if (wasActive) {
+        setConversationId(id);
+        try {
+          const msgs = await conversationsApi.listMessages(id);
+          setMessages(msgs);
+          if (typeof window !== "undefined")
+            localStorage.setItem("active-conversation-id", String(id));
+        } catch {
+          toast.error("Failed to restore conversation");
+        }
+      }
+
+      toast.error("Failed to delete conversation");
+      setDeleteConfirm({ open: false, conversationId: null });
+      // Focus the restored item for accessibility after modal closes
+      setTimeout(() => {
+        const restoredButton = document.querySelector(
+          `[data-conversation-id="${id}"] button`
+        ) as HTMLButtonElement | null;
+        restoredButton?.focus();
+      }, 100);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -1737,32 +1869,62 @@ export default function ConversationsPage() {
                           Recent ({recent.length})
                         </div>
                         {recent.map((c) => (
-                          <button
+                          <div
                             key={c.id}
-                            onClick={() => {
-                              void selectConversation(c.id);
-                              if (isMobile) {
-                                setShowConversationsSidebar(false);
-                              }
-                            }}
-                            className={`w-full text-left px-3 py-2 rounded-lg border transition-colors duration-150 cursor-pointer ${
+                            className={`group relative w-full px-3 py-2 rounded-lg border transition-colors duration-150 ${
                               conversationId === c.id
                                 ? "bg-[#2d3548] border-[#4040f2] text-[#c7cdff] shadow-sm"
                                 : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#4040f2]"
                             }`}
-                            title={
-                              c.preview ||
-                              new Date(c.startedAt).toLocaleString()
-                            }
-                            aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
+                            data-conversation-id={c.id}
                           >
-                            <div className="text-base font-medium truncate w-full block">
-                              {c.preview || `Conversation #${c.id}`}
+                            <div className="flex items-center justify-between gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void selectConversation(c.id);
+                                  if (isMobile) {
+                                    setShowConversationsSidebar(false);
+                                  }
+                                }}
+                                className="flex-1 text-left min-w-0 cursor-pointer"
+                                title={
+                                  c.preview ||
+                                  new Date(c.startedAt).toLocaleString()
+                                }
+                                aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
+                              >
+                                <div className="text-base font-medium truncate w-full">
+                                  {c.preview || `Conversation #${c.id}`}
+                                </div>
+                                <div className="text-[10px] text-[#808080]">
+                                  {formatConversationDate(c.startedAt)}
+                                </div>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteTriggerRef.current = e.currentTarget;
+                                  setDeleteConfirm({
+                                    open: true,
+                                    conversationId: c.id,
+                                  });
+                                }}
+                                className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
+                                  conversationId === c.id
+                                    ? "text-[#c7cdff] hover:bg-[#3d4558] hover:text-red-400"
+                                    : "text-[#808080] hover:bg-[#2e323a] hover:text-red-400"
+                                }`}
+                                aria-label="Delete conversation"
+                                title="Delete conversation"
+                              >
+                                <Trash2
+                                  className="w-4 h-4"
+                                  aria-hidden="true"
+                                />
+                              </button>
                             </div>
-                            <div className="text-[10px] text-[#808080]">
-                              {formatConversationDate(c.startedAt)}
-                            </div>
-                          </button>
+                          </div>
                         ))}
                       </>
                     )}
@@ -1773,32 +1935,62 @@ export default function ConversationsPage() {
                           Last 30 Days ({lastMonth.length})
                         </div>
                         {lastMonth.map((c) => (
-                          <button
+                          <div
                             key={c.id}
-                            onClick={() => {
-                              void selectConversation(c.id);
-                              if (isMobile) {
-                                setShowConversationsSidebar(false);
-                              }
-                            }}
-                            className={`w-full text-left px-3 py-2 rounded-lg border transition-colors duration-150 cursor-pointer ${
+                            className={`group relative w-full px-3 py-2 rounded-lg border transition-colors duration-150 ${
                               conversationId === c.id
                                 ? "bg-[#2d3548] border-[#4040f2] text-[#c7cdff] shadow-sm"
                                 : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#4040f2]"
                             }`}
-                            title={
-                              c.preview ||
-                              new Date(c.startedAt).toLocaleString()
-                            }
-                            aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
+                            data-conversation-id={c.id}
                           >
-                            <div className="text-base font-medium truncate w-full block">
-                              {c.preview || `Conversation #${c.id}`}
+                            <div className="flex items-center justify-between gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void selectConversation(c.id);
+                                  if (isMobile) {
+                                    setShowConversationsSidebar(false);
+                                  }
+                                }}
+                                className="flex-1 text-left min-w-0 cursor-pointer"
+                                title={
+                                  c.preview ||
+                                  new Date(c.startedAt).toLocaleString()
+                                }
+                                aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
+                              >
+                                <div className="text-base font-medium truncate w-full">
+                                  {c.preview || `Conversation #${c.id}`}
+                                </div>
+                                <div className="text-[10px] text-[#808080]">
+                                  {formatConversationDate(c.startedAt)}
+                                </div>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteTriggerRef.current = e.currentTarget;
+                                  setDeleteConfirm({
+                                    open: true,
+                                    conversationId: c.id,
+                                  });
+                                }}
+                                className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
+                                  conversationId === c.id
+                                    ? "text-[#c7cdff] hover:bg-[#3d4558] hover:text-red-400"
+                                    : "text-[#808080] hover:bg-[#2e323a] hover:text-red-400"
+                                }`}
+                                aria-label="Delete conversation"
+                                title="Delete conversation"
+                              >
+                                <Trash2
+                                  className="w-4 h-4"
+                                  aria-hidden="true"
+                                />
+                              </button>
                             </div>
-                            <div className="text-[10px] text-[#808080]">
-                              {formatConversationDate(c.startedAt)}
-                            </div>
-                          </button>
+                          </div>
                         ))}
                       </>
                     )}
@@ -1809,32 +2001,62 @@ export default function ConversationsPage() {
                           Older ({older.length})
                         </div>
                         {older.map((c) => (
-                          <button
+                          <div
                             key={c.id}
-                            onClick={() => {
-                              void selectConversation(c.id);
-                              if (isMobile) {
-                                setShowConversationsSidebar(false);
-                              }
-                            }}
-                            className={`w-full text-left px-3 py-2 rounded-lg border transition-colors duration-150 cursor-pointer ${
+                            className={`group relative w-full px-3 py-2 rounded-lg border transition-colors duration-150 ${
                               conversationId === c.id
                                 ? "bg-[#2d3548] border-[#4040f2] text-[#c7cdff] shadow-sm"
                                 : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#4040f2]"
                             }`}
-                            title={
-                              c.preview ||
-                              new Date(c.startedAt).toLocaleString()
-                            }
-                            aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
+                            data-conversation-id={c.id}
                           >
-                            <div className="text-base font-medium truncate w-full block">
-                              {c.preview || `Conversation #${c.id}`}
+                            <div className="flex items-center justify-between gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void selectConversation(c.id);
+                                  if (isMobile) {
+                                    setShowConversationsSidebar(false);
+                                  }
+                                }}
+                                className="flex-1 text-left min-w-0 cursor-pointer"
+                                title={
+                                  c.preview ||
+                                  new Date(c.startedAt).toLocaleString()
+                                }
+                                aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
+                              >
+                                <div className="text-base font-medium truncate w-full">
+                                  {c.preview || `Conversation #${c.id}`}
+                                </div>
+                                <div className="text-[10px] text-[#808080]">
+                                  {formatConversationDate(c.startedAt)}
+                                </div>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteTriggerRef.current = e.currentTarget;
+                                  setDeleteConfirm({
+                                    open: true,
+                                    conversationId: c.id,
+                                  });
+                                }}
+                                className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
+                                  conversationId === c.id
+                                    ? "text-[#c7cdff] hover:bg-[#3d4558] hover:text-red-400"
+                                    : "text-[#808080] hover:bg-[#2e323a] hover:text-red-400"
+                                }`}
+                                aria-label="Delete conversation"
+                                title="Delete conversation"
+                              >
+                                <Trash2
+                                  className="w-4 h-4"
+                                  aria-hidden="true"
+                                />
+                              </button>
                             </div>
-                            <div className="text-[10px] text-[#808080]">
-                              {formatConversationDate(c.startedAt)}
-                            </div>
-                          </button>
+                          </div>
                         ))}
                       </>
                     )}
@@ -1855,6 +2077,97 @@ export default function ConversationsPage() {
             + New Conversation
           </button>
         </aside>
+
+        {/* Delete Confirmation Modal */}
+        <AnimatePresence>
+          {deleteConfirm.open && deleteConfirm.conversationId !== null && (
+            <>
+              {/* Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="fixed inset-0 bg-black/50 z-50"
+                onClick={() =>
+                  !deleting &&
+                  setDeleteConfirm({ open: false, conversationId: null })
+                }
+                aria-hidden="true"
+              />
+              {/* Modal */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="delete-dialog-title"
+                aria-describedby="delete-dialog-description"
+              >
+                <div
+                  ref={deleteModalRef}
+                  className="bg-[#1b1f26] border border-[#2e323a] rounded-xl p-6 max-w-sm w-full shadow-xl pointer-events-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h2
+                    id="delete-dialog-title"
+                    className="text-lg font-semibold text-white mb-2"
+                  >
+                    Delete conversation?
+                  </h2>
+                  <p
+                    id="delete-dialog-description"
+                    className="text-sm text-[#a6a6a6] mb-6"
+                  >
+                    This will permanently delete this conversation.
+                  </p>
+                  <div className="flex gap-3 justify-end">
+                    <button
+                      ref={cancelButtonRef}
+                      onClick={() =>
+                        !deleting &&
+                        setDeleteConfirm({ open: false, conversationId: null })
+                      }
+                      disabled={deleting}
+                      className="px-4 py-2 rounded-lg border border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#404040] transition-colors duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1b1f26]"
+                      aria-label="Cancel deletion"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      ref={deleteButtonRef}
+                      onClick={() => {
+                        if (
+                          deleteConfirm.conversationId !== null &&
+                          !deleting
+                        ) {
+                          void handleDeleteConversation(
+                            deleteConfirm.conversationId
+                          );
+                        }
+                      }}
+                      disabled={deleting}
+                      className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1b1f26] flex items-center gap-2 min-h-[44px]"
+                      aria-label="Confirm deletion"
+                    >
+                      {deleting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Deleting...</span>
+                        </>
+                      ) : (
+                        "Delete"
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
 
         {/* Conversations Toggle Button */}
         {isMobile && (

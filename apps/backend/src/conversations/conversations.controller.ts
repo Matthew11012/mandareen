@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -105,5 +106,18 @@ export class ConversationsController {
   @Get()
   async listConversations(@Req() req: AuthenticatedRequest) {
     return this._service.listUserConversations(req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':id')
+  async deleteConversation(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const deleted = await this._service.deleteUserConversation(
+      req.user.id,
+      Number(id),
+    );
+    return { deleted };
   }
 }

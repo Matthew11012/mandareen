@@ -52,7 +52,14 @@ export default function LessonViewerPage() {
   const [selectedWords, setSelectedWords] = useState<
     Record<
       string,
-      { text: string; pinyin?: string; paraIndex?: number; tokenIndex?: number }
+      {
+        text: string;
+        pinyin?: string;
+        paraIndex?: number;
+        tokenIndex?: number;
+        contextZh?: string; // for notes selections
+        contextEn?: string; // for notes selections
+      }
     >
   >({});
   const [finishLoading, setFinishLoading] = useState(false);
@@ -87,6 +94,14 @@ export default function LessonViewerPage() {
   // Scroll detection for header auto-hide
   useEffect(() => {
     const handleScroll = () => {
+      // Only enable auto-hide on mobile; keep header always visible on desktop
+      const isDesktop =
+        typeof window !== "undefined" ? window.innerWidth >= 640 : false;
+      if (isDesktop) {
+        if (!isHeaderVisible) setIsHeaderVisible(true);
+        setLastScrollY(0);
+        return;
+      }
       // The scroll is happening on the main element, not window
       const mainElement = document.querySelector("main");
       const currentScrollY = mainElement?.scrollTop || 0;
@@ -160,6 +175,17 @@ export default function LessonViewerPage() {
     isHeaderVisible,
     isContentChanging,
   ]);
+
+  // Ensure header is visible on desktop when resizing between breakpoints
+  useEffect(() => {
+    const onResize = () => {
+      if (typeof window !== "undefined" && window.innerWidth >= 640) {
+        setIsHeaderVisible(true);
+      }
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // Tap to show header when hidden
   const handleTapToShowHeader = () => {
@@ -484,12 +510,22 @@ export default function LessonViewerPage() {
     text: string,
     pinyin: string | undefined,
     paraIndex: number,
-    tokenIndex: number
+    tokenIndex: number,
+    contextZh?: string,
+    contextEn?: string
   ) => {
     setSelectedWords((prev) => {
       const next = { ...prev };
       if (next[key]) delete next[key];
-      else next[key] = { text, pinyin, paraIndex, tokenIndex };
+      else
+        next[key] = {
+          text,
+          pinyin,
+          paraIndex,
+          tokenIndex,
+          contextZh,
+          contextEn,
+        };
       return next;
     });
   };
@@ -527,11 +563,11 @@ export default function LessonViewerPage() {
 
         // Handle notes words (paraIndex = -1)
         if (w.paraIndex === -1) {
-          // For notes words, use the word itself as context
+          // For notes words, use the full note context when available
           sentenceCtx = {
-            hanzi: w.text,
-            pinyin: w.pinyin,
-            translation: undefined,
+            hanzi: w.contextZh ?? w.text,
+            pinyin: undefined,
+            translation: w.contextEn,
           };
         } else if (
           typeof w.paraIndex === "number" &&
@@ -742,6 +778,8 @@ export default function LessonViewerPage() {
     definition?: string;
     definitions?: string[];
     hskLevel?: number;
+    contextZh?: string;
+    contextEn?: string;
   }>({ open: false, x: 0, y: 0, word: "" });
 
   useEffect(() => {
@@ -884,7 +922,9 @@ export default function LessonViewerPage() {
                       seg.text,
                       seg.pinyin,
                       -1, // Use -1 to indicate notes (not main content)
-                      idx
+                      idx,
+                      fallbackZh,
+                      fallbackEn
                     );
                     return;
                   }
@@ -909,6 +949,8 @@ export default function LessonViewerPage() {
                     definitions: seg.definitions,
                     hskLevel: (seg as unknown as { hskLevel?: number })
                       .hskLevel,
+                    contextZh: fallbackZh,
+                    contextEn: fallbackEn,
                   });
                 }}
               >
@@ -940,7 +982,7 @@ export default function LessonViewerPage() {
       title={data?.title || `Lesson #${id}`}
       subtitle={`HSK ${data?.level ?? ""}`}
     >
-      <div className="p-4 sm:p-6 pt-0 space-y-6">
+      <div className="p-4 sm:p-6 sm:pt-0 pt-0 space-y-6">
         <motion.div
           className="flex flex-wrap items-center justify-between gap-2 sticky top-0 z-20 -mx-6 px-6 py-2 bg-[#222831]/80 backdrop-blur border-b border-[#30333a]"
           role="toolbar"
@@ -1144,7 +1186,7 @@ export default function LessonViewerPage() {
           data?.title) && (
           <div className="bg-[#2e323a] rounded-lg p-4 border border-[#404040]">
             {data?.title ? (
-              <div className="text-white font-inter text-base mb-1">
+              <div className="text-white font-inter text-xl mb-1">
                 {data.title}
               </div>
             ) : null}
@@ -1173,10 +1215,10 @@ export default function LessonViewerPage() {
         ) : (
           <div
             ref={contentRef}
-            className="bg-[#2e323a] rounded-xl sm:p-6 border border-[#404040] relative"
+            className="sm:bg-[#2e323a] rounded-xl sm:p-6 sm:border sm:border-[#404040] relative"
           >
             {story && (
-              <div className="space-y-6 p-2">
+              <div className="space-y-6 pr-0 py-2 ">
                 {segmentedParagraphs.map((segChunk, ci) => (
                   <div key={ci} className="space-y-2">
                     <div className="flex items-center gap-2 justify-end">
@@ -1233,7 +1275,7 @@ export default function LessonViewerPage() {
                         </svg>
                       </button>
                     </div>
-                    <div className="leading-8 text-white font-inter sm:text-[18px] text-[16px]">
+                    <div className="leading-10 font-thin sm:font-light text-white font-inter sm:text-[18px] text-xl">
                       {segChunk.map((seg: LessonToken, idx) => {
                         const isWord = Boolean(seg.isWord);
                         return (
@@ -1243,7 +1285,7 @@ export default function LessonViewerPage() {
                           >
                             {isChunkPinyinOn(ci) ? (
                               isWord && seg.pinyin ? (
-                                <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
+                                <span className="text-xs text-[#9aa6ff] font-normal leading-none">
                                   {seg.pinyin}
                                 </span>
                               ) : (
@@ -1253,7 +1295,7 @@ export default function LessonViewerPage() {
                               )
                             ) : null}
                             <span
-                              className={`px-[1px] rounded ${isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
+                              className={`flex items-start px-[1px] rounded ${isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
                               title={seg.definition || ""}
                               onClick={(
                                 e: ReactMouseEvent<HTMLSpanElement>
@@ -1401,7 +1443,7 @@ export default function LessonViewerPage() {
                       </div>
                     </div>
                     <Separator className="mb-1 border-1 opacity-50 sm:hidden" />
-                    <div className="leading-8 text-white font-inter text-[18px]">
+                    <div className="leading-10 font-thin sm:font-light text-white font-inter text-[18px]">
                       {(turn.segments ?? []).map((seg: LessonToken, idx) => {
                         const isWord = Boolean(seg.isWord);
                         return (
@@ -1411,7 +1453,7 @@ export default function LessonViewerPage() {
                           >
                             {isTurnPinyinOn(ti) ? (
                               isWord && seg.pinyin ? (
-                                <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
+                                <span className="text-xs font-normal text-[#9aa6ff] leading-none">
                                   {seg.pinyin}
                                 </span>
                               ) : (
@@ -2609,14 +2651,9 @@ export default function LessonViewerPage() {
                     onClick={async () => {
                       // Create context from the notes popup data
                       const ctx = {
-                        hanzi: notesPopup.word,
-                        pinyin: notesPopup.pinyin,
-                        translation:
-                          notesPopup.definition ||
-                          (Array.isArray(notesPopup.definitions) &&
-                          notesPopup.definitions.length > 0
-                            ? notesPopup.definitions[0]
-                            : undefined),
+                        hanzi: notesPopup.contextZh || notesPopup.word,
+                        pinyin: undefined,
+                        translation: notesPopup.contextEn,
                       };
 
                       // Derive vocab metadata from popup
@@ -2708,14 +2745,9 @@ export default function LessonViewerPage() {
                         onClick={async () => {
                           // Create context from the notes popup data
                           const ctx = {
-                            hanzi: notesPopup.word,
-                            pinyin: notesPopup.pinyin,
-                            translation:
-                              notesPopup.definition ||
-                              (Array.isArray(notesPopup.definitions) &&
-                              notesPopup.definitions.length > 0
-                                ? notesPopup.definitions[0]
-                                : undefined),
+                            hanzi: notesPopup.contextZh || notesPopup.word,
+                            pinyin: undefined,
+                            translation: notesPopup.contextEn,
                           };
 
                           // Derive vocab metadata from popup
