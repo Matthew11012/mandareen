@@ -36,6 +36,7 @@ import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { useLessonData } from "@/hooks/useLessonData";
 import { StorySection } from "@/components/lessons/StorySection";
 import { DialogueSection } from "@/components/lessons/DialogueSection";
+import { NotesSection } from "@/components/lessons/NotesSection";
 
 type ParagraphToken = {
   text: string;
@@ -1978,174 +1979,14 @@ export default function LessonViewerPage() {
                 })()}
                 {Array.isArray(dialogue.grammarNotes) &&
                   dialogue.grammarNotes.length > 0 && (
-                    <div className="mt-4 border border-[#3a3a3a] rounded-lg p-3 bg-[#1e2229]">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-xs font-semibold text-white">
-                          Notes
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setNotesPinyinOn((v) => !v)}
-                            className={`px-2 py-1 text-xs rounded border ${
-                              notesPinyinOn
-                                ? "border-[#4040f2] text-[#9aa6ff]"
-                                : "border-[#404040] text-[#a6a6a6]"
-                            } cursor-pointer`}
-                            type="button"
-                            aria-pressed={notesPinyinOn}
-                            aria-label={
-                              notesPinyinOn
-                                ? "Hide notes pinyin"
-                                : "Show notes pinyin"
-                            }
-                          >
-                            Pinyin {notesPinyinOn ? "On" : "Off"}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="space-y-3">
-                        {dialogue.grammarNotes.slice(0, 3).map((gn, gi) => (
-                          <div
-                            key={gi}
-                            className="text-[16px] text-[#c9d1d9] border border-[#2a2e36] bg-[#1a1f27] rounded-lg p-2 space-y-2"
-                          >
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
-                                  Point
-                                </span>
-                              </div>
-                              <div>
-                                {Array.isArray(gn.pointSegments) &&
-                                gn.pointSegments.length > 0 ? (
-                                  renderNotesSegmentsWithPopup(
-                                    gn.pointSegments,
-                                    gn.point,
-                                    gn.pointEn,
-                                    notesPinyinOn,
-                                    {
-                                      section: "dialogue",
-                                      noteIndex: gi,
-                                      field: "point",
-                                    }
-                                  )
-                                ) : (
-                                  <>
-                                    <div className="text-white">{gn.point}</div>
-                                    {notesPinyinOn && gn.pointPinyin ? (
-                                      <div className="text-[#9aa6ff]">
-                                        {gn.pointPinyin}
-                                      </div>
-                                    ) : null}
-                                  </>
-                                )}
-                              </div>
-                              {gn.pointEn ? (
-                                <div className="text-[14px] text-[#8b949e]">
-                                  {gn.pointEn}
-                                </div>
-                              ) : null}
-                            </div>
-
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
-                                  Brief
-                                </span>
-                              </div>
-                              <div>
-                                {Array.isArray(gn.briefSegments) &&
-                                gn.briefSegments.length > 0 ? (
-                                  renderNotesSegmentsWithPopup(
-                                    gn.briefSegments,
-                                    gn.brief,
-                                    gn.briefEn,
-                                    notesPinyinOn,
-                                    {
-                                      section: "dialogue",
-                                      noteIndex: gi,
-                                      field: "brief",
-                                    }
-                                  )
-                                ) : (
-                                  <>
-                                    <div className="text-white">{gn.brief}</div>
-                                    {notesPinyinOn && gn.briefPinyin ? (
-                                      <div className="text-[#9aa6ff]">
-                                        {gn.briefPinyin}
-                                      </div>
-                                    ) : null}
-                                  </>
-                                )}
-                              </div>
-                              {gn.briefEn ? (
-                                <div className="text-[14px] text-[#8b949e]">
-                                  {gn.briefEn}
-                                </div>
-                              ) : null}
-                            </div>
-
-                            {Array.isArray(gn.examples) &&
-                              gn.examples.length > 0 && (
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
-                                      Examples
-                                    </span>
-                                  </div>
-                                  <div className="space-y-1">
-                                    {gn.examples.slice(0, 2).map((ex, ei) => (
-                                      <div
-                                        key={ei}
-                                        className="border border-[#2a2e36] rounded p-2 bg-[#171b21]"
-                                      >
-                                        {Array.isArray(ex.segments) &&
-                                        ex.segments.length > 0 ? (
-                                          <>
-                                            {renderNotesSegmentsWithPopup(
-                                              ex.segments,
-                                              ex.zh,
-                                              ex.en,
-                                              notesPinyinOn,
-                                              {
-                                                section: "dialogue",
-                                                noteIndex: gi,
-                                                field: "example",
-                                                exampleIndex: ei,
-                                              }
-                                            )}
-                                            {ex.en ? (
-                                              <div className="text-[14px] text-[#8b949e]">
-                                                {ex.en}
-                                              </div>
-                                            ) : null}
-                                          </>
-                                        ) : (
-                                          <>
-                                            <div className="text-white">
-                                              {ex.zh}
-                                            </div>
-                                            {notesPinyinOn && ex.pinyin ? (
-                                              <div className="text-[#9aa6ff] text-[14px]">
-                                                {ex.pinyin}
-                                              </div>
-                                            ) : null}
-                                            {ex.en ? (
-                                              <div className="text-[14px] text-[#8b949e]">
-                                                {ex.en}
-                                              </div>
-                                            ) : null}
-                                          </>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <NotesSection
+                      title="Notes"
+                      notes={dialogue.grammarNotes}
+                      notesPinyinOn={notesPinyinOn}
+                      onTogglePinyin={() => setNotesPinyinOn((v) => !v)}
+                      renderSegments={renderNotesSegmentsWithPopup}
+                      sectionKey="dialogue"
+                    />
                   )}
               </>
             )}
@@ -2223,168 +2064,15 @@ export default function LessonViewerPage() {
             {story &&
               Array.isArray(story.grammarNotes) &&
               story.grammarNotes.length > 0 && (
-                <div className="mt-6 border border-[#3a3a3a] rounded-lg p-3 bg-[#1e2229]">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-xs font-semibold text-white">
-                      Notes
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setNotesPinyinOn((v) => !v)}
-                        className={`px-2 py-1 text-xs rounded border ${
-                          notesPinyinOn
-                            ? "border-[#4040f2] text-[#9aa6ff]"
-                            : "border-[#404040] text-[#a6a6a6]"
-                        } cursor-pointer`}
-                        type="button"
-                        aria-pressed={notesPinyinOn}
-                      >
-                        Pinyin {notesPinyinOn ? "On" : "Off"}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    {story.grammarNotes.slice(0, 3).map((gn, gi) => (
-                      <div
-                        key={gi}
-                        className="text-[16px] text-[#c9d1d9] border border-[#2a2e36] bg-[#1a1f27] rounded-lg p-2 space-y-2"
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
-                              Point
-                            </span>
-                          </div>
-                          <div>
-                            {Array.isArray(gn.pointSegments) &&
-                            gn.pointSegments.length > 0 ? (
-                              renderNotesSegmentsWithPopup(
-                                gn.pointSegments,
-                                gn.point,
-                                gn.pointEn,
-                                notesPinyinOn,
-                                {
-                                  section: "story",
-                                  noteIndex: gi,
-                                  field: "point",
-                                }
-                              )
-                            ) : (
-                              <>
-                                <div className="text-white">{gn.point}</div>
-                                {notesPinyinOn && gn.pointPinyin ? (
-                                  <div className="text-[#9aa6ff]">
-                                    {gn.pointPinyin}
-                                  </div>
-                                ) : null}
-                              </>
-                            )}
-                          </div>
-                          {gn.pointEn ? (
-                            <div className="text-[14px] text-[#8b949e]">
-                              {gn.pointEn}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
-                              Brief
-                            </span>
-                          </div>
-                          <div>
-                            {Array.isArray(gn.briefSegments) &&
-                            gn.briefSegments.length > 0 ? (
-                              renderNotesSegmentsWithPopup(
-                                gn.briefSegments,
-                                gn.brief,
-                                gn.briefEn,
-                                notesPinyinOn,
-                                {
-                                  section: "story",
-                                  noteIndex: gi,
-                                  field: "brief",
-                                }
-                              )
-                            ) : (
-                              <>
-                                <div className="text-white">{gn.brief}</div>
-                                {notesPinyinOn && gn.briefPinyin ? (
-                                  <div className="text-[#9aa6ff]">
-                                    {gn.briefPinyin}
-                                  </div>
-                                ) : null}
-                              </>
-                            )}
-                          </div>
-                          {gn.briefEn ? (
-                            <div className="text-[14px] text-[#8b949e]">
-                              {gn.briefEn}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        {Array.isArray(gn.examples) &&
-                          gn.examples.length > 0 && (
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
-                                  Examples
-                                </span>
-                              </div>
-                              <div className="space-y-1">
-                                {gn.examples.slice(0, 2).map((ex, ei) => (
-                                  <div
-                                    key={ei}
-                                    className="border border-[#2a2e36] rounded p-2 bg-[#171b21]"
-                                  >
-                                    {Array.isArray(ex.segments) &&
-                                    ex.segments.length > 0 ? (
-                                      <>
-                                        {renderNotesSegmentsWithPopup(
-                                          ex.segments,
-                                          ex.zh,
-                                          ex.en,
-                                          notesPinyinOn,
-                                          {
-                                            section: "story",
-                                            noteIndex: gi,
-                                            field: "example",
-                                            exampleIndex: ei,
-                                          }
-                                        )}
-                                        {ex.en ? (
-                                          <div className="text-[14px] text-[#8b949e]">
-                                            {ex.en}
-                                          </div>
-                                        ) : null}
-                                      </>
-                                    ) : (
-                                      <>
-                                        <div className="text-white">
-                                          {ex.zh}
-                                        </div>
-                                        {notesPinyinOn && ex.pinyin ? (
-                                          <div className="text-[#9aa6ff] text-[14px]">
-                                            {ex.pinyin}
-                                          </div>
-                                        ) : null}
-                                        {ex.en ? (
-                                          <div className="text-[14px] text-[#8b949e]">
-                                            {ex.en}
-                                          </div>
-                                        ) : null}
-                                      </>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                      </div>
-                    ))}
-                  </div>
+                <div className="mt-6">
+                  <NotesSection
+                    title="Notes"
+                    notes={story.grammarNotes}
+                    notesPinyinOn={notesPinyinOn}
+                    onTogglePinyin={() => setNotesPinyinOn((v) => !v)}
+                    renderSegments={renderNotesSegmentsWithPopup}
+                    sectionKey="story"
+                  />
                 </div>
               )}
 
