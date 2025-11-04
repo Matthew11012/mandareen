@@ -3,7 +3,6 @@ import ServiceWorkerRegister from "../components/ServiceWorkerRegister";
 import { Toaster } from "sonner";
 import "./globals.css";
 import { Inter } from "next/font/google";
-import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "Mandareen - AI-Powered Mandarin Learning",
@@ -14,7 +13,7 @@ export const metadata: Metadata = {
     icon: [
       { url: "/favicon.ico" },
       { url: "/icons/favicon-32x32.png", sizes: "32x32", type: "image/png" },
-      { url: "/icons/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/icons/favicon-16x16.png", sizes: "16x16", type: "image/png" }
     ],
     apple: "/icons/apple-touch-icon.png",
   },
@@ -49,7 +48,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="antialiased">
-        <Providers>{children}</Providers>
+        {children}
 
         {/* Global Toast Notifications */}
         <Toaster theme="dark" position="top-right" richColors />
