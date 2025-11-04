@@ -6,6 +6,8 @@ import {
   useState,
   useRef,
   useLayoutEffect,
+  useReducer,
+  useCallback,
   MouseEvent as ReactMouseEvent,
 } from "react";
 import { useParams } from "next/navigation";
@@ -32,6 +34,7 @@ import {
 } from "framer-motion";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { Separator } from "@/components/ui/separator";
+import { useLessonData } from "@/hooks/useLessonData";
 
 type ParagraphToken = {
   text: string;
@@ -472,65 +475,256 @@ export default function LessonViewerPage() {
   const params = useParams();
   const id = Number(params?.id);
   const [data, setData] = useState<LessonDetail | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const [showPinyin, setShowPinyin] = useState(false);
-  const [showTranslation, setShowTranslation] = useState(false);
-  const [chunkPinyinOn, setChunkPinyinOn] = useState<
-    Record<number, boolean | null>
-  >({});
-  const [chunkTransOn, setChunkTransOn] = useState<
-    Record<number, boolean | null>
-  >({});
-  const [turnPinyinOn, setTurnPinyinOn] = useState<
-    Record<number, boolean | null>
-  >({});
-  const [turnTransOn, setTurnTransOn] = useState<
-    Record<number, boolean | null>
-  >({});
-  const [multiSelect, setMultiSelect] = useState(false);
-  const [selectedWords, setSelectedWords] = useState<
-    Record<
-      string,
-      {
-        text: string;
-        pinyin?: string;
-        paraIndex?: number;
-        tokenIndex?: number;
-        contextZh?: string; // for notes selections
-        contextEn?: string; // for notes selections
-      }
-    >
-  >({});
+  // Phase 2: Consolidated UI state via useReducer
+  type SelectedWord = {
+    text: string;
+    pinyin?: string;
+    paraIndex?: number;
+    tokenIndex?: number;
+    contextZh?: string;
+    contextEn?: string;
+  };
+
+  type UIState = {
+    showPinyin: boolean;
+    showTranslation: boolean;
+    chunkPinyinOn: Record<number, boolean | null>;
+    chunkTransOn: Record<number, boolean | null>;
+    turnPinyinOn: Record<number, boolean | null>;
+    turnTransOn: Record<number, boolean | null>;
+    multiSelect: boolean;
+    selectedWords: Record<string, SelectedWord>;
+    isHeaderVisible: boolean;
+    isContentChanging: boolean;
+  };
+
+  type UIAction =
+    | { type: "setShowPinyin"; value: boolean }
+    | { type: "setShowTranslation"; value: boolean }
+    | { type: "setChunkPinyin"; value: Record<number, boolean | null> }
+    | { type: "setChunkTrans"; value: Record<number, boolean | null> }
+    | { type: "setTurnPinyin"; value: Record<number, boolean | null> }
+    | { type: "setTurnTrans"; value: Record<number, boolean | null> }
+    | { type: "setMultiSelect"; value: boolean }
+    | { type: "setSelectedWords"; value: Record<string, SelectedWord> }
+    | { type: "setHeaderVisible"; value: boolean }
+    | { type: "setContentChanging"; value: boolean };
+
+  const initialUIState: UIState = {
+    showPinyin: false,
+    showTranslation: false,
+    chunkPinyinOn: {},
+    chunkTransOn: {},
+    turnPinyinOn: {},
+    turnTransOn: {},
+    multiSelect: false,
+    selectedWords: {},
+    isHeaderVisible: true,
+    isContentChanging: false,
+  };
+
+  function uiReducer(state: UIState, action: UIAction): UIState {
+    switch (action.type) {
+      case "setShowPinyin":
+        return { ...state, showPinyin: action.value };
+      case "setShowTranslation":
+        return { ...state, showTranslation: action.value };
+      case "setChunkPinyin":
+        return { ...state, chunkPinyinOn: action.value };
+      case "setChunkTrans":
+        return { ...state, chunkTransOn: action.value };
+      case "setTurnPinyin":
+        return { ...state, turnPinyinOn: action.value };
+      case "setTurnTrans":
+        return { ...state, turnTransOn: action.value };
+      case "setMultiSelect":
+        return { ...state, multiSelect: action.value };
+      case "setSelectedWords":
+        return { ...state, selectedWords: action.value };
+      case "setHeaderVisible":
+        return { ...state, isHeaderVisible: action.value };
+      case "setContentChanging":
+        return { ...state, isContentChanging: action.value };
+      default:
+        return state;
+    }
+  }
+
+  const [ui, dispatchUI] = useReducer(uiReducer, initialUIState);
+
+  // Backwards-compatible variables and setters (preserve existing names/usage)
+  const showPinyin = ui.showPinyin;
+  const setShowPinyin = (v: boolean | ((prev: boolean) => boolean)) =>
+    dispatchUI({
+      type: "setShowPinyin",
+      value:
+        typeof v === "function"
+          ? (v as (p: boolean) => boolean)(ui.showPinyin)
+          : v,
+    });
+
+  const showTranslation = ui.showTranslation;
+  const setShowTranslation = (v: boolean | ((prev: boolean) => boolean)) =>
+    dispatchUI({
+      type: "setShowTranslation",
+      value:
+        typeof v === "function"
+          ? (v as (p: boolean) => boolean)(ui.showTranslation)
+          : v,
+    });
+
+  const chunkPinyinOn = ui.chunkPinyinOn;
+  const setChunkPinyinOn = (
+    next:
+      | Record<number, boolean | null>
+      | ((s: Record<number, boolean | null>) => Record<number, boolean | null>)
+  ) =>
+    dispatchUI({
+      type: "setChunkPinyin",
+      value:
+        typeof next === "function"
+          ? (next as (s: UIState["chunkPinyinOn"]) => UIState["chunkPinyinOn"])(
+              ui.chunkPinyinOn
+            )
+          : next,
+    });
+
+  const chunkTransOn = ui.chunkTransOn;
+  const setChunkTransOn = (
+    next:
+      | Record<number, boolean | null>
+      | ((s: Record<number, boolean | null>) => Record<number, boolean | null>)
+  ) =>
+    dispatchUI({
+      type: "setChunkTrans",
+      value:
+        typeof next === "function"
+          ? (next as (s: UIState["chunkTransOn"]) => UIState["chunkTransOn"])(
+              ui.chunkTransOn
+            )
+          : next,
+    });
+
+  const turnPinyinOn = ui.turnPinyinOn;
+  const setTurnPinyinOn = (
+    next:
+      | Record<number, boolean | null>
+      | ((s: Record<number, boolean | null>) => Record<number, boolean | null>)
+  ) =>
+    dispatchUI({
+      type: "setTurnPinyin",
+      value:
+        typeof next === "function"
+          ? (next as (s: UIState["turnPinyinOn"]) => UIState["turnPinyinOn"])(
+              ui.turnPinyinOn
+            )
+          : next,
+    });
+
+  const turnTransOn = ui.turnTransOn;
+  const setTurnTransOn = (
+    next:
+      | Record<number, boolean | null>
+      | ((s: Record<number, boolean | null>) => Record<number, boolean | null>)
+  ) =>
+    dispatchUI({
+      type: "setTurnTrans",
+      value:
+        typeof next === "function"
+          ? (next as (s: UIState["turnTransOn"]) => UIState["turnTransOn"])(
+              ui.turnTransOn
+            )
+          : next,
+    });
+
+  const multiSelect = ui.multiSelect;
+  const setMultiSelect = (v: boolean | ((prev: boolean) => boolean)) =>
+    dispatchUI({
+      type: "setMultiSelect",
+      value:
+        typeof v === "function"
+          ? (v as (p: boolean) => boolean)(ui.multiSelect)
+          : v,
+    });
+
+  const selectedWords = ui.selectedWords;
+  const setSelectedWords = (
+    next:
+      | Record<string, SelectedWord>
+      | ((s: Record<string, SelectedWord>) => Record<string, SelectedWord>)
+  ) =>
+    dispatchUI({
+      type: "setSelectedWords",
+      value:
+        typeof next === "function"
+          ? (next as (s: UIState["selectedWords"]) => UIState["selectedWords"])(
+              ui.selectedWords
+            )
+          : next,
+    });
   const [finishLoading, setFinishLoading] = useState(false);
 
-  // Scroll-aware header state
-  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  // Scroll-aware header state (via reducer)
+  const isHeaderVisible = ui.isHeaderVisible;
+  const setIsHeaderVisible = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) =>
+      dispatchUI({
+        type: "setHeaderVisible",
+        value:
+          typeof v === "function"
+            ? (v as (p: boolean) => boolean)(ui.isHeaderVisible)
+            : v,
+      }),
+    [ui.isHeaderVisible]
+  );
   const [lastScrollY, setLastScrollY] = useState(0);
-  const [isContentChanging, setIsContentChanging] = useState(false);
+  const isContentChanging = ui.isContentChanging;
+  const setIsContentChanging = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) =>
+      dispatchUI({
+        type: "setContentChanging",
+        value:
+          typeof v === "function"
+            ? (v as (p: boolean) => boolean)(ui.isContentChanging)
+            : v,
+      }),
+    [ui.isContentChanging]
+  );
   const scrollThreshold = 50; // Hide after scrolling down 30px
   const showThreshold = 30; // Show when scrolling up 20px
   const minScrollDelta = 10; // Minimum scroll delta to trigger direction change
 
-  const load = async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const detail = await lessonsApi.getById(id);
-      setData(detail);
-    } catch {
-      setError("Failed to load lesson");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    data: queried,
+    isLoading: queryLoading,
+    isError: queryIsError,
+    error: queryError,
+    refetch,
+    isFetching,
+  } = useLessonData(Number.isFinite(id) ? id : null);
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+    if (queried) setData(queried);
+  }, [queried]);
+
+  useEffect(() => {
+    setLoading(Boolean(queryLoading || isFetching));
+  }, [queryLoading, isFetching]);
+
+  useEffect(() => {
+    if (queryIsError) {
+      setError(
+        queryError instanceof Error
+          ? queryError.message
+          : "Failed to load lesson"
+      );
+    } else {
+      setError(null);
+    }
+  }, [queryIsError, queryError]);
 
   // Scroll detection for header auto-hide
   useEffect(() => {
@@ -615,6 +809,7 @@ export default function LessonViewerPage() {
     minScrollDelta,
     isHeaderVisible,
     isContentChanging,
+    setIsHeaderVisible,
   ]);
 
   // Ensure header is visible on desktop when resizing between breakpoints
@@ -626,7 +821,7 @@ export default function LessonViewerPage() {
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, []);
+  }, [setIsHeaderVisible]);
 
   // Tap to show header when hidden
   const handleTapToShowHeader = () => {
@@ -1595,15 +1790,15 @@ export default function LessonViewerPage() {
               </button>
             )}
             <button
-              onClick={load}
-              disabled={loading}
+              onClick={() => void refetch()}
+              disabled={loading || isFetching}
               className="p-2 hover:bg-[#404040] rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831]"
               title="Refresh"
               type="button"
               aria-label="Refresh lesson"
             >
               <RefreshCw
-                className={`w-4 h-4 text-[#a6a6a6] ${loading ? "motion-safe:animate-spin" : ""}`}
+                className={`w-4 h-4 text-[#a6a6a6] ${loading || isFetching ? "motion-safe:animate-spin" : ""}`}
                 aria-hidden="true"
               />
             </button>
@@ -1644,13 +1839,35 @@ export default function LessonViewerPage() {
           </div>
         )}
 
-        {loading ? (
-          <div className="flex items-center gap-2 text-[#a6a6a6]">
-            <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-            <span className="font-inter text-sm">Loading...</span>
-          </div>
-        ) : error ? (
+        {error ? (
           <p className="text-red-400 font-inter text-sm">{error}</p>
+        ) : !data && (loading || isFetching) ? (
+          <div
+            className="sm:bg-[#2e323a] rounded-xl sm:p-6 sm:border sm:border-[#404040]"
+            aria-busy="true"
+          >
+            {/* Title skeletons */}
+            <div className="space-y-2 mb-4">
+              <div className="h-6 w-2/3 bg-[#353a42] rounded motion-safe:animate-pulse" />
+              <div className="h-4 w-1/2 bg-[#30343b] rounded motion-safe:animate-pulse" />
+            </div>
+            {/* Content skeletons - mobile & desktop share structure */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="h-4 w-full bg-[#30343b] rounded motion-safe:animate-pulse" />
+                <div className="h-4 w-11/12 bg-[#30343b] rounded motion-safe:animate-pulse" />
+                <div className="h-4 w-10/12 bg-[#30343b] rounded motion-safe:animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-4 w-full bg-[#30343b] rounded motion-safe:animate-pulse" />
+                <div className="h-4 w-9/12 bg-[#30343b] rounded motion-safe:animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-4 w-10/12 bg-[#30343b] rounded motion-safe:animate-pulse" />
+                <div className="h-4 w-8/12 bg-[#30343b] rounded motion-safe:animate-pulse" />
+              </div>
+            </div>
+          </div>
         ) : !data ? (
           <p className="text-[#a6a6a6] font-inter text-sm">No content</p>
         ) : (
