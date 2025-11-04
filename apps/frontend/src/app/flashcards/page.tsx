@@ -1,22 +1,37 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+  Suspense,
+} from "react";
 import { DashboardLayout } from "@/components/layout";
 import {
   flashcardsApi,
   type DueFlashcardItem,
   type FlashcardListItem,
+  type FlashcardsSummary,
 } from "@/lib/api/flashcards";
 import { toast } from "sonner";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { AnimatePresence, motion } from "framer-motion";
 import { useReducedMotionSafe } from "@/lib/hooks/use-reduced-motion-safe";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
-export default function FlashcardsPage() {
+function FlashcardsPageContent() {
+  const [view, setView] = useState<"dashboard" | "review">("dashboard");
   const [cards, setCards] = useState<DueFlashcardItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<FlashcardsSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [startingStudy, setStartingStudy] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [revealPinyin, setRevealPinyin] = useState<Record<number, boolean>>({});
   const [revealTrans, setRevealTrans] = useState<Record<number, boolean>>({});
   const [showAllSentences, setShowAllSentences] = useState<
@@ -35,6 +50,15 @@ export default function FlashcardsPage() {
   >();
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Preview cards for dashboard
+  const [previewCards, setPreviewCards] = useState<FlashcardListItem[]>([]);
+  const [previewCardsLoading, setPreviewCardsLoading] = useState(false);
+
+  // Stats cards for HSK level distribution (load more for accurate stats)
+  const [statsCards, setStatsCards] = useState<FlashcardListItem[]>([]);
 
   const load = async () => {
     setLoading(true);
@@ -49,9 +73,99 @@ export default function FlashcardsPage() {
     }
   };
 
-  useEffect(() => {
-    load();
+  // Load preview cards (recent 3 flashcards for dashboard)
+  const loadPreviewCards = useCallback(async (showLoading: boolean = true) => {
+    if (showLoading) setPreviewCardsLoading(true);
+    try {
+      const result = await flashcardsApi.listAll(3);
+      setPreviewCards(result.items);
+    } catch {
+      // Silent fail for preview - not critical
+      setPreviewCards([]);
+    } finally {
+      if (showLoading) setPreviewCardsLoading(false);
+    }
   }, []);
+
+  // Load stats cards (50 cards for HSK level distribution stats)
+  const loadStatsCards = useCallback(async () => {
+    try {
+      const result = await flashcardsApi.listAll(50);
+      setStatsCards(result.items);
+    } catch {
+      // Silent fail for stats - not critical
+      setStatsCards([]);
+    }
+  }, []);
+
+  // Calculate HSK level distribution from stats cards
+  const hskStats = useMemo(() => {
+    const counts: Partial<Record<number | "none", number>> = {};
+    statsCards.forEach((card) => {
+      const key = typeof card.hskLevel === "number" ? card.hskLevel : "none";
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    return counts;
+  }, [statsCards]);
+
+  // Load summary and preview cards on first render; defer due cards until user starts studying
+  useEffect(() => {
+    const run = async () => {
+      setSummaryLoading(true);
+      setSummaryError(null);
+      try {
+        const s = await flashcardsApi.summary();
+        setSummary(s);
+      } catch {
+        setSummaryError("Failed to load flashcards summary");
+      } finally {
+        setSummaryLoading(false);
+      }
+      // Load preview cards and stats cards in parallel
+      void loadPreviewCards();
+      void loadStatsCards();
+    };
+    run();
+  }, [loadPreviewCards, loadStatsCards]);
+
+  // Avoid hydration mismatches from client-only chart libs
+  useEffect(() => setMounted(true), []);
+
+  const refreshSummary = useCallback(async (showLoading: boolean = true) => {
+    try {
+      if (showLoading) setSummaryLoading(true);
+      const s = await flashcardsApi.summary();
+      setSummary(s);
+    } finally {
+      if (showLoading) setSummaryLoading(false);
+    }
+  }, []);
+
+  const startStudying = async () => {
+    try {
+      setStartingStudy(true);
+      if (cards.length === 0 && !loading) {
+        await load();
+      }
+      setView("review");
+    } finally {
+      setStartingStudy(false);
+    }
+  };
+
+  const backToOverview = async () => {
+    setView("dashboard");
+    void refreshSummary();
+    void loadPreviewCards();
+    void loadStatsCards();
+  };
+
+  // When a session completes, update summary in background so returning shows fresh counts
+  useEffect(() => {
+    if (view === "review" && cards.length === 0 && !loading) {
+      void refreshSummary();
+    }
+  }, [cards.length, view, loading, refreshSummary]);
 
   // Sync drawer state with URL
   useEffect(() => {
@@ -109,13 +223,17 @@ export default function FlashcardsPage() {
   const toggleDrawer = () => {
     const newOpen = !drawerOpen;
     setDrawerOpen(newOpen);
-    const url = new URL(window.location.href);
+    const params = new URLSearchParams(searchParams.toString());
     if (newOpen) {
-      url.searchParams.set("cards", "1");
+      params.set("cards", "1");
     } else {
-      url.searchParams.delete("cards");
+      params.delete("cards");
+      // Clear selection state when closing to avoid sticky modes affecting UX
+      setMultiSelectMode(false);
+      setSelectedIds(new Set());
     }
-    window.history.replaceState({}, "", url.toString());
+    const href = `${pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+    router.replace(href, { scroll: false });
   };
 
   const loadAllCards = useCallback(
@@ -158,12 +276,21 @@ export default function FlashcardsPage() {
       }
       // Remove from all cards list
       setAllCards((prev) => prev.filter((c) => c.id !== id));
+      // Remove from preview cards
+      setPreviewCards((prev) => prev.filter((c) => c.id !== id));
+      // Remove from stats cards
+      setStatsCards((prev) => prev.filter((c) => c.id !== id));
       // Remove from selected if in multi-select
       setSelectedIds((prev) => {
         const newSet = new Set(prev);
         newSet.delete(id);
         return newSet;
       });
+
+      // Refresh summary and dashboard-derived views so counts and CTAs are accurate
+      await refreshSummary(false);
+      void loadPreviewCards(false);
+      void loadStatsCards();
 
       toast.success("Flashcard deleted", {
         action: {
@@ -173,6 +300,9 @@ export default function FlashcardsPage() {
               await flashcardsApi.create({ vocabId });
               // Refresh due list to potentially add back if due
               await load();
+              await refreshSummary(false);
+              void loadPreviewCards(false);
+              void loadStatsCards();
               toast.success("Flashcard restored");
             } catch {
               toast.error("Failed to restore flashcard");
@@ -197,7 +327,14 @@ export default function FlashcardsPage() {
     try {
       const result = await flashcardsApi.removeMany(ids);
       setAllCards((prev) => prev.filter((c) => !selectedIds.has(c.id)));
+      setPreviewCards((prev) => prev.filter((c) => !selectedIds.has(c.id)));
+      setStatsCards((prev) => prev.filter((c) => !selectedIds.has(c.id)));
       setSelectedIds(new Set());
+
+      // Keep dashboard and summary in sync after bulk deletion
+      await refreshSummary(false);
+      void loadPreviewCards(false);
+      void loadStatsCards();
 
       toast.success(`Deleted ${result.deleted} flashcards`, {
         action: {
@@ -209,6 +346,9 @@ export default function FlashcardsPage() {
                 vocabIds.map((vocabId) => flashcardsApi.create({ vocabId }))
               );
               await load(); // Refresh due list
+              await refreshSummary();
+              void loadPreviewCards();
+              void loadStatsCards();
               toast.success("Flashcards restored");
             } catch {
               toast.error("Failed to restore flashcards");
@@ -617,99 +757,306 @@ export default function FlashcardsPage() {
   }, [current, popup.open]);
 
   return (
-    <DashboardLayout title="Flashcards" subtitle="Review due items">
+    <DashboardLayout
+      title="Flashcards"
+      subtitle={
+        view === "dashboard" ? "Your flashcards overview" : "Review due items"
+      }
+    >
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
-          {cards.length > 0 && (
-            <div className="text-[#a6a6a6] text-sm">{cards.length} due</div>
-          )}
-          <button
-            onClick={toggleDrawer}
-            className="px-4 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff] transition-colors"
-            aria-label="View all flashcards"
-          >
-            All flashcards
-          </button>
-        </div>
-        {loading ? (
-          <div className="flex justify-center">
-            <div className="w-full max-w-xl bg-[#2e323a] rounded-xl p-6 border border-[#404040]">
-              <div className="animate-pulse space-y-4">
-                <div className="h-6 bg-[#3a3e46] rounded w-1/3" />
-                <div className="h-4 bg-[#3a3e46] rounded w-1/2" />
-                <div className="h-20 bg-[#2a2e35] rounded" />
-                <div className="h-10 bg-[#2a2e35] rounded" />
-              </div>
-            </div>
-          </div>
-        ) : error ? (
-          <div className="flex justify-center">
-            <div className="w-full max-w-xl bg-[#2e323a] rounded-xl p-6 border border-[#404040] text-red-300">
-              <div className="mb-3">{error}</div>
+          <div className="flex items-center gap-3">
+            {view === "review" && (
               <button
-                onClick={() => load()}
-                className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                onClick={backToOverview}
+                className="px-3 py-1.5 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff] transition-colors cursor-pointer"
+                aria-label="Back to overview"
               >
-                Retry
+                ← Back
               </button>
-            </div>
-          </div>
-        ) : cards.length === 0 ? (
-          <div className="flex justify-center">
-            <div className="w-full max-w-xl bg-[#2e323a] rounded-xl p-6 border border-[#404040] text-[#a6a6a6]">
-              <div className="text-white text-lg mb-2">All caught up!</div>
-              <div>No cards due. Great job!</div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex justify-center">
-            <AnimatePresence initial={false} mode="popLayout">
-              <motion.div
-                key={current?.id}
-                ref={contentRef}
-                className="w-full max-w-xl bg-[#2e323a] rounded-xl p-6 border border-[#404040] relative"
-                initial={prefersReducedMotion ? false : { opacity: 0, x: 24 }}
-                animate={prefersReducedMotion ? {} : { opacity: 1, x: 0 }}
-                exit={prefersReducedMotion ? {} : { opacity: 0, x: -24 }}
-                transition={{
-                  type: "spring",
-                  stiffness: 400,
-                  damping: 30,
-                  mass: 0.6,
-                }}
-              >
-                {sessionTotal > 0 && (
-                  <div className="mb-3">
-                    <div className="flex items-center justify-between text-xs text-[#a6a6a6]">
-                      <span>
-                        Card {progressIndex} of {sessionTotal}
-                      </span>
-                      <span className="text-[#7a7a7a]">
-                        {remainingExcludingCurrent} remaining today
-                      </span>
-                    </div>
-                    <div className="h-1 mt-1 rounded bg-[#1f2329]">
-                      <div
-                        className="h-1 rounded bg-[#4040f2]"
-                        style={{
-                          width: `${(progressIndex / sessionTotal) * 100}%`,
-                        }}
-                      />
-                    </div>
+            )}
+            {view === "review"
+              ? cards.length > 0 && (
+                  <div className="text-[#a6a6a6] text-sm">
+                    {cards.length} due now
+                  </div>
+                )
+              : summary && (
+                  <div className="text-[#a6a6a6] text-sm">
+                    {summary.due} due now
                   </div>
                 )}
-                {/* First row: Word + Delete + HSK + Reveal buttons */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="text-white text-2xl font-inter">
-                      {current.hanzi}
+          </div>
+        </div>
+
+        <AnimatePresence mode="popLayout">
+          {view === "dashboard" ? (
+            // DASHBOARD VIEW
+            <motion.div
+              key="dashboard"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{
+                duration: 0.3,
+                ease: [0.4, 0, 0.2, 1],
+              }}
+            >
+              {summaryLoading ? (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] animate-pulse h-64" />
+                  <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] animate-pulse h-64" />
+                  <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] animate-pulse h-64" />
+                </div>
+              ) : summaryError ? (
+                <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] text-red-300">
+                  {summaryError}
+                </div>
+              ) : summary ? (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Donut chart */}
+                  <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040]">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="text-white font-medium">Your words</div>
+                    </div>
+                    <div className="h-56">
+                      {mounted ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={[
+                                {
+                                  name: "Strong",
+                                  value: summary.strong,
+                                  color: "#22c55e",
+                                },
+                                {
+                                  name: "Partial",
+                                  value: summary.partial,
+                                  color: "#4cc2f0",
+                                },
+                                {
+                                  name: "Weak",
+                                  value: summary.weak,
+                                  color: "#ef4444",
+                                },
+                                {
+                                  name: "Not studied",
+                                  value: summary.notStudied,
+                                  color: "#9aa3af",
+                                },
+                              ]}
+                              dataKey="value"
+                              nameKey="name"
+                              outerRadius={90}
+                              paddingAngle={1}
+                            >
+                              {["#22c55e", "#4cc2f0", "#ef4444", "#9aa3af"].map(
+                                (c, i) => (
+                                  <Cell key={i} fill={c} />
+                                )
+                              )}
+                            </Pie>
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full" />
+                      )}
+                    </div>
+                    <div className="mt-3 space-y-3">
+                      {[
+                        {
+                          label: "Strong",
+                          count: summary.strong,
+                          color: "#22c55e",
+                        },
+                        {
+                          label: "Partial",
+                          count: summary.partial,
+                          color: "#4cc2f0",
+                        },
+                        {
+                          label: "Weak",
+                          count: summary.weak,
+                          color: "#ef4444",
+                        },
+                        {
+                          label: "Not studied",
+                          count: summary.notStudied,
+                          color: "#9aa3af",
+                        },
+                      ].map((item) => {
+                        const percentage =
+                          summary.total > 0
+                            ? (item.count / summary.total) * 100
+                            : 0;
+                        return (
+                          <div
+                            key={item.label}
+                            className="w-full h-8 rounded-lg overflow-hidden relative"
+                          >
+                            {/* Colored bar background layer */}
+                            <div
+                              className="h-full absolute left-0 top-0 transition-all duration-300"
+                              style={{
+                                width: `${percentage}%`,
+                                backgroundColor: item.color,
+                              }}
+                            />
+                            {/* Text overlay layer spanning full width */}
+                            <div className="h-full w-full flex items-center justify-between px-3 relative z-10">
+                              <div className="text-white text-sm font-medium whitespace-nowrap">
+                                {item.label}
+                              </div>
+                              <div className="text-white text-sm font-medium whitespace-nowrap">
+                                {item.count}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Stats + CTA */}
+                  <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] flex flex-col justify-between">
+                    <div className="grid grid-rows-2 gap-2">
+                      <div className="bg-[#262a31] rounded-lg p-4 border border-[#3a3a3a]">
+                        <div className="text-[#a6a6a6] text-xs">
+                          Overdue + due now
+                        </div>
+                        <div className="text-2xl text-white mt-1">
+                          {summary.due}
+                        </div>
+                      </div>
+                      <div className="bg-[#262a31] rounded-lg p-4 border border-[#3a3a3a]">
+                        <div className="text-[#a6a6a6] text-xs">Due today</div>
+                        <div className="text-2xl text-white mt-1">
+                          {summary.dueToday}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-6">
+                      <button
+                        onClick={startStudying}
+                        disabled={summary.due === 0 || startingStudy}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff] cursor-pointer"
+                        aria-label={
+                          summary.due === 0
+                            ? "No cards due"
+                            : startingStudy
+                              ? "Loading due flashcards"
+                              : "Start studying due flashcards"
+                        }
+                      >
+                        {startingStudy && (
+                          <span className="h-4 w-4 inline-block rounded-full border-2 border-white border-t-transparent animate-spin" />
+                        )}
+                        <span className="text-sm font-inter">
+                          {summary.due === 0
+                            ? "No cards due"
+                            : startingStudy
+                              ? "Preparing…"
+                              : `Study (${summary.due})`}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* All flashcards preview */}
+                  <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] flex flex-col">
+                    <div className="text-white font-medium mb-4">
+                      All flashcards ({summary.total})
+                    </div>
+
+                    {/* HSK Level Stats */}
+                    {Object.keys(hskStats).length > 0 && (
+                      <div className="mb-4">
+                        <div className="text-[#a6a6a6] text-xs mb-2">
+                          By HSK level
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {[1, 2, 3, 4, 5, 6, 7].map((level) => {
+                            const count = hskStats[level];
+                            if (!count) return null;
+                            return (
+                              <div
+                                key={level}
+                                className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs ${getHSKPillClasses(level)}`}
+                              >
+                                <span className="font-medium opacity-75">
+                                  HSK {level}
+                                </span>
+                                <span className="font-semibold">{count}</span>
+                              </div>
+                            );
+                          })}
+                          {hskStats["none"] && hskStats["none"]! > 0 && (
+                            <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs bg-[#3a3a3a] text-[#d0d0d0] border border-[#4a4a4a]">
+                              <span className="font-medium">No HSK</span>
+                              <span className="font-semibold">
+                                {hskStats["none"]}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex-1 overflow-y-auto max-h-64 min-h-[200px] mb-4">
+                      {previewCardsLoading ? (
+                        <div className="space-y-3">
+                          {[...Array(3)].map((_, i) => (
+                            <div
+                              key={i}
+                              className="bg-[#262a31] rounded-lg p-3 border border-[#3a3a3a] animate-pulse h-16"
+                            />
+                          ))}
+                        </div>
+                      ) : previewCards.length === 0 ? (
+                        <div className="text-[#a6a6a6] text-sm text-center py-8">
+                          No flashcards yet
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {previewCards.map((card) => (
+                            <button
+                              key={card.id}
+                              onClick={toggleDrawer}
+                              className="w-full bg-[#262a31] rounded-lg p-3 border border-[#3a3a3a] hover:border-[#4040f2] transition-colors text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff] cursor-pointer"
+                              aria-label={`View flashcard: ${card.hanzi}`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-white font-medium truncate">
+                                    {card.hanzi}
+                                  </div>
+                                  <div className="text-[#c6ceff] text-sm truncate">
+                                    {card.pinyin}
+                                  </div>
+                                  <div className="text-[#a6a6a6] text-xs truncate mt-0.5">
+                                    {card.definition}
+                                  </div>
+                                </div>
+                                {typeof card.hskLevel === "number" && (
+                                  <span
+                                    className={`text-[10px] leading-none px-2 py-[2px] rounded-full flex-shrink-0 ${getHSKPillClasses(card.hskLevel)}`}
+                                  >
+                                    HSK {card.hskLevel}
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <button
-                      onClick={() => deleteCard(current.id, current.vocabId)}
-                      className="p-2 text-[#a6a6a6] hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 cursor-pointer"
-                      title="Delete flashcard"
-                      aria-label="Delete flashcard"
+                      onClick={toggleDrawer}
+                      className="w-full h-11 px-4 bg-[#4040f2] hover:bg-[#3636d9] text-white rounded-lg cursor-pointer text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff] transition-colors duration-200 flex items-center justify-center gap-2"
+                      aria-label="View all flashcards"
                     >
+                      <span>View all {summary.total}</span>
                       <svg
                         width="16"
                         height="16"
@@ -720,408 +1067,557 @@ export default function FlashcardsPage() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       >
-                        <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6" />
+                        <path d="M5 12h14M12 5l7 7-7 7" />
                       </svg>
                     </button>
                   </div>
-                  <div className="flex flex-col gap-2">
-                    <button
-                      onClick={() =>
-                        setRevealPinyin((r) => ({
-                          ...r,
-                          [current.id]: !r[current.id],
-                        }))
-                      }
-                      className={`px-3 py-1.5 border rounded-lg text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff] transition-colors cursor-pointer ${
-                        revealPinyin[current.id]
-                          ? "bg-[#3a3e46] border-[#4040f2] text-[#c6c6c6]"
-                          : "bg-[#2e323a] border-[#404040] hover:border-[#4040f2] hover:bg-[#3a3e46] text-[#c6c6c6]"
-                      }`}
-                      aria-pressed={!!revealPinyin[current.id]}
-                      aria-label={
-                        revealPinyin[current.id]
-                          ? "Hide pinyin"
-                          : "Reveal pinyin"
-                      }
-                    >
-                      {revealPinyin[current.id]
-                        ? "Hide Pinyin"
-                        : "Reveal Pinyin"}
-                    </button>
-                    <button
-                      onClick={() =>
-                        setRevealTrans((r) => ({
-                          ...r,
-                          [current.id]: !r[current.id],
-                        }))
-                      }
-                      className={`px-3 py-1.5 border rounded-lg text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff] transition-colors cursor-pointer ${
-                        revealTrans[current.id]
-                          ? "bg-[#3a3e46] border-[#4040f2] text-[#c6c6c6]"
-                          : "bg-[#2e323a] border-[#404040] hover:border-[#4040f2] hover:bg-[#3a3e46] text-[#c6c6c6]"
-                      }`}
-                      aria-pressed={!!revealTrans[current.id]}
-                      aria-label={
-                        revealTrans[current.id]
-                          ? "Hide meaning"
-                          : "Reveal meaning"
-                      }
-                    >
-                      {revealTrans[current.id]
-                        ? "Hide Meaning"
-                        : "Reveal Meaning"}
-                    </button>
-                  </div>
                 </div>
-
-                {/* Pinyin and Definition (directly below word) */}
-                <div className="mb-4">
-                  {revealPinyin[current.id] && (
-                    <motion.div
-                      initial={
-                        prefersReducedMotion ? false : { opacity: 0, y: -4 }
-                      }
-                      animate={prefersReducedMotion ? {} : { opacity: 1, y: 0 }}
-                      className="text-[#c6ceff] mb-2"
-                    >
-                      {current.pinyin || "(no pinyin)"}
-                    </motion.div>
-                  )}
-                  {revealTrans[current.id] && (
-                    <motion.div
-                      initial={
-                        prefersReducedMotion ? false : { opacity: 0, y: -4 }
-                      }
-                      animate={prefersReducedMotion ? {} : { opacity: 1, y: 0 }}
-                      className="text-[#a6a6a6] text-sm"
-                    >
-                      {current.definition || "(no definition)"}
-                    </motion.div>
-                  )}
-                </div>
-
-                {/* HSK Level row */}
-                {typeof current.hskLevel === "number" && (
-                  <div className="mb-4">
-                    <div
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${getHSKPillClasses(current.hskLevel)}`}
-                    >
-                      HSK {current.hskLevel}
+              ) : null}
+            </motion.div>
+          ) : (
+            // REVIEW VIEW (existing UI)
+            <motion.div
+              key="review"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{
+                duration: 0.3,
+                ease: [0.4, 0, 0.2, 1],
+              }}
+            >
+              {loading ? (
+                <div className="flex justify-center">
+                  <div className="w-full max-w-xl bg-[#2e323a] rounded-xl p-6 border border-[#404040]">
+                    <div className="animate-pulse space-y-4">
+                      <div className="h-6 bg-[#3a3e46] rounded w-1/3" />
+                      <div className="h-4 bg-[#3a3e46] rounded w-1/2" />
+                      <div className="h-20 bg-[#2a2e35] rounded" />
+                      <div className="h-10 bg-[#2a2e35] rounded" />
                     </div>
                   </div>
-                )}
-
-                {/* Third row: Sentences (full width) */}
-                {Array.isArray(
-                  (
-                    current as unknown as {
-                      sentences?: {
-                        hanzi: string;
-                        pinyin?: string;
-                        translation?: string;
-                      }[];
-                    }
-                  ).sentences
-                ) &&
-                  (
-                    current as unknown as {
-                      sentences?: {
-                        hanzi: string;
-                        pinyin?: string;
-                        translation?: string;
-                      }[];
-                    }
-                  ).sentences!.length > 0 && (
-                    <div className="mb-6 space-y-2">
-                      {(
-                        current as unknown as {
-                          sentences: {
-                            hanzi: string;
-                            pinyin?: string;
-                            translation?: string;
-                          }[];
-                        }
-                      ).sentences
-                        .slice(0, showAllSentences[current.id] ? undefined : 1)
-                        .map(
-                          (
-                            s: {
-                              hanzi: string;
-                              pinyin?: string;
-                              translation?: string;
-                              segments?: Array<{
-                                text: string;
-                                isWord: boolean;
-                                pinyin?: string;
-                                definition?: string;
-                                definitions?: string[];
-                                hskLevel?: number;
-                              }>;
-                            },
-                            idx: number
-                          ) => (
+                </div>
+              ) : error ? (
+                <div className="flex justify-center">
+                  <div className="w-full max-w-xl bg-[#2e323a] rounded-xl p-6 border border-[#404040] text-red-300">
+                    <div className="mb-3">{error}</div>
+                    <button
+                      onClick={() => load()}
+                      className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              ) : cards.length === 0 ? (
+                <div className="flex justify-center">
+                  <div className="w-full max-w-xl bg-[#2e323a] rounded-xl p-6 border border-[#404040] text-[#a6a6a6]">
+                    <div className="text-white text-lg mb-2">
+                      All caught up!
+                    </div>
+                    <div className="mb-3">No cards due. Great job!</div>
+                    <button
+                      onClick={() => setView("dashboard")}
+                      className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                    >
+                      ← Back to overview
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-center">
+                  <AnimatePresence initial={false} mode="popLayout">
+                    <motion.div
+                      key={current?.id}
+                      ref={contentRef}
+                      className="w-full max-w-xl bg-[#2e323a] rounded-xl p-6 border border-[#404040] relative"
+                      initial={
+                        prefersReducedMotion ? false : { opacity: 0, x: 24 }
+                      }
+                      animate={prefersReducedMotion ? {} : { opacity: 1, x: 0 }}
+                      exit={prefersReducedMotion ? {} : { opacity: 0, x: -24 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 400,
+                        damping: 30,
+                        mass: 0.6,
+                      }}
+                    >
+                      {sessionTotal > 0 && (
+                        <div className="mb-3">
+                          <div className="flex items-center justify-between text-xs text-[#a6a6a6]">
+                            <span>
+                              Card {progressIndex} of {sessionTotal}
+                            </span>
+                            <span className="text-[#7a7a7a]">
+                              {remainingExcludingCurrent} remaining today
+                            </span>
+                          </div>
+                          <div className="h-1 mt-1 rounded bg-[#1f2329]">
                             <div
-                              key={idx}
-                              className="bg-[#262a31] rounded p-3 border border-[#3a3a3a]"
-                            >
-                              {renderSentenceWithPinyin(
-                                s.hanzi,
-                                s.pinyin,
-                                s.segments
-                              )}
-                              {revealTrans[current.id] && s.translation && (
-                                <div className="text-[#a6a6a6] text-sm mt-1">
-                                  {s.translation}
-                                </div>
-                              )}
-                            </div>
-                          )
-                        )}
-                      {!showAllSentences[current.id] &&
-                        (
-                          current as unknown as {
-                            sentences: Array<{
-                              hanzi: string;
-                              pinyin?: string;
-                              translation?: string;
-                            }>;
-                          }
-                        ).sentences.length > 1 && (
+                              className="h-1 rounded bg-[#4040f2]"
+                              style={{
+                                width: `${(progressIndex / sessionTotal) * 100}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {/* First row: Word + Delete + HSK + Reveal buttons */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="text-white sm:text-2xl text-xl font-inter">
+                            {current.hanzi}
+                          </div>
                           <button
                             onClick={() =>
-                              setShowAllSentences((r) => ({
+                              deleteCard(current.id, current.vocabId)
+                            }
+                            className="p-2 text-[#a6a6a6] hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 cursor-pointer"
+                            title="Delete flashcard"
+                            aria-label="Delete flashcard"
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6" />
+                            </svg>
+                          </button>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <button
+                            onClick={() =>
+                              setRevealPinyin((r) => ({
                                 ...r,
-                                [current.id]: true,
+                                [current.id]: !r[current.id],
                               }))
                             }
-                            className="w-full px-3 py-2 bg-[#262a31] border border-[#3a3a3a] rounded hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                            className={`px-3 py-1.5 border rounded-lg sm:text-sm text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff] transition-colors cursor-pointer min-h-10 ${
+                              revealPinyin[current.id]
+                                ? "bg-[#3a3e46] border-[#4040f2] text-[#c6c6c6]"
+                                : "bg-[#2e323a] border-[#404040] hover:border-[#4040f2] hover:bg-[#3a3e46] text-[#c6c6c6]"
+                            }`}
+                            aria-pressed={!!revealPinyin[current.id]}
+                            aria-label={
+                              revealPinyin[current.id]
+                                ? "Hide pinyin"
+                                : "Reveal pinyin"
+                            }
                           >
-                            More examples (
+                            {revealPinyin[current.id]
+                              ? "Hide Pinyin"
+                              : "Reveal Pinyin"}
+                          </button>
+                          <button
+                            onClick={() =>
+                              setRevealTrans((r) => ({
+                                ...r,
+                                [current.id]: !r[current.id],
+                              }))
+                            }
+                            className={`px-3 py-1.5 border rounded-lg sm:text-sm text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff] transition-colors cursor-pointer min-h-10 ${
+                              revealTrans[current.id]
+                                ? "bg-[#3a3e46] border-[#4040f2] text-[#c6c6c6]"
+                                : "bg-[#2e323a] border-[#404040] hover:border-[#4040f2] hover:bg-[#3a3e46] text-[#c6c6c6]"
+                            }`}
+                            aria-pressed={!!revealTrans[current.id]}
+                            aria-label={
+                              revealTrans[current.id]
+                                ? "Hide meaning"
+                                : "Reveal meaning"
+                            }
+                          >
+                            {revealTrans[current.id]
+                              ? "Hide Meaning"
+                              : "Reveal Meaning"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Pinyin and Definition (directly below word) */}
+                      <div className="mb-4">
+                        {revealPinyin[current.id] && (
+                          <motion.div
+                            initial={
+                              prefersReducedMotion
+                                ? false
+                                : { opacity: 0, y: -4 }
+                            }
+                            animate={
+                              prefersReducedMotion ? {} : { opacity: 1, y: 0 }
+                            }
+                            className="text-[#c6ceff] mb-2"
+                          >
+                            {current.pinyin || "(no pinyin)"}
+                          </motion.div>
+                        )}
+                        {revealTrans[current.id] && (
+                          <motion.div
+                            initial={
+                              prefersReducedMotion
+                                ? false
+                                : { opacity: 0, y: -4 }
+                            }
+                            animate={
+                              prefersReducedMotion ? {} : { opacity: 1, y: 0 }
+                            }
+                            className="text-[#a6a6a6] text-sm"
+                          >
+                            {current.definition || "(no definition)"}
+                          </motion.div>
+                        )}
+                      </div>
+
+                      {/* HSK Level row */}
+                      {typeof current.hskLevel === "number" && (
+                        <div className="mb-4">
+                          <div
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${getHSKPillClasses(current.hskLevel)}`}
+                          >
+                            HSK {current.hskLevel}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Third row: Sentences (full width) */}
+                      {Array.isArray(
+                        (
+                          current as unknown as {
+                            sentences?: {
+                              hanzi: string;
+                              pinyin?: string;
+                              translation?: string;
+                            }[];
+                          }
+                        ).sentences
+                      ) &&
+                        (
+                          current as unknown as {
+                            sentences?: {
+                              hanzi: string;
+                              pinyin?: string;
+                              translation?: string;
+                            }[];
+                          }
+                        ).sentences!.length > 0 && (
+                          <div className="mb-6 space-y-2">
                             {(
                               current as unknown as {
-                                sentences: Array<{
+                                sentences: {
                                   hanzi: string;
                                   pinyin?: string;
                                   translation?: string;
-                                }>;
+                                }[];
                               }
-                            ).sentences.length - 1}
-                            )
-                          </button>
+                            ).sentences
+                              .slice(
+                                0,
+                                showAllSentences[current.id] ? undefined : 1
+                              )
+                              .map(
+                                (
+                                  s: {
+                                    hanzi: string;
+                                    pinyin?: string;
+                                    translation?: string;
+                                    segments?: Array<{
+                                      text: string;
+                                      isWord: boolean;
+                                      pinyin?: string;
+                                      definition?: string;
+                                      definitions?: string[];
+                                      hskLevel?: number;
+                                    }>;
+                                  },
+                                  idx: number
+                                ) => (
+                                  <div
+                                    key={idx}
+                                    className="bg-[#262a31] rounded p-3 border border-[#3a3a3a]"
+                                  >
+                                    {renderSentenceWithPinyin(
+                                      s.hanzi,
+                                      s.pinyin,
+                                      s.segments
+                                    )}
+                                    {revealTrans[current.id] &&
+                                      s.translation && (
+                                        <div className="text-[#a6a6a6] text-sm mt-1">
+                                          {s.translation}
+                                        </div>
+                                      )}
+                                  </div>
+                                )
+                              )}
+                            {!showAllSentences[current.id] &&
+                              (
+                                current as unknown as {
+                                  sentences: Array<{
+                                    hanzi: string;
+                                    pinyin?: string;
+                                    translation?: string;
+                                  }>;
+                                }
+                              ).sentences.length > 1 && (
+                                <button
+                                  onClick={() =>
+                                    setShowAllSentences((r) => ({
+                                      ...r,
+                                      [current.id]: true,
+                                    }))
+                                  }
+                                  className="w-full px-3 py-2 bg-[#262a31] border border-[#3a3a3a] rounded hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                                >
+                                  More examples (
+                                  {(
+                                    current as unknown as {
+                                      sentences: Array<{
+                                        hanzi: string;
+                                        pinyin?: string;
+                                        translation?: string;
+                                      }>;
+                                    }
+                                  ).sentences.length - 1}
+                                  )
+                                </button>
+                              )}
+                          </div>
                         )}
-                    </div>
-                  )}
 
-                <div className="mt-6 pb-20 sm:pb-6">
-                  <div className="text-[#a6a6a6] text-xs mb-2">
-                    How well did you remember?
-                  </div>
-                  <div className="hidden sm:grid grid-cols-6 gap-2">
-                    {[0, 1, 2, 3, 4, 5].map((q) => (
-                      <motion.button
-                        key={q}
-                        onClick={() => grade(current.id, q)}
-                        whileTap={
-                          prefersReducedMotion ? undefined : { scale: 0.98 }
-                        }
-                        className="px-3 py-3 min-h-[44px] bg-[#2e323a] border border-[#404040] rounded hover:border-[#4040f2] text-[#a6a6a6] text-sm cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff]"
-                        title={gradeHelp[q]}
-                        aria-label={`Grade ${q}: ${gradeHelp[q]}`}
-                      >
-                        <div className="font-medium">{q}</div>
-                        <div className="sr-only">{gradeHelp[q]}</div>
-                      </motion.button>
-                    ))}
-                  </div>
-                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {[0, 1, 2, 3, 4, 5].map((q) => (
-                      <div key={q} className="text-[11px] text-[#7a7a7a]">
-                        <span className="text-[#a6a6a6] mr-1">{q}:</span>
-                        {gradeHelp[q]}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                {popup.open && (
-                  <div
-                    ref={popupDesktopRef}
-                    role="dialog"
-                    aria-modal="true"
-                    aria-label={popup.word}
-                    style={{
-                      position: "absolute",
-                      left: popupPos ? popupPos.left : popup.x,
-                      top: popupPos ? popupPos.top : popup.y,
-                      zIndex: 50,
-                      visibility: "visible",
-                      transform: "translate(-50%, 0)",
-                    }}
-                    className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-bold text-white text-lg truncate">
-                        {popup.word}
-                      </div>
-                      {typeof popup.hskLevel === "number" && (
-                        <span
-                          className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(popup.hskLevel)}`}
-                        >
-                          HSK {popup.hskLevel}
-                        </span>
-                      )}
-                    </div>
-                    {popup.pinyin && (
-                      <div className="text-[#c6ceff] text-sm font-medium truncate">
-                        {popup.pinyin}
-                      </div>
-                    )}
-                    {Array.isArray(popup.definitions) &&
-                    popup.definitions.length > 0 ? (
-                      <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
-                        {popup.definitions.map((d, i) => (
-                          <div key={i}>• {d}</div>
-                        ))}
-                      </div>
-                    ) : popup.definition ? (
-                      <div className="text-xs text-[#a6a6a6] mt-2">
-                        {popup.definition}
-                      </div>
-                    ) : null}
-                    <div className="mt-3 pt-3 border-t border-[#404040] flex gap-2">
-                      <button
-                        ref={dialogInitialFocusRef}
-                        onClick={() => {
-                          setPopup((p) => ({ ...p, open: false }));
-                          popupTriggerRef.current?.focus();
-                        }}
-                        className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
-                      >
-                        Close
-                      </button>
-                      <button
-                        onClick={() => {
-                          void addWordToFlashcards(popup.word, undefined, {
-                            pinyin: popup.pinyin,
-                            definition:
-                              popup.definition || popup.definitions?.[0],
-                            hskLevel: popup.hskLevel,
-                          });
-                          setPopup((p) => ({ ...p, open: false }));
-                          popupTriggerRef.current?.focus();
-                        }}
-                        className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-                      >
-                        <span className="text-sm font-inter">
-                          Add to Flashcards
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {/* Mobile upper sheet popup */}
-                <AnimatePresence>
-                  {popup.open && (
-                    <motion.div
-                      ref={popupMobileRef}
-                      initial={{ y: "-100%" }}
-                      animate={{ y: 0 }}
-                      exit={{ y: "-100%" }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 300,
-                        damping: 30,
-                        duration: 0.3,
-                      }}
-                      className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
-                    >
-                      <div className="max-w-sm mx-auto">
-                        <div className="flex items-center justify-between gap-3 mb-3">
-                          <div className="font-bold text-white text-lg truncate">
-                            {popup.word}
-                          </div>
-                          {typeof popup.hskLevel === "number" && (
-                            <span
-                              className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(popup.hskLevel)}`}
-                            >
-                              HSK {popup.hskLevel}
-                            </span>
-                          )}
+                      <div className="mt-6 pb-20 sm:pb-6">
+                        <div className="text-[#a6a6a6] text-xs mb-2">
+                          How well did you remember?
                         </div>
-                        {popup.pinyin && (
-                          <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
-                            {popup.pinyin}
+                        <div className="hidden sm:grid grid-cols-6 gap-2">
+                          {[0, 1, 2, 3, 4, 5].map((q) => (
+                            <motion.button
+                              key={q}
+                              onClick={() => grade(current.id, q)}
+                              whileTap={
+                                prefersReducedMotion
+                                  ? undefined
+                                  : { scale: 0.98 }
+                              }
+                              className="px-3 py-3 min-h-[44px] bg-[#2e323a] border border-[#404040] rounded hover:border-[#4040f2] text-[#a6a6a6] text-sm cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff]"
+                              title={gradeHelp[q]}
+                              aria-label={`Grade ${q}: ${gradeHelp[q]}`}
+                            >
+                              <div className="font-medium">{q}</div>
+                              <div className="sr-only">{gradeHelp[q]}</div>
+                            </motion.button>
+                          ))}
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {[0, 1, 2, 3, 4, 5].map((q) => (
+                            <div key={q} className="text-[11px] text-[#7a7a7a]">
+                              <span className="text-[#a6a6a6] mr-1">{q}:</span>
+                              {gradeHelp[q]}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      {popup.open && (
+                        <div
+                          ref={popupDesktopRef}
+                          role="dialog"
+                          aria-modal="true"
+                          aria-label={popup.word}
+                          style={{
+                            position: "absolute",
+                            left: popupPos ? popupPos.left : popup.x,
+                            top: popupPos ? popupPos.top : popup.y,
+                            zIndex: 50,
+                            visibility: "visible",
+                            transform: "translate(-50%, 0)",
+                          }}
+                          className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="font-bold text-white text-lg truncate">
+                              {popup.word}
+                            </div>
+                            {typeof popup.hskLevel === "number" && (
+                              <span
+                                className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(popup.hskLevel)}`}
+                              >
+                                HSK {popup.hskLevel}
+                              </span>
+                            )}
                           </div>
+                          {popup.pinyin && (
+                            <div className="text-[#c6ceff] text-sm font-medium truncate">
+                              {popup.pinyin}
+                            </div>
+                          )}
+                          {Array.isArray(popup.definitions) &&
+                          popup.definitions.length > 0 ? (
+                            <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
+                              {popup.definitions.map((d, i) => (
+                                <div key={i}>• {d}</div>
+                              ))}
+                            </div>
+                          ) : popup.definition ? (
+                            <div className="text-xs text-[#a6a6a6] mt-2">
+                              {popup.definition}
+                            </div>
+                          ) : null}
+                          <div className="mt-3 pt-3 border-t border-[#404040] flex gap-2">
+                            <button
+                              ref={dialogInitialFocusRef}
+                              onClick={() => {
+                                setPopup((p) => ({ ...p, open: false }));
+                                popupTriggerRef.current?.focus();
+                              }}
+                              className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                            >
+                              Close
+                            </button>
+                            <button
+                              onClick={() => {
+                                void addWordToFlashcards(
+                                  popup.word,
+                                  undefined,
+                                  {
+                                    pinyin: popup.pinyin,
+                                    definition:
+                                      popup.definition ||
+                                      popup.definitions?.[0],
+                                    hskLevel: popup.hskLevel,
+                                  }
+                                );
+                                setPopup((p) => ({ ...p, open: false }));
+                                popupTriggerRef.current?.focus();
+                              }}
+                              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                            >
+                              <span className="text-sm font-inter">
+                                Add to Flashcards
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {/* Mobile upper sheet popup */}
+                      <AnimatePresence>
+                        {popup.open && (
+                          <motion.div
+                            ref={popupMobileRef}
+                            initial={{ y: "-100%" }}
+                            animate={{ y: 0 }}
+                            exit={{ y: "-100%" }}
+                            transition={{
+                              type: "spring",
+                              stiffness: 300,
+                              damping: 30,
+                              duration: 0.3,
+                            }}
+                            className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+                          >
+                            <div className="max-w-sm mx-auto">
+                              <div className="flex items-center justify-between gap-3 mb-3">
+                                <div className="font-bold text-white text-lg truncate">
+                                  {popup.word}
+                                </div>
+                                {typeof popup.hskLevel === "number" && (
+                                  <span
+                                    className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(popup.hskLevel)}`}
+                                  >
+                                    HSK {popup.hskLevel}
+                                  </span>
+                                )}
+                              </div>
+                              {popup.pinyin && (
+                                <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                                  {popup.pinyin}
+                                </div>
+                              )}
+                              {Array.isArray(popup.definitions) &&
+                              popup.definitions.length > 0 ? (
+                                <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                                  {popup.definitions.map((d, i) => (
+                                    <div key={i}>• {d}</div>
+                                  ))}
+                                </div>
+                              ) : popup.definition ? (
+                                <div className="text-xs text-[#a6a6a6] mb-3">
+                                  {popup.definition}
+                                </div>
+                              ) : null}
+                              <div className="flex gap-2">
+                                <button
+                                  ref={dialogInitialFocusRef}
+                                  onClick={() => {
+                                    setPopup((p) => ({ ...p, open: false }));
+                                    popupTriggerRef.current?.focus();
+                                  }}
+                                  className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                                >
+                                  Close
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    await addWordToFlashcards(
+                                      popup.word,
+                                      undefined,
+                                      {
+                                        pinyin: popup.pinyin,
+                                        definition:
+                                          popup.definition ||
+                                          popup.definitions?.[0],
+                                        hskLevel: popup.hskLevel,
+                                      }
+                                    );
+                                    setPopup((p) => ({ ...p, open: false }));
+                                    popupTriggerRef.current?.focus();
+                                  }}
+                                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                                >
+                                  <span className="text-sm font-inter">
+                                    Add to Flashcards
+                                  </span>
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
                         )}
-                        {Array.isArray(popup.definitions) &&
-                        popup.definitions.length > 0 ? (
-                          <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
-                            {popup.definitions.map((d, i) => (
-                              <div key={i}>• {d}</div>
+                      </AnimatePresence>
+                      {/* Sticky mobile grade bar */}
+                      {current && (
+                        <div className="sm:hidden fixed inset-x-0 bottom-0 z-30 bg-[#1a1d23]/95 backdrop-blur border-t border-[#2e323a] p-3">
+                          <div className="grid grid-cols-6 gap-2">
+                            {[0, 1, 2, 3, 4, 5].map((q) => (
+                              <motion.button
+                                key={q}
+                                onClick={() => grade(current.id, q)}
+                                whileTap={
+                                  prefersReducedMotion
+                                    ? undefined
+                                    : { scale: 0.98 }
+                                }
+                                className="py-2 min-h-[44px] rounded bg-[#2e323a] border border-[#404040] text-[#a6a6a6] text-sm cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff]"
+                                aria-label={`Grade ${q}: ${gradeHelp[q]}`}
+                                title={gradeHelp[q]}
+                              >
+                                {q}
+                              </motion.button>
                             ))}
                           </div>
-                        ) : popup.definition ? (
-                          <div className="text-xs text-[#a6a6a6] mb-3">
-                            {popup.definition}
-                          </div>
-                        ) : null}
-                        <div className="flex gap-2">
-                          <button
-                            ref={dialogInitialFocusRef}
-                            onClick={() => {
-                              setPopup((p) => ({ ...p, open: false }));
-                              popupTriggerRef.current?.focus();
-                            }}
-                            className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
-                          >
-                            Close
-                          </button>
-                          <button
-                            onClick={async () => {
-                              await addWordToFlashcards(popup.word, undefined, {
-                                pinyin: popup.pinyin,
-                                definition:
-                                  popup.definition || popup.definitions?.[0],
-                                hskLevel: popup.hskLevel,
-                              });
-                              setPopup((p) => ({ ...p, open: false }));
-                              popupTriggerRef.current?.focus();
-                            }}
-                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-                          >
-                            <span className="text-sm font-inter">
-                              Add to Flashcards
-                            </span>
-                          </button>
                         </div>
-                      </div>
+                      )}
                     </motion.div>
-                  )}
-                </AnimatePresence>
-                {/* Sticky mobile grade bar */}
-                {current && (
-                  <div className="sm:hidden fixed inset-x-0 bottom-0 z-30 bg-[#1a1d23]/95 backdrop-blur border-t border-[#2e323a] p-3">
-                    <div className="grid grid-cols-6 gap-2">
-                      {[0, 1, 2, 3, 4, 5].map((q) => (
-                        <motion.button
-                          key={q}
-                          onClick={() => grade(current.id, q)}
-                          whileTap={
-                            prefersReducedMotion ? undefined : { scale: 0.98 }
-                          }
-                          className="py-2 min-h-[44px] rounded bg-[#2e323a] border border-[#404040] text-[#a6a6a6] text-sm cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff]"
-                          aria-label={`Grade ${q}: ${gradeHelp[q]}`}
-                          title={gradeHelp[q]}
-                        >
-                          {q}
-                        </motion.button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        )}
+                  </AnimatePresence>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Right-side drawer */}
@@ -1130,18 +1626,29 @@ export default function FlashcardsPage() {
           <>
             {/* Backdrop */}
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0, pointerEvents: "none" }}
+              animate={{ opacity: 1, pointerEvents: "auto" }}
+              exit={{ opacity: 0, transitionEnd: { pointerEvents: "none" } }}
               className="fixed inset-0 bg-black/50 z-40"
               onClick={toggleDrawer}
             />
 
             {/* Drawer */}
             <motion.div
-              initial={prefersReducedMotion ? false : { x: "100%" }}
-              animate={prefersReducedMotion ? {} : { x: 0 }}
-              exit={prefersReducedMotion ? {} : { x: "100%" }}
+              initial={
+                prefersReducedMotion
+                  ? { pointerEvents: "none" }
+                  : { x: "100%", pointerEvents: "none" }
+              }
+              animate={{
+                ...(prefersReducedMotion ? {} : { x: 0 }),
+                pointerEvents: "auto",
+              }}
+              exit={
+                prefersReducedMotion
+                  ? { transitionEnd: { pointerEvents: "none" } }
+                  : { x: "100%", transitionEnd: { pointerEvents: "none" } }
+              }
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
               className="fixed inset-y-0 right-0 z-50 w-full sm:w-96 bg-[#1a1d23]/95 backdrop-blur border-l border-[#2e323a] flex flex-col"
               onClick={(e) => e.stopPropagation()}
@@ -1220,7 +1727,36 @@ export default function FlashcardsPage() {
                           {group.cards.map((card) => (
                             <motion.div
                               key={card.id}
-                              className="flex items-center gap-3 p-3 bg-[#2e323a] rounded-lg border border-[#404040] hover:border-[#4040f2] transition-colors"
+                              className={`flex items-center gap-3 p-3 bg-[#2e323a] rounded-lg border border-[#404040] hover:border-[#4040f2] transition-colors${multiSelectMode ? " cursor-pointer" : ""}`}
+                              onClick={(e) => {
+                                if (!multiSelectMode) return;
+                                const target = e.target as HTMLElement;
+                                if (target.closest('input[type="checkbox"]'))
+                                  return;
+                                const isSelected = selectedIds.has(card.id);
+                                const newSet = new Set(selectedIds);
+                                if (isSelected) newSet.delete(card.id);
+                                else newSet.add(card.id);
+                                setSelectedIds(newSet);
+                              }}
+                              role={multiSelectMode ? "checkbox" : undefined}
+                              aria-checked={
+                                multiSelectMode
+                                  ? selectedIds.has(card.id)
+                                  : undefined
+                              }
+                              tabIndex={multiSelectMode ? 0 : -1}
+                              onKeyDown={(e) => {
+                                if (!multiSelectMode) return;
+                                if (e.key === " " || e.key === "Enter") {
+                                  e.preventDefault();
+                                  const isSelected = selectedIds.has(card.id);
+                                  const newSet = new Set(selectedIds);
+                                  if (isSelected) newSet.delete(card.id);
+                                  else newSet.add(card.id);
+                                  setSelectedIds(newSet);
+                                }
+                              }}
                               layout
                               transition={{
                                 type: "spring",
@@ -1262,6 +1798,7 @@ export default function FlashcardsPage() {
                                           }
                                           setSelectedIds(newSet);
                                         }}
+                                        onClick={(e) => e.stopPropagation()}
                                         className="w-4 h-4 text-[#4040f2] bg-[#2e323a] border-[#404040] rounded focus:ring-[#6b6bff] focus:ring-2 cursor-pointer"
                                         initial={{ opacity: 0, x: -20 }}
                                         animate={{ opacity: 1, x: 0 }}
@@ -1364,7 +1901,7 @@ export default function FlashcardsPage() {
                     </span>
                     <button
                       onClick={deleteSelected}
-                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 cursor-pointer"
                     >
                       Delete selected
                     </button>
@@ -1376,5 +1913,21 @@ export default function FlashcardsPage() {
         )}
       </AnimatePresence>
     </DashboardLayout>
+  );
+}
+
+export default function FlashcardsPage() {
+  return (
+    <Suspense
+      fallback={
+        <DashboardLayout>
+          <div className="flex items-center justify-center p-6">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          </div>
+        </DashboardLayout>
+      }
+    >
+      <FlashcardsPageContent />
+    </Suspense>
   );
 }

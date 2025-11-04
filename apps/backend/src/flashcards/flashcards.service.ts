@@ -47,6 +47,68 @@ export class FlashcardsService {
     void this.segmentationService;
   }
 
+  async summary(userId: number): Promise<{
+    total: number;
+    due: number;
+    dueToday: number;
+    notStudied: number;
+    weak: number;
+    partial: number;
+    strong: number;
+  }> {
+    // Single round-trip filtered aggregates for performance
+    const rows = await (this.prisma as any).$queryRaw<
+      Array<{
+        total: number;
+        due: number;
+        dueToday: number;
+        notStudied: number;
+        weak: number;
+        partial: number;
+        strong: number;
+      }>
+    >`SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE f."nextReview" <= NOW())::int AS due,
+      COUNT(*) FILTER (
+        WHERE f."nextReview" >= date_trunc('day', NOW())
+          AND f."nextReview" < date_trunc('day', NOW()) + interval '1 day'
+      )::int AS "dueToday",
+      COUNT(*) FILTER (
+        WHERE NOT EXISTS (
+          SELECT 1 FROM "Review" r WHERE r."flashcardId" = f.id
+        )
+      )::int AS "notStudied",
+      COUNT(*) FILTER (
+        WHERE EXISTS (
+          SELECT 1 FROM "Review" r WHERE r."flashcardId" = f.id
+        ) AND f.easiness < 2.3
+      )::int AS weak,
+      COUNT(*) FILTER (
+        WHERE EXISTS (
+          SELECT 1 FROM "Review" r WHERE r."flashcardId" = f.id
+        ) AND f.easiness >= 2.3 AND f.easiness < 2.6
+      )::int AS partial,
+      COUNT(*) FILTER (
+        WHERE EXISTS (
+          SELECT 1 FROM "Review" r WHERE r."flashcardId" = f.id
+        ) AND f.easiness >= 2.6
+      )::int AS strong
+    FROM "Flashcard" f
+    WHERE f."userId" = ${userId};`;
+
+    const row = rows[0] || {
+      total: 0,
+      due: 0,
+      dueToday: 0,
+      notStudied: 0,
+      weak: 0,
+      partial: 0,
+      strong: 0,
+    };
+    return row;
+  }
+
   // Initial scheduling per SM-2
   private initialEasiness = 2.5;
 

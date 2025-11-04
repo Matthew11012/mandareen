@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import ServiceWorkerRegister from "../components/ServiceWorkerRegister";
 import { Toaster } from "sonner";
 import "./globals.css";
 import { Inter } from "next/font/google";
@@ -11,9 +12,10 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: "/favicon.ico" },
-      { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/favicon-16x16.png", sizes: "16x16", type: "image/png" }
     ],
-    apple: "/icons/icon-512x512.png",
+    apple: "/icons/apple-touch-icon.png",
   },
 };
 
@@ -50,6 +52,9 @@ export default function RootLayout({
 
         {/* Global Toast Notifications */}
         <Toaster theme="dark" position="top-right" richColors />
+
+        {/* Ensure service worker registers reliably in production */}
+        <ServiceWorkerRegister />
       </body>
     </html>
   );

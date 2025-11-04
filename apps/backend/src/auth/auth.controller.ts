@@ -92,7 +92,7 @@ export class AuthController {
         maxAge: 24 * 60 * 60 * 1000,
       });
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-      res.redirect(`${frontendUrl}/auth/callback?success=1`);
+      res.redirect(`${frontendUrl}/dashboard`);
     } catch {
       // Handle error appropriately
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';

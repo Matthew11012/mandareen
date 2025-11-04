@@ -108,6 +108,17 @@ export class FlashcardsController {
     return this.service.listAll(userId, limitNum, cursor);
   }
 
+  @Get('summary')
+  // Brief caching to reduce recomputation while keeping user-specific privacy
+  // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
+  async summary(@Req() req: AuthenticatedRequest) {
+    const userId = req.user.id;
+    const result = await this.service.summary(userId);
+    // The framework will set headers if we use @Header, but we avoid Response injection here.
+    // Controllers are typically behind Next.js proxy; short-lived caching is fine at app/proxy layer.
+    return result;
+  }
+
   @Delete(':id')
   async delete(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     const userId = req.user.id;

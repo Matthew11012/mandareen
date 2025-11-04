@@ -33,7 +33,7 @@ export function middleware(request: NextRequest) {
 
   // Handle protected routes
   if (isProtectedRoute && !token) {
-    return NextResponse.redirect(new URL("/auth/login", request.url));
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   // Handle auth routes (redirect if already authenticated)

@@ -1,4 +1,4 @@
-import { get, post } from "../http/http";
+import { get, post, del } from "../http/http";
 
 export interface Message {
   id: number;
@@ -84,5 +84,9 @@ export const conversationsApi = {
     const trimmed = rawBase.replace(/\/$/, "");
     const apiBase = trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
     return `${apiBase}/conversations/${id}/stream?${params.toString()}`;
+  },
+
+  async delete(id: number): Promise<{ deleted: boolean }> {
+    return del<{ deleted: boolean }>(`conversations/${id}`);
   },
 };

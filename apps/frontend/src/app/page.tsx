@@ -78,10 +78,10 @@ export default function LandingPage() {
             © {new Date().getFullYear()} Mandareen
           </span>
           <div className="flex items-center gap-4">
-            <a href="/auth" className="hover:text-white">
+            <a href="/login" className="hover:text-white">
               Login
             </a>
-            <a href="/auth?mode=signup" className="hover:text-white">
+            <a href="/signup" className="hover:text-white">
               Get Started
             </a>
           </div>

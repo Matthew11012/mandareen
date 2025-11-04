@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardLayout } from "@/components/layout";
-import { useRequireAuth } from "@/lib/hooks/use-auth";
+import { useAuth, useRequireAuth } from "@/lib/hooks/use-auth";
 import { lessonsApi, type LessonListItem } from "@/lib/api/lessons";
 import { RefreshCw } from "lucide-react";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useLessonsGenerationStore } from "@/lib/stores/lessons-generation-store";
 import { useLessonGenerationStream } from "@/lib/hooks/use-lesson-generation-stream";
 import { LayoutGroup } from "framer-motion";
+import { notifyLessonReady } from "@/lib/notifications/notify-lesson-ready";
 import { ProgressBanner } from "@/components/lessons/ProgressBanner";
 import { LessonCard } from "@/components/lessons/LessonCard";
 import { Carousel } from "@/components/lessons/Carousel";
@@ -22,8 +23,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// SessionStorage persistence (no URL params)
+const LS_KEYS = {
+  mode: "mandareen.lessons.mode.v1",
+  hsk: "mandareen.lessons.hsk.v1",
+  time: "mandareen.lessons.time.v1",
+  tags: "mandareen.lessons.tags.v1",
+} as const;
+
 export default function LessonsPage() {
   const { isLoading: authLoading } = useRequireAuth();
+  const { user } = useAuth();
   const router = useRouter();
   const [allStories, setAllStories] = useState<LessonListItem[]>([]);
   const [allDialogues, setAllDialogues] = useState<LessonListItem[]>([]);
@@ -90,13 +100,16 @@ export default function LessonsPage() {
     content: Array<{ tag: string; count: number }>;
   } | null>(null);
 
-  // LocalStorage persistence (no URL params)
-  const LS_KEYS = {
-    mode: "mandareen.lessons.mode.v1",
-    hsk: "mandareen.lessons.hsk.v1",
-    time: "mandareen.lessons.time.v1",
-    tags: "mandareen.lessons.tags.v1",
-  } as const;
+  // Clear filters when user changes (prevents cross-account leakage in same tab)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      sessionStorage.removeItem(LS_KEYS.mode);
+      sessionStorage.removeItem(LS_KEYS.hsk);
+      sessionStorage.removeItem(LS_KEYS.time);
+      sessionStorage.removeItem(LS_KEYS.tags);
+    } catch {}
+  }, [user?.id]);
 
   type TimeframeKey = typeof timeframe;
   const isValidTimeframe = (v: string | null): v is TimeframeKey =>
@@ -106,23 +119,25 @@ export default function LessonsPage() {
     v === "pre_modern" ||
     v === "futuristic";
 
-  // Hydrate once on mount
+  // Hydrate on first load and whenever the authenticated user changes
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const m = localStorage.getItem(LS_KEYS.mode);
+      // Hydrate from sessionStorage
+      const m = sessionStorage.getItem(LS_KEYS.mode);
       if (m === "story" || m === "dialogue") setOutputMode(m);
-      const h = localStorage.getItem(LS_KEYS.hsk);
+
+      const h = sessionStorage.getItem(LS_KEYS.hsk);
       if (h === "auto" || h === null) {
         // keep null (auto)
       } else if (!Number.isNaN(parseInt(h))) {
         setGenLevel(parseInt(h));
       }
-      const t = localStorage.getItem(LS_KEYS.time);
+
+      const t = sessionStorage.getItem(LS_KEYS.time);
       if (isValidTimeframe(t)) setTimeframe(t);
 
-      // Load tag filtering state
-      const tags = localStorage.getItem(LS_KEYS.tags);
+      const tags = sessionStorage.getItem(LS_KEYS.tags);
       if (tags) {
         try {
           const parsed = JSON.parse(tags);
@@ -131,25 +146,23 @@ export default function LessonsPage() {
       }
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id]);
 
-  // Debounced save on change
+  // Debounced save on change (sessionStorage)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const id = window.setTimeout(() => {
       try {
-        localStorage.setItem(LS_KEYS.mode, outputMode);
-        localStorage.setItem(
+        sessionStorage.setItem(LS_KEYS.mode, outputMode);
+        sessionStorage.setItem(
           LS_KEYS.hsk,
           genLevel == null ? "auto" : String(genLevel)
         );
-        localStorage.setItem(LS_KEYS.time, timeframe);
-        localStorage.setItem(LS_KEYS.tags, JSON.stringify(selectedTags));
+        sessionStorage.setItem(LS_KEYS.time, timeframe);
+        sessionStorage.setItem(LS_KEYS.tags, JSON.stringify(selectedTags));
       } catch {}
     }, 250);
     return () => window.clearTimeout(id);
-    // we intentionally omit LS_KEYS refs to keep stable keys
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outputMode, genLevel, timeframe, selectedTags]);
 
   // Per-section finished status filters
@@ -346,14 +359,80 @@ export default function LessonsPage() {
 
   const { start: startStream, attach: attachStream } =
     useLessonGenerationStream();
+  const genStore = useLessonsGenerationStore();
+  const [progressOpen, setProgressOpen] = useState(false);
+  const progressStep = genStore.progressStep as string | null;
+  const completedSteps = genStore.completedSteps as Record<string, boolean>;
+  const progressStepsOrder = [
+    "openai_generate_dialogue",
+    "segment_dialogue",
+    "rag_retrieve_context",
+    "openai_generate_grammar_notes",
+    "segment_grammar_notes_and_tips",
+    "persist_lesson",
+  ];
+
+  // Track notified lesson IDs to prevent duplicates
+  const notifiedLessonIdsRef = useRef<Set<number>>(new Set());
+
+  const handleLessonReady = useCallback(
+    async (meta: {
+      id: number;
+      type: "story" | "dialogue";
+      topic?: string;
+    }) => {
+      if (!meta.id) return;
+
+      // Check if we've already notified for this lesson ID
+      if (notifiedLessonIdsRef.current.has(meta.id)) {
+        return;
+      }
+
+      // Mark as notified immediately to prevent race conditions
+      notifiedLessonIdsRef.current.add(meta.id);
+
+      const effectiveTopic =
+        meta.topic ??
+        genStore.params?.topic ??
+        genStore.lastCompletedLessonTopic ??
+        null;
+
+      let resolvedTitle: string | null = genStore.lastCompletedLessonTitle;
+
+      if (!resolvedTitle || genStore.lastCompletedLessonId !== meta.id) {
+        try {
+          const detail = await lessonsApi.getById(meta.id);
+          resolvedTitle = detail.title ?? null;
+        } catch (error) {
+          console.error("Failed to fetch lesson details:", error);
+        }
+      }
+
+      notifyLessonReady({
+        id: meta.id,
+        title: resolvedTitle,
+        topic: effectiveTopic ?? undefined,
+        type: meta.type,
+        onOpen: () => router.push(`/lessons/${meta.id}`),
+      });
+
+      genStore.setLastCompletedLesson({
+        id: meta.id,
+        title: resolvedTitle,
+        topic: effectiveTopic,
+      });
+    },
+    [genStore, router]
+  );
 
   const handleGenerate = async () => {
     setError(null);
     setGenerating(true);
     setProgressOpen(true);
+    const requestTopic = topic.trim() || undefined;
     startStream({
       level: genLevel ?? null,
-      topic: topic.trim() || undefined,
+      topic: requestTopic,
       readTimeMinutes: 10,
       type: "story",
       timeframe,
@@ -362,18 +441,23 @@ export default function LessonsPage() {
       await attachStream({
         params: {
           level: genLevel ?? null,
-          topic: topic.trim() || undefined,
+          topic: requestTopic,
           readTimeMinutes: 10,
           type: "story",
           timeframe,
         },
-        onComplete: async (id?: number) => {
+        onComplete: async ({ id, topic: completedTopic }) => {
           await load();
           setProgressOpen(false);
-          if (id) {
-            genStore.setLessonId(null);
-            genStore.finish();
-            router.push(`/lessons/${id}`);
+          setGenerating(false);
+          genStore.setLessonId(null);
+          genStore.finish();
+          if (typeof id === "number") {
+            await handleLessonReady({
+              id,
+              type: "story",
+              topic: completedTopic ?? requestTopic,
+            });
           }
         },
         onError: async () => {
@@ -392,10 +476,16 @@ export default function LessonsPage() {
                   new Date(a.createdAt).getTime()
               );
             if (recentMine.length > 0) {
+              const recentId = recentMine[0].id;
               setProgressOpen(false);
               setGenerating(false);
+              genStore.setLessonId(null);
               genStore.finish();
-              router.push(`/lessons/${recentMine[0].id}`);
+              await handleLessonReady({
+                id: recentId,
+                type: "story",
+                topic: genStore.params?.topic ?? requestTopic,
+              });
               return;
             }
           } catch {}
@@ -422,26 +512,14 @@ export default function LessonsPage() {
     }
   };
 
-  const genStore = useLessonsGenerationStore();
-  const [progressOpen, setProgressOpen] = useState(false);
-  const progressStep = genStore.progressStep as string | null;
-  const completedSteps = genStore.completedSteps as Record<string, boolean>;
-  const progressStepsOrder = [
-    "openai_generate_dialogue",
-    "segment_dialogue",
-    "rag_retrieve_context",
-    "openai_generate_grammar_notes",
-    "segment_grammar_notes_and_tips",
-    "persist_lesson",
-  ];
-
   const handleGenerateDialogue = async () => {
     setError(null);
     setGenerating(true);
     setProgressOpen(true);
+    const requestTopic = topic.trim() || undefined;
     startStream({
       level: genLevel ?? null,
-      topic: topic.trim() || undefined,
+      topic: requestTopic,
       readTimeMinutes: 8,
       type: "dialogue",
       timeframe,
@@ -450,20 +528,24 @@ export default function LessonsPage() {
       await attachStream({
         params: {
           level: genLevel ?? null,
-          topic: topic.trim() || undefined,
+          topic: requestTopic,
           readTimeMinutes: 8,
           type: "dialogue",
           timeframe,
         },
-        onComplete: async (id?: number) => {
+        onComplete: async ({ id, topic: completedTopic }) => {
           await load();
           setProgressOpen(false);
-          if (id) {
-            genStore.setLessonId(null);
-            router.push(`/lessons/${id}`);
-          }
           setGenerating(false);
+          genStore.setLessonId(null);
           genStore.finish();
+          if (typeof id === "number") {
+            await handleLessonReady({
+              id,
+              type: "dialogue",
+              topic: completedTopic ?? requestTopic,
+            });
+          }
         },
         onError: async () => {
           try {
@@ -481,10 +563,16 @@ export default function LessonsPage() {
                   new Date(a.createdAt).getTime()
               );
             if (recentMine.length > 0) {
+              const recentId = recentMine[0].id;
               setProgressOpen(false);
               setGenerating(false);
+              genStore.setLessonId(null);
               genStore.finish();
-              router.push(`/lessons/${recentMine[0].id}`);
+              await handleLessonReady({
+                id: recentId,
+                type: "dialogue",
+                topic: genStore.params?.topic ?? requestTopic,
+              });
               return;
             }
           } catch {}
@@ -542,14 +630,23 @@ export default function LessonsPage() {
             );
           if (candidates.length > 0) {
             const id = candidates[0].id;
-            genStore.setLessonId(null);
-            genStore.finish();
-            setProgressOpen(false);
-            if (interval) {
-              clearInterval(interval);
-              interval = null;
+            // Skip if we've already notified for this lesson
+            if (!notifiedLessonIdsRef.current.has(id)) {
+              genStore.setLessonId(null);
+              genStore.finish();
+              setProgressOpen(false);
+              if (interval) {
+                clearInterval(interval);
+                interval = null;
+              }
+              setGenerating(false);
+              await load();
+              await handleLessonReady({
+                id,
+                type,
+                topic: params.topic ?? undefined,
+              });
             }
-            router.push(`/lessons/${id}`);
           }
         } catch {}
       };
@@ -560,7 +657,7 @@ export default function LessonsPage() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [genStore, router]);
+  }, [genStore, handleLessonReady, load]);
 
   // rAF-throttled scroll handlers to reduce layout work
   const myStoriesRaf = useRef<number | null>(null);

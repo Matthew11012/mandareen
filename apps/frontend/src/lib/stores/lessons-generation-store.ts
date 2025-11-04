@@ -29,12 +29,21 @@ export interface LessonsGenerationState {
   params: GenParams | null;
   attached: boolean; // whether an SSE stream is currently attached
   lessonId?: number | null;
+  lastCompletedLessonId: number | null;
+  lastCompletedLessonTitle: string | null;
+  lastCompletedLessonTopic: string | null;
 
   start: (params: GenParams) => void;
   setStep: (key: ProgressKey) => void;
   markCompleted: (key: string) => void;
   setAttached: (v: boolean) => void;
   setLessonId: (id?: number | null) => void;
+  setLastCompletedLesson: (meta: {
+    id: number;
+    title?: string | null;
+    topic?: string | null;
+  }) => void;
+  clearLastCompletedLesson: () => void;
   finish: () => void;
   reset: () => void;
 }
@@ -49,6 +58,9 @@ export const useLessonsGenerationStore = create<LessonsGenerationState>()(
       params: null,
       attached: false,
       lessonId: null,
+      lastCompletedLessonId: null,
+      lastCompletedLessonTitle: null,
+      lastCompletedLessonTopic: null,
 
       start: (params) =>
         set({
@@ -64,6 +76,20 @@ export const useLessonsGenerationStore = create<LessonsGenerationState>()(
         set((s) => ({ completedSteps: { ...s.completedSteps, [key]: true } })),
       setAttached: (v) => set({ attached: v }),
       setLessonId: (id) => set({ lessonId: id ?? null }),
+      setLastCompletedLesson: (meta) =>
+        set({
+          lastCompletedLessonId: meta.id,
+          lastCompletedLessonTitle:
+            typeof meta.title === "string" ? meta.title : null,
+          lastCompletedLessonTopic:
+            typeof meta.topic === "string" ? meta.topic : null,
+        }),
+      clearLastCompletedLesson: () =>
+        set({
+          lastCompletedLessonId: null,
+          lastCompletedLessonTitle: null,
+          lastCompletedLessonTopic: null,
+        }),
       finish: () => set({ inProgress: false, attached: false }),
       reset: () =>
         set({
@@ -74,6 +100,9 @@ export const useLessonsGenerationStore = create<LessonsGenerationState>()(
           params: null,
           attached: false,
           lessonId: null,
+          lastCompletedLessonId: null,
+          lastCompletedLessonTitle: null,
+          lastCompletedLessonTopic: null,
         }),
     }),
     {
@@ -85,6 +114,9 @@ export const useLessonsGenerationStore = create<LessonsGenerationState>()(
         startedAt: state.startedAt,
         params: state.params,
         lessonId: state.lessonId,
+        lastCompletedLessonId: state.lastCompletedLessonId,
+        lastCompletedLessonTitle: state.lastCompletedLessonTitle,
+        lastCompletedLessonTopic: state.lastCompletedLessonTopic,
       }),
     }
   )

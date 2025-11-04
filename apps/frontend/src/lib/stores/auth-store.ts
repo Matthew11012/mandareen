@@ -119,6 +119,20 @@ export const useAuthStore = create<AuthState>()(
           // Even if backend logout fails, we should clear local state
           console.warn("Backend logout failed:", error);
         } finally {
+          // Clear session-scoped lesson filter keys to prevent cross-account leakage
+          try {
+            if (typeof window !== "undefined") {
+              const LESSONS_KEYS = [
+                "mandareen.lessons.mode.v1",
+                "mandareen.lessons.hsk.v1",
+                "mandareen.lessons.time.v1",
+                "mandareen.lessons.tags.v1",
+              ];
+              for (const k of LESSONS_KEYS) {
+                sessionStorage.removeItem(k);
+              }
+            }
+          } catch {}
           // Always clear local auth state
           set({
             user: null,

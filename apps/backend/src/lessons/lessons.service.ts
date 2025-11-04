@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OpenAIService } from '../openai/openai.service';
 import { SegmentationService } from '../vocabulary/segmentation.service';
 import { RagService } from '../rag/rag.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 interface GenerateOptions {
   level?: number;
@@ -41,6 +42,7 @@ export class LessonsService {
     private readonly openAIService: OpenAIService,
     private readonly segmentationService: SegmentationService,
     private readonly ragService: RagService,
+    private readonly notificationsService: NotificationsService,
     private readonly jwt?: JwtService,
   ) {}
 
@@ -582,6 +584,17 @@ export class LessonsService {
                 e as any,
               );
             }
+            // Fire-and-forget push notification (best-effort)
+            try {
+              await this.notificationsService.notifyLessonReady(user.id, {
+                id: created.id,
+                title: generated.title || null,
+                topic: options.topic || null,
+                type: 'dialogue',
+              });
+            } catch {
+              // ignore notification errors
+            }
             emit('complete', { id: created.id });
             if (heartbeat) clearInterval(heartbeat);
             subscriber.complete();
@@ -810,6 +823,17 @@ export class LessonsService {
               'populateWordInstancesForLesson failed (stream story)',
               e as any,
             );
+          }
+          // Fire-and-forget push notification (best-effort)
+          try {
+            await this.notificationsService.notifyLessonReady(user.id, {
+              id: created.id,
+              title: (generated as any).title || null,
+              topic: options.topic || null,
+              type: 'story',
+            });
+          } catch {
+            // ignore notification errors
           }
           emit('complete', { id: created.id });
           if (heartbeat) clearInterval(heartbeat);

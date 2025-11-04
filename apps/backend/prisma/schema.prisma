@@ -21,6 +21,7 @@ model User {
   flashcards           Flashcard[]
   lessonProgresses     LessonProgress[]
   curriculumBookmark   UserCurriculumBookmark?
+  pushSubscriptions    PushSubscription[]
 }
 
 model Assessment {
@@ -128,6 +129,7 @@ model Flashcard {
 
   @@index([userId, nextReview])
   @@index([userId, createdAt])
+  @@index([userId, easiness])
 }
 
 model Review {
@@ -136,6 +138,8 @@ model Review {
   reviewedAt  DateTime  @default(now())
   quality     Int
   flashcard   Flashcard @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
+
+  @@index([flashcardId])
 }
 
 model FlashcardSentence {
@@ -367,4 +371,20 @@ enum CurriculumActivityType {
 enum CurriculumProgressStatus {
   in_progress
   completed
+}
+
+model PushSubscription {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime? @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

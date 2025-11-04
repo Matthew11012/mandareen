@@ -39,6 +39,16 @@ export interface ListAllResponse {
   nextCursor?: { createdAt: string; id: number };
 }
 
+export interface FlashcardsSummary {
+  total: number;
+  due: number;
+  dueToday: number;
+  notStudied: number;
+  weak: number;
+  partial: number;
+  strong: number;
+}
+
 export const flashcardsApi = {
   async create(params: { vocabId: number; sourceInstanceId?: number }) {
     return post<{ flashcard: { id: number } }>("flashcards", params);
@@ -81,5 +91,9 @@ export const flashcardsApi = {
 
   async removeMany(ids: number[]) {
     return post<{ deleted: number }>("flashcards/bulk-delete", { ids });
+  },
+
+  async summary(): Promise<FlashcardsSummary> {
+    return get<FlashcardsSummary>("flashcards/summary");
   },
 };

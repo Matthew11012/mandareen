@@ -27,7 +27,11 @@ export function useLessonGenerationStream() {
   const attach = useCallback(
     async (opts: {
       params: StartParams;
-      onComplete: (id?: number) => Promise<void> | void;
+      onComplete: (payload: {
+        id?: number;
+        type: "story" | "dialogue";
+        topic?: string;
+      }) => Promise<void> | void;
       onError: () => void;
       markAllComplete: () => void;
     }) => {
@@ -104,7 +108,11 @@ export function useLessonGenerationStream() {
             genStore.setStep("complete");
             streamFinished = true;
             es.close();
-            await onComplete(id);
+            await onComplete({
+              id,
+              type: params.type,
+              topic: params.topic,
+            });
           }
         } catch {}
       };
@@ -116,6 +124,7 @@ export function useLessonGenerationStream() {
       );
       es.addEventListener("heartbeat", () => {});
       es.addEventListener("complete", async (e: MessageEvent) => {
+        if (streamFinished) return;
         try {
           let id: number | undefined = undefined;
           const raw = (e as MessageEvent).data as unknown;
@@ -134,11 +143,17 @@ export function useLessonGenerationStream() {
           ) {
             id = (raw as { id?: unknown }).id as number;
           }
-          steps.forEach((k) => markComplete(k));
-          genStore.setStep("complete");
-          streamFinished = true;
-          es.close();
-          await onComplete(id);
+          if (typeof id === "number") {
+            steps.forEach((k) => markComplete(k));
+            genStore.setStep("complete");
+            streamFinished = true;
+            es.close();
+            await onComplete({
+              id,
+              type: params.type,
+              topic: params.topic,
+            });
+          }
         } catch {
           streamFinished = true;
           try {
