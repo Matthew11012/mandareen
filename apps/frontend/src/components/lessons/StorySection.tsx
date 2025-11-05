@@ -1,7 +1,6 @@
 "use client";
 
 import React, {
-  MouseEvent as ReactMouseEvent,
   useState,
   useMemo,
   useEffect,
@@ -16,6 +15,12 @@ import {
   useMotionValue,
   animate,
 } from "framer-motion";
+import { TokenRenderer } from "./TokenRenderer";
+import type {
+  TokenRendererProps,
+  LessonToken as TRToken,
+  SelectedWord as TRSelectedWord,
+} from "./TokenRenderer";
 
 type LessonToken = {
   text: string;
@@ -324,84 +329,25 @@ function MobileStoryTrackPager({
                   </button>
                 </div>
                 <div className="leading-10 font-extralight sm:font-normal text-white font-inter sm:text-[18px] text-xl">
-                  {segChunk.map((seg, idx) => {
-                    const isWord = Boolean(seg.isWord);
-                    const text = seg.text;
-                    return (
-                      <span
-                        key={`${ci}-${idx}`}
-                        className={`inline-flex flex-col items-center align-top mr-[2px]`}
-                      >
-                        {isChunkPinyinOn(ci) ? (
-                          isWord && seg.pinyin ? (
-                            <span className="text-xs text-[#9aa6ff] font-normal leading-none ">
-                              {seg.pinyin}
-                            </span>
-                          ) : (
-                            <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
-                              •
-                            </span>
-                          )
-                        ) : null}
-                        <span
-                          className={`flex items-start px-[1px] rounded ${isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
-                          title={seg.definition || ""}
-                          onClick={(e) => {
-                            if (!isWord) return;
-                            if (multiSelect) {
-                              toggleSelectWord(
-                                `${ci}-${idx}-${text}`,
-                                text,
-                                seg.pinyin,
-                                ci,
-                                idx
-                              );
-                              return;
-                            }
-                            const anchor = (
-                              e.currentTarget as HTMLSpanElement
-                            ).getBoundingClientRect();
-                            const container =
-                              contentRef.current?.getBoundingClientRect();
-                            const px = container
-                              ? anchor.left - container.left + anchor.width / 2
-                              : (e as ReactMouseEvent<HTMLSpanElement>).clientX;
-                            const py = container
-                              ? anchor.top - container.top
-                              : (e as ReactMouseEvent<HTMLSpanElement>).clientY;
-                            setPopup({
-                              open: true,
-                              x: px,
-                              y: py,
-                              anchorH: anchor.height,
-                              word: text,
-                              pinyin: seg.pinyin,
-                              definition: seg.definition,
-                              definitions: seg.definitions,
-                              paraIndex: ci,
-                              tokenIndex: idx,
-                              hskLevel: seg.hskLevel as number | undefined,
-                            });
-                          }}
-                        >
-                          <span
-                            className={`flex items-start ${
-                              multiSelect &&
-                              selectedWords[
-                                `${ci}-${idx}-${text}` as keyof typeof selectedWords
-                              ]
-                                ? "bg-[#4040f2]/80 rounded"
-                                : isWord && typeof seg.hskLevel === "number"
-                                  ? hskUnderlineClass(seg.hskLevel)
-                                  : ""
-                            }`}
-                          >
-                            {text}
-                          </span>
-                        </span>
-                      </span>
-                    );
-                  })}
+                  <TokenRenderer
+                    segments={segChunk as unknown as TRToken[]}
+                    showPinyin={isChunkPinyinOn(ci)}
+                    keyPrefix={`story-para${ci}`}
+                    multiSelect={multiSelect}
+                    selectedWords={
+                      selectedWords as unknown as Record<string, TRSelectedWord>
+                    }
+                    toggleSelectWord={
+                      toggleSelectWord as unknown as TokenRendererProps["toggleSelectWord"]
+                    }
+                    selectionIndexContext={{ paraIndex: ci }}
+                    setPopup={
+                      setPopup as unknown as TokenRendererProps["setPopup"]
+                    }
+                    contentRef={contentRef}
+                    applyHSKUnderline={true}
+                    hskUnderlineClass={hskUnderlineClass}
+                  />
                 </div>
                 <AnimatePresence initial={false}>
                   {isChunkTransOn(ci) && translationParagraphs[ci] && (
@@ -578,81 +524,23 @@ export function StorySection({
               </button>
             </div>
             <div className="leading-10 font-thin sm:font-normal text-white font-inter sm:text-[18px] text-xl">
-              {segChunk.map((seg: LessonToken, idx) => {
-                const isWord = Boolean(seg.isWord);
-                return (
-                  <span
-                    key={`${ci}-${idx}`}
-                    className={`inline-flex flex-col items-center align-top mr-[2px]`}
-                  >
-                    {isChunkPinyinOn(ci) ? (
-                      isWord && seg.pinyin ? (
-                        <span className="text-xs text-[#9aa6ff] font-normal leading-none">
-                          {seg.pinyin}
-                        </span>
-                      ) : (
-                        <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
-                          •
-                        </span>
-                      )
-                    ) : null}
-                    <span
-                      className={`flex items-start px-[1px] rounded ${isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
-                      title={seg.definition || ""}
-                      onClick={(e: ReactMouseEvent<HTMLSpanElement>) => {
-                        if (!isWord) return;
-                        if (multiSelect) {
-                          toggleSelectWord(
-                            `${ci}-${idx}-${seg.text}`,
-                            seg.text,
-                            seg.pinyin,
-                            ci,
-                            idx
-                          );
-                          return;
-                        }
-                        const anchor = (
-                          e.currentTarget as HTMLSpanElement
-                        ).getBoundingClientRect();
-                        const container =
-                          contentRef.current?.getBoundingClientRect();
-                        const px = container
-                          ? anchor.left - container.left + anchor.width / 2
-                          : e.clientX;
-                        const py = container
-                          ? anchor.top - container.top
-                          : e.clientY;
-                        setPopup({
-                          open: true,
-                          x: px,
-                          y: py,
-                          anchorH: anchor.height,
-                          word: seg.text,
-                          pinyin: seg.pinyin,
-                          definition: seg.definition,
-                          definitions: seg.definitions,
-                          paraIndex: ci,
-                          tokenIndex: idx,
-                          hskLevel: seg.hskLevel as number | undefined,
-                        });
-                      }}
-                    >
-                      <span
-                        className={`underline-offset-[3px] ${
-                          multiSelect &&
-                          selectedWords[
-                            `${ci}-${idx}-${seg.text}` as keyof typeof selectedWords
-                          ]
-                            ? "bg-[#4040f2]/80 rounded"
-                            : hskUnderlineClass(seg.hskLevel)
-                        }`}
-                      >
-                        {seg.text}
-                      </span>
-                    </span>
-                  </span>
-                );
-              })}
+              <TokenRenderer
+                segments={segChunk as unknown as TRToken[]}
+                showPinyin={isChunkPinyinOn(ci)}
+                keyPrefix={`story-para${ci}`}
+                multiSelect={multiSelect}
+                selectedWords={
+                  selectedWords as unknown as Record<string, TRSelectedWord>
+                }
+                toggleSelectWord={
+                  toggleSelectWord as unknown as TokenRendererProps["toggleSelectWord"]
+                }
+                selectionIndexContext={{ paraIndex: ci }}
+                setPopup={setPopup as unknown as TokenRendererProps["setPopup"]}
+                contentRef={contentRef}
+                applyHSKUnderline={true}
+                hskUnderlineClass={hskUnderlineClass}
+              />
             </div>
             <AnimatePresence initial={false}>
               {isChunkTransOn(ci) && translationParagraphs[ci] && (

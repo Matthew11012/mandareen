@@ -1,6 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useRef } from "react";
+import { TokenRenderer } from "./TokenRenderer";
+import type { TokenRendererProps, SelectedWord as TRSelectedWord } from "./TokenRenderer";
 
 type NoteSegment = {
   text: string;
@@ -32,26 +34,34 @@ export function NotesSection({
   notes,
   notesPinyinOn,
   onTogglePinyin,
-  renderSegments,
   sectionKey,
+  // Optional: enable TokenRenderer path when provided
+  multiSelect,
+  selectedWords,
+  toggleSelectWord,
+  contentRef,
+  setPopup,
+  hskUnderlineClass,
 }: {
   title?: string;
   notes: GrammarNote[];
   notesPinyinOn: boolean;
   onTogglePinyin: () => void;
-  renderSegments: (
-    segments: NoteSegment[],
-    zh: string,
-    en: string | undefined,
-    showPinyin: boolean,
-    ctx: { section: "dialogue" | "story"; noteIndex: number; field: string }
-  ) => React.ReactNode;
   sectionKey: "dialogue" | "story";
+  multiSelect: boolean;
+  selectedWords: Record<string, TRSelectedWord>;
+  toggleSelectWord: TokenRendererProps["toggleSelectWord"];
+  contentRef: React.RefObject<HTMLDivElement | null>;
+  setPopup: TokenRendererProps["setPopup"];
+  hskUnderlineClass: (level?: number) => string;
 }) {
   if (!Array.isArray(notes) || notes.length === 0) return null;
 
+  const internalRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = contentRef || internalRef;
+
   return (
-    <div className="mt-4 border border-[#3a3a3a] rounded-lg p-3 bg-[#1e2229]">
+    <div className="mt-4 border border-[#3a3a3a] rounded-lg p-3 bg-[#1e2229]" ref={containerRef}>
       <div className="flex items-center justify-between mb-2">
         <div className="text-xs font-semibold text-white">{title}</div>
         <div className="flex items-center gap-2">
@@ -86,21 +96,27 @@ export function NotesSection({
                   Point
                 </span>
               </div>
-              <div>
-                {Array.isArray(gn.pointSegments) &&
-                gn.pointSegments.length > 0 ? (
-                  renderSegments(
-                    gn.pointSegments,
-                    gn.point,
-                    gn.pointEn,
-                    notesPinyinOn,
-                    {
-                      section: sectionKey,
-                      noteIndex: gi,
-                      field: "point",
-                    }
-                  )
-                ) : (
+                  <div>
+                    {Array.isArray(gn.pointSegments) &&
+                    gn.pointSegments.length > 0 ? (
+                        <TokenRenderer
+                        segments={gn.pointSegments as unknown as TokenRendererProps["segments"]}
+                        fallbackZh={gn.point}
+                        showPinyin={notesPinyinOn}
+                        keyPrefix={`notes-${sectionKey}-point-${gi}`}
+                          textSizeClass="text-base"
+                        multiSelect={multiSelect}
+                        selectedWords={selectedWords}
+                        toggleSelectWord={toggleSelectWord}
+                        selectionIndexContext={{ special: -3 }}
+                        setPopup={setPopup}
+                        contentRef={containerRef}
+                        contextSentenceZh={gn.point}
+                        contextSentenceTranslation={gn.pointEn}
+                        applyHSKUnderline={true}
+                        hskUnderlineClass={hskUnderlineClass}
+                      />
+                    ) : (
                   <>
                     <div className="text-white">{gn.point}</div>
                     {notesPinyinOn && gn.pointPinyin ? (
@@ -121,21 +137,27 @@ export function NotesSection({
                   Brief
                 </span>
               </div>
-              <div>
-                {Array.isArray(gn.briefSegments) &&
-                gn.briefSegments.length > 0 ? (
-                  renderSegments(
-                    gn.briefSegments,
-                    gn.brief,
-                    gn.briefEn,
-                    notesPinyinOn,
-                    {
-                      section: sectionKey,
-                      noteIndex: gi,
-                      field: "brief",
-                    }
-                  )
-                ) : (
+                  <div>
+                    {Array.isArray(gn.briefSegments) &&
+                    gn.briefSegments.length > 0 ? (
+                        <TokenRenderer
+                        segments={gn.briefSegments as unknown as TokenRendererProps["segments"]}
+                        fallbackZh={gn.brief}
+                        showPinyin={notesPinyinOn}
+                        keyPrefix={`notes-${sectionKey}-brief-${gi}`}
+                          textSizeClass="text-base"
+                        multiSelect={multiSelect}
+                        selectedWords={selectedWords}
+                        toggleSelectWord={toggleSelectWord}
+                        selectionIndexContext={{ special: -3 }}
+                        setPopup={setPopup}
+                        contentRef={containerRef}
+                        contextSentenceZh={gn.brief}
+                        contextSentenceTranslation={gn.briefEn}
+                        applyHSKUnderline={true}
+                        hskUnderlineClass={hskUnderlineClass}
+                      />
+                    ) : (
                   <>
                     <div className="text-white">{gn.brief}</div>
                     {notesPinyinOn && gn.briefPinyin ? (
@@ -154,24 +176,30 @@ export function NotesSection({
               <div className="space-y-2">
                 {gn.examples.map((ex, ei) => (
                   <div key={ei} className="border-l border-[#2a2e36] pl-2">
-                    {Array.isArray(ex.segments) && ex.segments.length > 0 ? (
-                      <>
-                        {renderSegments(
-                          ex.segments,
-                          ex.zh,
-                          ex.en,
-                          notesPinyinOn,
-                          {
-                            section: sectionKey,
-                            noteIndex: gi,
-                            field: `example-${ei}`,
-                          }
-                        )}
-                        {ex.en ? (
-                          <div className="text-[#8b949e] text-xs">{ex.en}</div>
-                        ) : null}
-                      </>
-                    ) : (
+                        {Array.isArray(ex.segments) && ex.segments.length > 0 ? (
+                          <>
+                              <TokenRenderer
+                              segments={ex.segments as unknown as TokenRendererProps["segments"]}
+                              fallbackZh={ex.zh}
+                              showPinyin={notesPinyinOn}
+                              keyPrefix={`notes-${sectionKey}-example-${gi}-${ei}`}
+                                textSizeClass="text-base"
+                              multiSelect={multiSelect}
+                              selectedWords={selectedWords}
+                              toggleSelectWord={toggleSelectWord}
+                              selectionIndexContext={{ special: -3 }}
+                              setPopup={setPopup}
+                              contentRef={containerRef}
+                              contextSentenceZh={ex.zh}
+                              contextSentenceTranslation={ex.en}
+                              applyHSKUnderline={true}
+                              hskUnderlineClass={hskUnderlineClass}
+                            />
+                            {ex.en ? (
+                              <div className="text-[#8b949e] text-xs">{ex.en}</div>
+                            ) : null}
+                          </>
+                        ) : (
                       <>
                         <div className="text-white">{ex.zh}</div>
                         {notesPinyinOn && ex.pinyin ? (

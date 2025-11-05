@@ -11,6 +11,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
+import { TokenRenderer } from "./TokenRenderer";
+import type { TokenRendererProps } from "./TokenRenderer";
 
 type Token = {
   text: string;
@@ -187,86 +189,24 @@ function InlineSegments({
 
   return (
     <div className="relative" ref={contentRef}>
-      <div className="leading-7 text-white font-thin sm:font-normal text-lg">
-        {Array.isArray(segments) && segments.length > 0
-          ? segments.map((seg, idx) => {
-              const isWord = Boolean(seg.isWord);
-              return (
-                <span
-                  key={idx}
-                  className="inline-flex flex-col items-center align-top mr-[2px]"
-                >
-                  {showPinyin ? (
-                    isWord && seg.pinyin ? (
-                      <span className="text-[10px] text-[#9aa6ff] leading-none mb-[2px]">
-                        {seg.pinyin}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] opacity-0 leading-none mb-[2px] select-none">
-                        •
-                      </span>
-                    )
-                  ) : null}
-                  <span
-                    className={`px-[1px] rounded ${isWord ? `${hoverClass || "hover:bg-[#404040]"} cursor-pointer` : ""}`}
-                    title={seg.definition || ""}
-                    onClick={(e) => {
-                      if (!isWord) return;
-                      const key = `${keyPrefix}-${idx}-${seg.text}`;
-                      if (multiSelect && toggleSelectWord) {
-                        toggleSelectWord(
-                          key,
-                          seg.text,
-                          seg.pinyin,
-                          -2,
-                          idx,
-                          contextSentenceZh,
-                          contextSentenceTranslation
-                        );
-                        return;
-                      }
-                      const anchor = (
-                        e.currentTarget as HTMLSpanElement
-                      ).getBoundingClientRect();
-                      const container =
-                        contentRef.current?.getBoundingClientRect();
-                      const px = container
-                        ? anchor.left - container.left + anchor.width / 2
-                        : e.clientX;
-                      const py = container
-                        ? anchor.top - container.top
-                        : e.clientY;
-                      setPopup({
-                        open: true,
-                        x: px,
-                        y: py,
-                        anchorH: anchor.height,
-                        word: seg.text,
-                        pinyin: seg.pinyin,
-                        definition: seg.definition,
-                        definitions: seg.definitions,
-                        hskLevel: seg.hskLevel,
-                      });
-                    }}
-                  >
-                    <span
-                      className={`flex ${
-                        "underline-offset-[3px] " +
-                        (multiSelect &&
-                        selectedWords &&
-                        selectedWords[`${keyPrefix}-${idx}-${seg.text}`]
-                          ? "bg-[#4040f2]/80 rounded"
-                          : "")
-                      }`}
-                    >
-                      {seg.text}
-                    </span>
-                  </span>
-                </span>
-              );
-            })
-          : fallbackZh}
-      </div>
+      <TokenRenderer
+        segments={segments as unknown as TokenRendererProps["segments"]}
+        fallbackZh={fallbackZh}
+        showPinyin={showPinyin}
+        hoverClass={hoverClass}
+        keyPrefix={keyPrefix}
+        multiSelect={multiSelect}
+        selectedWords={selectedWords as unknown as Record<string, SelectedWord>}
+        toggleSelectWord={
+          toggleSelectWord as unknown as TokenRendererProps["toggleSelectWord"]
+        }
+        selectionIndexContext={{ special: -2 }}
+        setPopup={setPopup as unknown as TokenRendererProps["setPopup"]}
+        contentRef={contentRef}
+        contextSentenceZh={contextSentenceZh}
+        contextSentenceTranslation={contextSentenceTranslation}
+        applyHSKUnderline={false}
+      />
       {popup.open && (
         <div
           ref={popupRef}
@@ -604,7 +544,7 @@ export function QuizSection({
           return (
             <div
               key={i}
-              className={`relative p-2 sm:border border-white/10 rounded-xl sm:bg-white/[0.02] hover:border-white/20 transition-all duration-200 ${
+              className={`relative py-2 sm:p-2 sm:border border-white/10 rounded-xl sm:bg-white/[0.02] hover:border-white/20 transition-all duration-200 ${
                 isCorrect
                   ? "border-green-500/30 bg-green-500/5"
                   : isIncorrect

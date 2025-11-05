@@ -1199,9 +1199,9 @@ export default function LessonViewerPage() {
       title={data?.title || `Lesson #${id}`}
       subtitle={`HSK ${data?.level ?? ""}`}
     >
-      <div className="p-2 sm:p-6 sm:pt-0 pt-0 space-y-6">
+      <div className="p-2 sm:p-6 sm:pt-0 pt-0 space-y-6 overflow-x-hidden">
         <motion.div
-          className="flex flex-wrap items-center justify-between gap-2 sticky top-0 z-20 -mx-6 px-6 py-2 bg-[#222831]/80 backdrop-blur border-b border-[#30333a]"
+          className="flex flex-wrap items-center justify-between gap-2 sticky top-0 z-20 -mx-6 px-6 py-2 bg-[#222831]/80 backdrop-blur border-b border-[#30333a] overflow-x-hidden"
           role="toolbar"
           aria-label="Lesson controls"
           initial={{ y: 0 }}
@@ -1213,7 +1213,7 @@ export default function LessonViewerPage() {
             duration: 0.3,
           }}
         >
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto min-w-0">
             <button
               onClick={() => router.push("/lessons")}
               className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831]"
@@ -1259,7 +1259,9 @@ export default function LessonViewerPage() {
                 ) : (
                   <Eye className="w-4 h-4" aria-hidden="true" />
                 )}
-                <span className="font-inter text-sm">Pinyin (All)</span>
+                <span className="font-inter text-sm whitespace-nowrap">
+                  Pinyin (All)
+                </span>
               </div>
             </button>
             <button
@@ -1326,7 +1328,7 @@ export default function LessonViewerPage() {
               </div>
             </button>
           </div>
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto min-w-0">
             <button
               onClick={() => {
                 if (multiSelect) {
@@ -1337,7 +1339,7 @@ export default function LessonViewerPage() {
                   setMultiSelect(true);
                 }
               }}
-              className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831]"
+              className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831] min-w-0"
               type="button"
               aria-pressed={multiSelect}
               aria-label={
@@ -1346,16 +1348,26 @@ export default function LessonViewerPage() {
                   : "Select words to add to flashcards"
               }
             >
-              <div className="flex items-center gap-2 text-[#a6a6a6]">
+              <div className="flex items-center gap-2 text-[#a6a6a6] min-w-0 shrink">
                 {multiSelect ? (
-                  <CheckSquare className="w-4 h-4" aria-hidden="true" />
+                  <CheckSquare
+                    className="w-4 h-4 shrink-0"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Square className="w-4 h-4" aria-hidden="true" />
+                  <Square className="w-4 h-4 shrink-0" aria-hidden="true" />
                 )}
-                <span className="font-inter text-sm">
-                  {multiSelect
-                    ? "Cancel Selection"
-                    : "Select Words to Add to Flashcards"}
+                <span className="font-inter text-sm whitespace-nowrap">
+                  {multiSelect ? (
+                    "Cancel Selection"
+                  ) : (
+                    <>
+                      <span className="hidden sm:inline">
+                        Select Words to Add to Flashcards
+                      </span>
+                      <span className="sm:hidden">Select Words</span>
+                    </>
+                  )}
                 </span>
               </div>
             </button>
@@ -1363,7 +1375,7 @@ export default function LessonViewerPage() {
               <button
                 onClick={() => void addSelectedToFlashcards()}
                 disabled={Object.keys(selectedWords).length === 0}
-                className="px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831]"
+                className="px-3 py-2 bg-[#4040f2] text-white text-sm rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831]"
                 type="button"
                 aria-label="Add selected words to flashcards"
               >
@@ -1403,17 +1415,17 @@ export default function LessonViewerPage() {
           data?.title) && (
           <div className="bg-[#2e323a] rounded-lg p-4 border border-[#404040]">
             {data?.title ? (
-              <div className="text-white font-inter text-xl mb-1">
+              <div className="sm:flex sm:justify-center sm:text-center text-white font-inter text-xl mb-1">
                 {data.title}
               </div>
             ) : null}
             {story?.titlePinyin || dialogue?.titlePinyin ? (
-              <div className="text-[#9aa6ff] font-inter text-sm mb-1">
+              <div className="sm:flex sm:justify-center sm:text-center text-[#9aa6ff] font-inter text-sm mb-1">
                 {story?.titlePinyin || dialogue?.titlePinyin}
               </div>
             ) : null}
             {story?.titleTranslation || dialogue?.titleTranslation ? (
-              <div className="text-[#a6a6a6] font-inter text-sm">
+              <div className="sm:flex sm:justify-center sm:text-center text-[#a6a6a6] font-inter text-sm">
                 {story?.titleTranslation || dialogue?.titleTranslation}
               </div>
             ) : null}
@@ -1454,7 +1466,7 @@ export default function LessonViewerPage() {
         ) : (
           <div
             ref={contentRef}
-            className="sm:bg-[#2e323a] rounded-xl sm:p-6 sm:border sm:border-[#404040] relative"
+            className="sm:bg-[#2e323a] rounded-xl sm:p-6 sm:border sm:border-[#404040] relative overflow-x-hidden"
           >
             {story && (
               <StorySection
@@ -1565,8 +1577,13 @@ export default function LessonViewerPage() {
                       notes={dialogue.grammarNotes}
                       notesPinyinOn={notesPinyinOn}
                       onTogglePinyin={() => setNotesPinyinOn((v) => !v)}
-                      renderSegments={renderNotesSegmentsWithPopup}
                       sectionKey="dialogue"
+                      multiSelect={multiSelect}
+                      selectedWords={selectedWords}
+                      toggleSelectWord={toggleSelectWord}
+                      contentRef={contentRef}
+                      setPopup={setNotesPopup}
+                      hskUnderlineClass={hskUnderlineClass}
                     />
                   )}
               </>
@@ -1654,8 +1671,13 @@ export default function LessonViewerPage() {
                     notes={story.grammarNotes}
                     notesPinyinOn={notesPinyinOn}
                     onTogglePinyin={() => setNotesPinyinOn((v) => !v)}
-                    renderSegments={renderNotesSegmentsWithPopup}
                     sectionKey="story"
+                    multiSelect={multiSelect}
+                    selectedWords={selectedWords}
+                    toggleSelectWord={toggleSelectWord}
+                    contentRef={contentRef}
+                    setPopup={setNotesPopup}
+                    hskUnderlineClass={hskUnderlineClass}
                   />
                 </div>
               )}
