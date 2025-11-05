@@ -36,6 +36,15 @@ type QuizItem = {
   rationale?: string;
 };
 
+type SelectedWord = {
+  text: string;
+  pinyin?: string;
+  paraIndex?: number;
+  tokenIndex?: number;
+  contextZh?: string;
+  contextEn?: string;
+};
+
 type QuizSectionProps = {
   quiz: {
     items?: QuizItem[];
@@ -48,6 +57,17 @@ type QuizSectionProps = {
     vocab?: { pinyin?: string; definition?: string; hskLevel?: number }
   ) => void;
   onPerfectScore: () => void | Promise<void>;
+  multiSelect?: boolean;
+  selectedWords?: Record<string, SelectedWord>;
+  toggleSelectWord?: (
+    key: string,
+    text: string,
+    pinyin: string | undefined,
+    paraIndex: number,
+    tokenIndex: number,
+    contextZh?: string,
+    contextEn?: string
+  ) => void;
 };
 
 // InlineSegments component for rendering segmented text with word popups
@@ -59,6 +79,10 @@ function InlineSegments({
   contextSentenceZh,
   contextSentenceTranslation,
   onAddFlashcard,
+  multiSelect,
+  selectedWords,
+  toggleSelectWord,
+  keyPrefix,
 }: {
   segments?: Token[];
   fallbackZh?: string;
@@ -71,6 +95,18 @@ function InlineSegments({
     context?: { hanzi?: string; pinyin?: string; translation?: string },
     vocab?: { pinyin?: string; definition?: string; hskLevel?: number }
   ) => void;
+  multiSelect?: boolean;
+  selectedWords?: Record<string, SelectedWord>;
+  toggleSelectWord?: (
+    key: string,
+    text: string,
+    pinyin: string | undefined,
+    paraIndex: number,
+    tokenIndex: number,
+    contextZh?: string,
+    contextEn?: string
+  ) => void;
+  keyPrefix: string;
 }) {
   const [popup, setPopup] = useState<{
     open: boolean;
@@ -176,6 +212,19 @@ function InlineSegments({
                     title={seg.definition || ""}
                     onClick={(e) => {
                       if (!isWord) return;
+                      const key = `${keyPrefix}-${idx}-${seg.text}`;
+                      if (multiSelect && toggleSelectWord) {
+                        toggleSelectWord(
+                          key,
+                          seg.text,
+                          seg.pinyin,
+                          -2,
+                          idx,
+                          contextSentenceZh,
+                          contextSentenceTranslation
+                        );
+                        return;
+                      }
                       const anchor = (
                         e.currentTarget as HTMLSpanElement
                       ).getBoundingClientRect();
@@ -200,7 +249,16 @@ function InlineSegments({
                       });
                     }}
                   >
-                    {seg.text}
+                    <span
+                      className={
+                        "underline-offset-[3px] " +
+                        (multiSelect && selectedWords && selectedWords[`${keyPrefix}-${idx}-${seg.text}`]
+                          ? "underline decoration-[#4040f2] decoration-2"
+                          : "")
+                      }
+                    >
+                      {seg.text}
+                    </span>
                   </span>
                 </span>
               );
@@ -380,6 +438,9 @@ export function QuizSection({
   disabled,
   onAddFlashcard,
   onPerfectScore,
+  multiSelect,
+  selectedWords,
+  toggleSelectWord,
 }: QuizSectionProps) {
   const items = useMemo(
     () => (Array.isArray(quiz?.items) ? quiz.items : []),
@@ -560,6 +621,10 @@ export function QuizSection({
                   contextSentenceZh={it.question?.zh}
                   contextSentenceTranslation={it.question?.translation}
                   onAddFlashcard={onAddFlashcard}
+                  multiSelect={multiSelect}
+                  selectedWords={selectedWords}
+                  toggleSelectWord={toggleSelectWord}
+                  keyPrefix={`quiz-q${i}`}
                 />
                 {showTranslation && it.question?.translation ? (
                   <div className="text-white/60 text-xs mt-1 italic">
@@ -632,6 +697,10 @@ export function QuizSection({
                           contextSentenceZh={opt.zh}
                           contextSentenceTranslation={opt.translation}
                           onAddFlashcard={onAddFlashcard}
+                          multiSelect={multiSelect}
+                          selectedWords={selectedWords}
+                          toggleSelectWord={toggleSelectWord}
+                          keyPrefix={`quiz-q${i}-opt${j}`}
                         />
                         {showTranslation && opt.translation ? (
                           <div className="text-white/60 text-xs mt-1">

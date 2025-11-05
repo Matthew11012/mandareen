@@ -638,7 +638,13 @@ export function StorySection({
                       }}
                     >
                       <span
-                        className={`underline-offset-[3px] ${hskUnderlineClass(seg.hskLevel)}`}
+                        className={`underline-offset-[3px] ${
+                          multiSelect && selectedWords[
+                            `${ci}-${idx}-${seg.text}` as keyof typeof selectedWords
+                          ]
+                            ? "underline decoration-[#4040f2] decoration-2"
+                            : hskUnderlineClass(seg.hskLevel)
+                        }`}
                       >
                         {seg.text}
                       </span>

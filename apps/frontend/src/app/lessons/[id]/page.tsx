@@ -32,6 +32,7 @@ import { DialogueSection } from "@/components/lessons/DialogueSection";
 import { NotesSection } from "@/components/lessons/NotesSection";
 import { QuizSection } from "@/components/lessons/QuizSection";
 import { usePopup } from "@/hooks/usePopup";
+import { useMultiSelect } from "@/hooks/useMultiSelect";
 
 export default function LessonViewerPage() {
   const router = useRouter();
@@ -213,7 +214,8 @@ export default function LessonViewerPage() {
           : v,
     });
 
-  const selectedWords = ui.selectedWords;
+  const uiSelectedWords = ui.selectedWords;
+
   const setSelectedWords = (
     next:
       | Record<string, SelectedWord>
@@ -228,6 +230,13 @@ export default function LessonViewerPage() {
             )
           : next,
     });
+  // Multi-select helpers built over existing reducer state
+  const ms = useMultiSelect<string, SelectedWord>({
+    selected: uiSelectedWords,
+    setSelected: setSelectedWords,
+    mode: multiSelect ? "multi" : "single",
+  });
+  const selectedWords = uiSelectedWords;
   const [finishLoading, setFinishLoading] = useState(false);
 
   // Scroll-aware header state (via reducer)
@@ -723,19 +732,13 @@ export default function LessonViewerPage() {
     contextZh?: string,
     contextEn?: string
   ) => {
-    setSelectedWords((prev) => {
-      const next = { ...prev };
-      if (next[key]) delete next[key];
-      else
-        next[key] = {
-          text,
-          pinyin,
-          paraIndex,
-          tokenIndex,
-          contextZh,
-          contextEn,
-        };
-      return next;
+    ms.toggle(key, {
+      text,
+      pinyin,
+      paraIndex,
+      tokenIndex,
+      contextZh,
+      contextEn,
     });
   };
 
@@ -1616,6 +1619,9 @@ export default function LessonViewerPage() {
                   <QuizSection
                     quiz={quiz}
                     disabled={Boolean(data?.finished)}
+                    multiSelect={multiSelect}
+                    selectedWords={selectedWords}
+                    toggleSelectWord={toggleSelectWord}
                     onAddFlashcard={(hanzi, ctx, vocab) =>
                       void addSingleToFlashcards(hanzi, ctx, vocab)
                     }
