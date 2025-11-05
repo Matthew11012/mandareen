@@ -31,6 +31,7 @@ import { StorySection } from "@/components/lessons/StorySection";
 import { DialogueSection } from "@/components/lessons/DialogueSection";
 import { NotesSection } from "@/components/lessons/NotesSection";
 import { QuizSection } from "@/components/lessons/QuizSection";
+import { usePopup } from "@/hooks/usePopup";
 
 export default function LessonViewerPage() {
   const router = useRouter();
@@ -587,12 +588,11 @@ export default function LessonViewerPage() {
       }
     | undefined;
 
-  // Popup for token details
-  const [popup, setPopup] = useState<{
-    open: boolean;
-    x: number; // relative to content container
-    y: number; // relative to content container (anchor at token top)
-    anchorH?: number; // height of the clicked token for below placement
+  // Shared content container reference (used for popup positioning)
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  // Popup using reusable hook (behavior preserved)
+  type MainPopupData = {
     word: string;
     pinyin?: string;
     definition?: string;
@@ -600,83 +600,94 @@ export default function LessonViewerPage() {
     paraIndex?: number;
     tokenIndex?: number;
     hskLevel?: number;
-  }>({ open: false, x: 0, y: 0, word: "" });
-  const popupRef = useRef<HTMLDivElement | null>(null);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const [popupPos, setPopupPos] = useState<{
-    left: number;
-    top: number;
-  } | null>(null);
+  };
+  const {
+    popupRef,
+    state: popup,
+    position: popupPos,
+    openWithParams: openMainPopupWithParams,
+    close: closeMainPopup,
+  } = usePopup<MainPopupData>({ containerRef: contentRef });
 
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
-        setPopup((p) => ({ ...p, open: false }));
-      }
-    };
-    if (popup.open) document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [popup.open]);
+  // Backward-compatible setter used by child sections
+  type LegacyPopup = {
+    open: boolean;
+    x: number;
+    y: number;
+    anchorH?: number;
+    word: string;
+    pinyin?: string;
+    definition?: string;
+    definitions?: string[];
+    paraIndex?: number;
+    tokenIndex?: number;
+    hskLevel?: number;
+  };
 
-  // Compute popup position after it renders to avoid cutoff; clamp within container
-  useEffect(() => {
-    if (!popup.open) {
-      setPopupPos(null);
-      return;
-    }
-    const modal = popupRef.current;
-    const container = contentRef.current;
-    if (!modal || !container) return;
-    const modalRect = modal.getBoundingClientRect();
-    const contRect = container.getBoundingClientRect();
-    const margin = 8;
-    const contW = contRect.width;
-    const contH = contRect.height;
+  const setPopup: React.Dispatch<React.SetStateAction<LegacyPopup>> =
+    useCallback(
+      (next) => {
+        const toCore = (
+          legacy: LegacyPopup | null | undefined
+        ): import("@/hooks/usePopup").PopupCoreState<MainPopupData> | null => {
+          if (!legacy || !legacy.open) return null;
+          const {
+            x,
+            y,
+            anchorH,
+            word,
+            pinyin,
+            definition,
+            definitions,
+            paraIndex,
+            tokenIndex,
+            hskLevel,
+          } = legacy;
+          return {
+            open: true,
+            x,
+            y,
+            anchorH,
+            data: {
+              word,
+              pinyin,
+              definition,
+              definitions,
+              paraIndex,
+              tokenIndex,
+              hskLevel,
+            },
+          };
+        };
 
-    // Compute visible vertical region inside container accounting for sticky toolbar and viewport
-    const toolbar = document.querySelector(
-      '[role="toolbar"][aria-label="Lesson controls"]'
-    ) as HTMLElement | null;
-    const toolbarRect = toolbar?.getBoundingClientRect();
-    const toolbarBottom = toolbarRect ? toolbarRect.bottom : 0;
-    const visibleTopInContainer = Math.max(0, toolbarBottom - contRect.top);
-    const visibleBottomInContainer = Math.min(
-      contH,
-      Math.max(0, window.innerHeight - contRect.top)
+        if (typeof next === "function") {
+          const legacyPrev: LegacyPopup = {
+            open: popup.open,
+            x: popup.x,
+            y: popup.y,
+            anchorH: popup.anchorH,
+            word: popup.data?.word ?? "",
+            pinyin: popup.data?.pinyin,
+            definition: popup.data?.definition,
+            definitions: popup.data?.definitions,
+            paraIndex: popup.data?.paraIndex,
+            tokenIndex: popup.data?.tokenIndex,
+            hskLevel: popup.data?.hskLevel,
+          };
+          const computed = (next as (prev: LegacyPopup) => LegacyPopup)(
+            legacyPrev
+          );
+          const core = toCore(computed);
+          if (core) openMainPopupWithParams(core);
+          else closeMainPopup();
+        } else {
+          const core = toCore(next as LegacyPopup);
+          if (core) openMainPopupWithParams(core);
+          else closeMainPopup();
+        }
+      },
+      [popup, openMainPopupWithParams, closeMainPopup]
     );
-
-    // Horizontal: center on anchor, then clamp within container bounds
-    let left = popup.x - modalRect.width / 2;
-    left = Math.max(margin, Math.min(left, contW - modalRect.width - margin));
-
-    // Vertical: decide above/below by available space within visible region
-    const anchorH = popup.anchorH || 0;
-    const availableAbove = popup.y - visibleTopInContainer - margin;
-    const availableBelow =
-      visibleBottomInContainer - (popup.y + anchorH) - margin;
-    let top: number;
-    if (modalRect.height <= availableAbove || availableBelow < 0) {
-      // Above fits (or no space below)
-      top = Math.max(
-        visibleTopInContainer + margin,
-        popup.y - modalRect.height - margin
-      );
-    } else if (modalRect.height <= availableBelow || availableAbove < 0) {
-      // Below fits (or no space above)
-      top = Math.min(
-        visibleBottomInContainer - modalRect.height - margin,
-        popup.y + anchorH + margin
-      );
-    } else {
-      // Prefer below but clamp inside visible region
-      top = Math.min(
-        visibleBottomInContainer - modalRect.height - margin,
-        Math.max(visibleTopInContainer + margin, popup.y + anchorH + margin)
-      );
-    }
-
-    setPopupPos({ left, top });
-  }, [popup.open, popup.x, popup.y, popup.anchorH]);
 
   const isChunkPinyinOn = (idx: number) => {
     const v = chunkPinyinOn[idx];
@@ -966,7 +977,25 @@ export default function LessonViewerPage() {
 
   // Notes-specific popup & pinyin toggle
   const [notesPinyinOn, setNotesPinyinOn] = useState<boolean>(true);
-  const [notesPopup, setNotesPopup] = useState<{
+
+  type NotesPopupData = {
+    word: string;
+    pinyin?: string;
+    definition?: string;
+    definitions?: string[];
+    hskLevel?: number;
+    contextZh?: string;
+    contextEn?: string;
+  };
+  const {
+    popupRef: notesPopupRef,
+    state: notesPopup,
+    position: notesPopupPos,
+    openWithParams: openNotesPopupWithParams,
+    close: closeNotesPopup,
+  } = usePopup<NotesPopupData>({ containerRef: contentRef });
+
+  type LegacyNotesPopup = {
     open: boolean;
     x: number;
     y: number;
@@ -978,83 +1007,70 @@ export default function LessonViewerPage() {
     hskLevel?: number;
     contextZh?: string;
     contextEn?: string;
-  }>({ open: false, x: 0, y: 0, word: "" });
-
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      const node = notesPopupRef.current;
-      if (node && !node.contains(e.target as Node)) {
-        setNotesPopup((p) => ({ ...p, open: false }));
-      }
-    };
-    if (notesPopup.open) document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [notesPopup.open]);
-
-  const notesPopupRef = useRef<HTMLDivElement | null>(null);
-  const [notesPopupPos, setNotesPopupPos] = useState<{
-    left: number;
-    top: number;
-  } | null>(null);
-
-  useEffect(() => {
-    if (!notesPopup.open) {
-      setNotesPopupPos(null);
-      return;
-    }
-    const modal = notesPopupRef.current;
-    const container = contentRef.current;
-    if (!modal || !container) return;
-    const modalRect = modal.getBoundingClientRect();
-    const contRect = container.getBoundingClientRect();
-    const margin = 8;
-    const contW = contRect.width;
-    const contH = contRect.height;
-
-    // Compute visible vertical region inside container accounting for sticky toolbar and viewport
-    const toolbar = document.querySelector(
-      '[role="toolbar"][aria-label="Lesson controls"]'
-    ) as HTMLElement | null;
-    const toolbarRect = toolbar?.getBoundingClientRect();
-    const toolbarBottom = toolbarRect ? toolbarRect.bottom : 0;
-    const visibleTopInContainer = Math.max(0, toolbarBottom - contRect.top);
-    const visibleBottomInContainer = Math.min(
-      contH,
-      Math.max(0, window.innerHeight - contRect.top)
+  };
+  const setNotesPopup: React.Dispatch<React.SetStateAction<LegacyNotesPopup>> =
+    useCallback(
+      (next) => {
+        const toCore = (
+          legacy: LegacyNotesPopup | null | undefined
+        ): import("@/hooks/usePopup").PopupCoreState<NotesPopupData> | null => {
+          if (!legacy || !legacy.open) return null;
+          const {
+            x,
+            y,
+            anchorH,
+            word,
+            pinyin,
+            definition,
+            definitions,
+            hskLevel,
+            contextZh,
+            contextEn,
+          } = legacy;
+          return {
+            open: true,
+            x,
+            y,
+            anchorH,
+            data: {
+              word,
+              pinyin,
+              definition,
+              definitions,
+              hskLevel,
+              contextZh,
+              contextEn,
+            },
+          };
+        };
+        if (typeof next === "function") {
+          const legacyPrev: LegacyNotesPopup = {
+            open: notesPopup.open,
+            x: notesPopup.x,
+            y: notesPopup.y,
+            anchorH: notesPopup.anchorH,
+            word: notesPopup.data?.word ?? "",
+            pinyin: notesPopup.data?.pinyin,
+            definition: notesPopup.data?.definition,
+            definitions: notesPopup.data?.definitions,
+            hskLevel: notesPopup.data?.hskLevel,
+            contextZh: notesPopup.data?.contextZh,
+            contextEn: notesPopup.data?.contextEn,
+          };
+          const computed = (
+            next as (prev: LegacyNotesPopup) => LegacyNotesPopup
+          )(legacyPrev);
+          const core = toCore(computed);
+          if (core) openNotesPopupWithParams(core);
+          else closeNotesPopup();
+        } else {
+          const core = toCore(next as LegacyNotesPopup);
+          if (core) openNotesPopupWithParams(core);
+          else closeNotesPopup();
+        }
+      },
+      [notesPopup, openNotesPopupWithParams, closeNotesPopup]
     );
-
-    // Horizontal: center on anchor, then clamp within container bounds
-    let left = notesPopup.x - modalRect.width / 2;
-    left = Math.max(margin, Math.min(left, contW - modalRect.width - margin));
-
-    // Vertical: decide above/below by available space within visible region
-    const anchorH = notesPopup.anchorH || 0;
-    const availableAbove = notesPopup.y - visibleTopInContainer - margin;
-    const availableBelow =
-      visibleBottomInContainer - (notesPopup.y + anchorH) - margin;
-    let top: number;
-    if (modalRect.height <= availableAbove || availableBelow < 0) {
-      top = Math.max(
-        visibleTopInContainer + margin,
-        notesPopup.y - modalRect.height - margin
-      );
-    } else if (modalRect.height <= availableBelow || availableAbove < 0) {
-      top = Math.min(
-        visibleBottomInContainer - modalRect.height - margin,
-        notesPopup.y + anchorH + margin
-      );
-    } else {
-      top = Math.min(
-        visibleBottomInContainer - modalRect.height - margin,
-        Math.max(
-          visibleTopInContainer + margin,
-          notesPopup.y + anchorH + margin
-        )
-      );
-    }
-
-    setNotesPopupPos({ left, top });
-  }, [notesPopup.open, notesPopup.x, notesPopup.y, notesPopup.anchorH]);
 
   const renderNotesSegmentsWithPopup = (
     segments:
@@ -1807,34 +1823,36 @@ export default function LessonViewerPage() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="font-bold text-white text-lg truncate">
-                    {popup.word}
+                    {popup.data?.word}
                   </div>
-                  {typeof popup.hskLevel === "number" && (
+                  {typeof popup.data?.hskLevel === "number" && (
                     <span
                       className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
-                        popup.hskLevel
+                        popup.data?.hskLevel
                       )}`}
-                      aria-label={`HSK level ${popup.hskLevel}`}
+                      aria-label={`HSK level ${popup.data?.hskLevel}`}
                     >
-                      HSK {popup.hskLevel}
+                      HSK {popup.data?.hskLevel}
                     </span>
                   )}
                 </div>
-                {popup.pinyin && (
+                {popup.data?.pinyin && (
                   <div className="text-[#c6ceff] text-sm font-medium truncate">
-                    {popup.pinyin}
+                    {popup.data?.pinyin}
                   </div>
                 )}
-                {Array.isArray(popup.definitions) &&
-                popup.definitions.length > 0 ? (
+                {Array.isArray(popup.data?.definitions) &&
+                (popup.data?.definitions?.length || 0) > 0 ? (
                   <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
-                    {popup.definitions.map((d, i) => (
-                      <div key={i}>• {d}</div>
-                    ))}
+                    {(popup.data?.definitions as string[]).map(
+                      (d: string, i: number) => (
+                        <div key={i}>• {d}</div>
+                      )
+                    )}
                   </div>
-                ) : popup.definition ? (
+                ) : popup.data?.definition ? (
                   <div className="text-xs text-[#a6a6a6] mt-2">
-                    {popup.definition}
+                    {popup.data?.definition}
                   </div>
                 ) : null}
                 <div className="mt-3 pt-3 border-t border-[#404040]">
@@ -1848,8 +1866,8 @@ export default function LessonViewerPage() {
                             translation?: string;
                           }
                         | undefined;
-                      const paraIndex = popup.paraIndex ?? -1;
-                      const tokenIndex = popup.tokenIndex ?? -1;
+                      const paraIndex = popup.data?.paraIndex ?? -1;
+                      const tokenIndex = popup.data?.tokenIndex ?? -1;
                       if (paraIndex >= 0 && tokenIndex >= 0) {
                         const paraHanzi = storyParagraphs[paraIndex] || "";
                         const hanziSentences = paraHanzi
@@ -1919,7 +1937,7 @@ export default function LessonViewerPage() {
                       } else if (dialogue) {
                         // Fallback for dialogue popup (no para/token indices): use the turn containing the word
                         const found = (dialogue.turns || []).find((t) =>
-                          t.hanzi?.includes(popup.word)
+                          t.hanzi?.includes(popup.data?.word || "")
                         );
                         if (found) {
                           let perCharPinyin: string | undefined = found.pinyin;
@@ -1959,26 +1977,29 @@ export default function LessonViewerPage() {
                       // Derive vocab metadata from popup/segment
                       let vocabDef: string | undefined = undefined;
                       if (
-                        Array.isArray(popup.definitions) &&
-                        popup.definitions.length > 0
+                        Array.isArray(popup.data?.definitions) &&
+                        (popup.data?.definitions?.length || 0) > 0
                       ) {
-                        vocabDef = popup.definitions[0];
-                      } else if (popup.definition) {
-                        vocabDef = popup.definition;
+                        vocabDef = popup.data?.definitions?.[0];
+                      } else if (popup.data?.definition) {
+                        vocabDef = popup.data?.definition;
                       }
                       let vocabHskLevel: number | undefined = undefined;
                       if (
-                        typeof popup.paraIndex === "number" &&
-                        typeof popup.tokenIndex === "number"
+                        typeof popup.data?.paraIndex === "number" &&
+                        typeof popup.data?.tokenIndex === "number"
                       ) {
-                        const seg = (segmentedParagraphs[popup.paraIndex] ||
-                          [])[popup.tokenIndex] as LessonToken | undefined;
+                        const seg = (segmentedParagraphs[
+                          popup.data?.paraIndex as number
+                        ] || [])[popup.data?.tokenIndex as number] as
+                          | LessonToken
+                          | undefined;
                         if (seg && typeof seg.hskLevel === "number") {
                           vocabHskLevel = seg.hskLevel;
                         }
                       }
-                      void addSingleToFlashcards(popup.word, ctx, {
-                        pinyin: popup.pinyin,
+                      void addSingleToFlashcards(popup.data?.word || "", ctx, {
+                        pinyin: popup.data?.pinyin,
                         definition: vocabDef,
                         hskLevel: vocabHskLevel,
                       });
@@ -2013,33 +2034,35 @@ export default function LessonViewerPage() {
                   <div className="max-w-sm mx-auto">
                     <div className="flex items-center justify-between gap-3 mb-3">
                       <div className="font-bold text-white text-lg truncate">
-                        {popup.word}
+                        {popup.data?.word}
                       </div>
-                      {typeof popup.hskLevel === "number" && (
+                      {typeof popup.data?.hskLevel === "number" && (
                         <span
                           className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
-                            popup.hskLevel
+                            popup.data?.hskLevel
                           )}`}
                         >
-                          HSK {popup.hskLevel}
+                          HSK {popup.data?.hskLevel}
                         </span>
                       )}
                     </div>
-                    {popup.pinyin && (
+                    {popup.data?.pinyin && (
                       <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
-                        {popup.pinyin}
+                        {popup.data?.pinyin}
                       </div>
                     )}
-                    {Array.isArray(popup.definitions) &&
-                    popup.definitions.length > 0 ? (
+                    {Array.isArray(popup.data?.definitions) &&
+                    (popup.data?.definitions?.length || 0) > 0 ? (
                       <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
-                        {popup.definitions.map((d, i) => (
-                          <div key={i}>• {d}</div>
-                        ))}
+                        {(popup.data?.definitions as string[]).map(
+                          (d: string, i: number) => (
+                            <div key={i}>• {d}</div>
+                          )
+                        )}
                       </div>
-                    ) : popup.definition ? (
+                    ) : popup.data?.definition ? (
                       <div className="text-xs text-[#a6a6a6] mb-3">
-                        {popup.definition}
+                        {popup.data?.definition}
                       </div>
                     ) : null}
                     <div className="flex gap-2">
@@ -2061,8 +2084,8 @@ export default function LessonViewerPage() {
                                 translation?: string;
                               }
                             | undefined;
-                          const paraIndex = popup.paraIndex ?? -1;
-                          const tokenIndex = popup.tokenIndex ?? -1;
+                          const paraIndex = popup.data?.paraIndex ?? -1;
+                          const tokenIndex = popup.data?.tokenIndex ?? -1;
                           if (paraIndex >= 0 && tokenIndex >= 0) {
                             const paraHanzi = storyParagraphs[paraIndex] || "";
                             const hanziSentences = paraHanzi
@@ -2136,7 +2159,7 @@ export default function LessonViewerPage() {
                           } else if (dialogue) {
                             // Fallback for dialogue popup (no para/token indices): use the turn containing the word
                             const found = (dialogue.turns || []).find((t) =>
-                              t.hanzi?.includes(popup.word)
+                              t.hanzi?.includes(popup.data?.word || "")
                             );
                             if (found) {
                               let perCharPinyin: string | undefined =
@@ -2182,29 +2205,36 @@ export default function LessonViewerPage() {
                           // Derive vocab metadata from popup/segment
                           let vocabDef: string | undefined = undefined;
                           if (
-                            Array.isArray(popup.definitions) &&
-                            popup.definitions.length > 0
+                            Array.isArray(popup.data?.definitions) &&
+                            (popup.data?.definitions?.length || 0) > 0
                           ) {
-                            vocabDef = popup.definitions[0];
-                          } else if (popup.definition) {
-                            vocabDef = popup.definition;
+                            vocabDef = popup.data?.definitions?.[0];
+                          } else if (popup.data?.definition) {
+                            vocabDef = popup.data?.definition;
                           }
                           let vocabHskLevel: number | undefined = undefined;
                           if (
-                            typeof popup.paraIndex === "number" &&
-                            typeof popup.tokenIndex === "number"
+                            typeof popup.data?.paraIndex === "number" &&
+                            typeof popup.data?.tokenIndex === "number"
                           ) {
-                            const seg = (segmentedParagraphs[popup.paraIndex] ||
-                              [])[popup.tokenIndex] as LessonToken | undefined;
+                            const seg = (segmentedParagraphs[
+                              popup.data?.paraIndex as number
+                            ] || [])[popup.data?.tokenIndex as number] as
+                              | LessonToken
+                              | undefined;
                             if (seg && typeof seg.hskLevel === "number") {
                               vocabHskLevel = seg.hskLevel;
                             }
                           }
-                          void addSingleToFlashcards(popup.word, ctx, {
-                            pinyin: popup.pinyin,
-                            definition: vocabDef,
-                            hskLevel: vocabHskLevel,
-                          });
+                          void addSingleToFlashcards(
+                            popup.data?.word || "",
+                            ctx,
+                            {
+                              pinyin: popup.data?.pinyin,
+                              definition: vocabDef,
+                              hskLevel: vocabHskLevel,
+                            }
+                          );
                           setPopup((p) => ({ ...p, open: false }));
                         }}
                         className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
@@ -2237,34 +2267,36 @@ export default function LessonViewerPage() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="font-bold text-white text-lg truncate">
-                    {notesPopup.word}
+                    {notesPopup.data?.word}
                   </div>
-                  {typeof notesPopup.hskLevel === "number" && (
+                  {typeof notesPopup.data?.hskLevel === "number" && (
                     <span
                       className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
-                        notesPopup.hskLevel
+                        notesPopup.data?.hskLevel
                       )}`}
-                      aria-label={`HSK level ${notesPopup.hskLevel}`}
+                      aria-label={`HSK level ${notesPopup.data?.hskLevel}`}
                     >
-                      HSK {notesPopup.hskLevel}
+                      HSK {notesPopup.data?.hskLevel}
                     </span>
                   )}
                 </div>
-                {notesPopup.pinyin && (
+                {notesPopup.data?.pinyin && (
                   <div className="text-[#c6ceff] text-sm font-medium truncate">
-                    {notesPopup.pinyin}
+                    {notesPopup.data?.pinyin}
                   </div>
                 )}
-                {Array.isArray(notesPopup.definitions) &&
-                notesPopup.definitions.length > 0 ? (
+                {Array.isArray(notesPopup.data?.definitions) &&
+                (notesPopup.data?.definitions?.length || 0) > 0 ? (
                   <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
-                    {notesPopup.definitions.map((d, i) => (
-                      <div key={i}>• {d}</div>
-                    ))}
+                    {(notesPopup.data?.definitions as string[]).map(
+                      (d: string, i: number) => (
+                        <div key={i}>• {d}</div>
+                      )
+                    )}
                   </div>
-                ) : notesPopup.definition ? (
+                ) : notesPopup.data?.definition ? (
                   <div className="text-xs text-[#a6a6a6] mt-2">
-                    {notesPopup.definition}
+                    {notesPopup.data?.definition}
                   </div>
                 ) : null}
                 <div className="mt-3 pt-3 border-t border-[#404040]">
@@ -2272,27 +2304,32 @@ export default function LessonViewerPage() {
                     onClick={async () => {
                       // Create context from the notes popup data
                       const ctx = {
-                        hanzi: notesPopup.contextZh || notesPopup.word,
+                        hanzi:
+                          notesPopup.data?.contextZh || notesPopup.data?.word,
                         pinyin: undefined,
-                        translation: notesPopup.contextEn,
+                        translation: notesPopup.data?.contextEn,
                       };
 
                       // Derive vocab metadata from popup
                       let vocabDef: string | undefined = undefined;
                       if (
-                        Array.isArray(notesPopup.definitions) &&
-                        notesPopup.definitions.length > 0
+                        Array.isArray(notesPopup.data?.definitions) &&
+                        (notesPopup.data?.definitions?.length || 0) > 0
                       ) {
-                        vocabDef = notesPopup.definitions[0];
-                      } else if (notesPopup.definition) {
-                        vocabDef = notesPopup.definition;
+                        vocabDef = notesPopup.data?.definitions?.[0];
+                      } else if (notesPopup.data?.definition) {
+                        vocabDef = notesPopup.data?.definition;
                       }
 
-                      await addSingleToFlashcards(notesPopup.word, ctx, {
-                        pinyin: notesPopup.pinyin,
-                        definition: vocabDef,
-                        hskLevel: undefined, // Notes don't have HSK level info
-                      });
+                      await addSingleToFlashcards(
+                        notesPopup.data?.word || "",
+                        ctx,
+                        {
+                          pinyin: notesPopup.data?.pinyin,
+                          definition: vocabDef,
+                          hskLevel: undefined, // Notes don't have HSK level info
+                        }
+                      );
                       setNotesPopup((p) => ({ ...p, open: false }));
                     }}
                     className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
@@ -2324,33 +2361,35 @@ export default function LessonViewerPage() {
                   <div className="max-w-sm mx-auto">
                     <div className="flex items-center justify-between gap-3 mb-3">
                       <div className="font-bold text-white text-lg truncate">
-                        {notesPopup.word}
+                        {notesPopup.data?.word}
                       </div>
-                      {typeof notesPopup.hskLevel === "number" && (
+                      {typeof notesPopup.data?.hskLevel === "number" && (
                         <span
                           className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
-                            notesPopup.hskLevel
+                            notesPopup.data?.hskLevel
                           )}`}
                         >
-                          HSK {notesPopup.hskLevel}
+                          HSK {notesPopup.data?.hskLevel}
                         </span>
                       )}
                     </div>
-                    {notesPopup.pinyin && (
+                    {notesPopup.data?.pinyin && (
                       <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
-                        {notesPopup.pinyin}
+                        {notesPopup.data?.pinyin}
                       </div>
                     )}
-                    {Array.isArray(notesPopup.definitions) &&
-                    notesPopup.definitions.length > 0 ? (
+                    {Array.isArray(notesPopup.data?.definitions) &&
+                    (notesPopup.data?.definitions?.length || 0) > 0 ? (
                       <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
-                        {notesPopup.definitions.map((d, i) => (
-                          <div key={i}>• {d}</div>
-                        ))}
+                        {(notesPopup.data?.definitions as string[]).map(
+                          (d: string, i: number) => (
+                            <div key={i}>• {d}</div>
+                          )
+                        )}
                       </div>
-                    ) : notesPopup.definition ? (
+                    ) : notesPopup.data?.definition ? (
                       <div className="text-xs text-[#a6a6a6] mb-3">
-                        {notesPopup.definition}
+                        {notesPopup.data?.definition}
                       </div>
                     ) : null}
                     <div className="flex gap-2">
@@ -2366,27 +2405,33 @@ export default function LessonViewerPage() {
                         onClick={async () => {
                           // Create context from the notes popup data
                           const ctx = {
-                            hanzi: notesPopup.contextZh || notesPopup.word,
+                            hanzi:
+                              notesPopup.data?.contextZh ||
+                              notesPopup.data?.word,
                             pinyin: undefined,
-                            translation: notesPopup.contextEn,
+                            translation: notesPopup.data?.contextEn,
                           };
 
                           // Derive vocab metadata from popup
                           let vocabDef: string | undefined = undefined;
                           if (
-                            Array.isArray(notesPopup.definitions) &&
-                            notesPopup.definitions.length > 0
+                            Array.isArray(notesPopup.data?.definitions) &&
+                            (notesPopup.data?.definitions?.length || 0) > 0
                           ) {
-                            vocabDef = notesPopup.definitions[0];
-                          } else if (notesPopup.definition) {
-                            vocabDef = notesPopup.definition;
+                            vocabDef = notesPopup.data?.definitions?.[0];
+                          } else if (notesPopup.data?.definition) {
+                            vocabDef = notesPopup.data?.definition;
                           }
 
-                          await addSingleToFlashcards(notesPopup.word, ctx, {
-                            pinyin: notesPopup.pinyin,
-                            definition: vocabDef,
-                            hskLevel: undefined, // Notes don't have HSK level info
-                          });
+                          await addSingleToFlashcards(
+                            notesPopup.data?.word || "",
+                            ctx,
+                            {
+                              pinyin: notesPopup.data?.pinyin,
+                              definition: vocabDef,
+                              hskLevel: undefined, // Notes don't have HSK level info
+                            }
+                          );
                           setNotesPopup((p) => ({ ...p, open: false }));
                         }}
                         className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
