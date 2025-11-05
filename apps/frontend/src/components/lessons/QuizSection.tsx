@@ -250,12 +250,14 @@ function InlineSegments({
                     }}
                   >
                     <span
-                      className={
+                      className={`flex ${
                         "underline-offset-[3px] " +
-                        (multiSelect && selectedWords && selectedWords[`${keyPrefix}-${idx}-${seg.text}`]
-                          ? "underline decoration-[#4040f2] decoration-2"
+                        (multiSelect &&
+                        selectedWords &&
+                        selectedWords[`${keyPrefix}-${idx}-${seg.text}`]
+                          ? "bg-[#4040f2]/80 rounded"
                           : "")
-                      }
+                      }`}
                     >
                       {seg.text}
                     </span>

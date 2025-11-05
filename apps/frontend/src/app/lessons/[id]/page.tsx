@@ -1172,15 +1172,15 @@ export default function LessonViewerPage() {
                 }}
               >
                 <span
-                  className={
+                  className={`flex ${
                     multiSelect &&
                     notesContext &&
                     selectedWords[
                       `notes-${notesContext.section}-${notesContext.noteIndex}-${notesContext.field}${notesContext.exampleIndex !== undefined ? `-${notesContext.exampleIndex}` : ""}-${idx}-${seg.text}`
                     ]
-                      ? "underline decoration-[#4040f2] decoration-2"
+                      ? "bg-[#4040f2]/80 rounded"
                       : undefined
-                  }
+                  }`}
                 >
                   {seg.text}
                 </span>
@@ -1536,6 +1536,9 @@ export default function LessonViewerPage() {
                       <QuizSection
                         quiz={quiz}
                         disabled={Boolean(data?.finished)}
+                        multiSelect={multiSelect}
+                        selectedWords={selectedWords}
+                        toggleSelectWord={toggleSelectWord}
                         onAddFlashcard={(hanzi, ctx, vocab) =>
                           void addSingleToFlashcards(hanzi, ctx, vocab)
                         }

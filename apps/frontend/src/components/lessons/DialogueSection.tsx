@@ -198,13 +198,13 @@ export function DialogueSection({
                     }}
                   >
                     <span
-                      className={
+                      className={`flex items-start ${
                         multiSelect && selectedWords[`${ti}-${idx}-${seg.text}`]
-                          ? "underline decoration-[#4040f2] decoration-2"
+                          ? "bg-[#4040f2]/80 rounded"
                           : isWord && typeof seg.hskLevel === "number"
                             ? hskUnderlineClass(seg.hskLevel)
                             : undefined
-                      }
+                      }`}
                     >
                       {seg.text}
                     </span>

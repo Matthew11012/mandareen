@@ -390,7 +390,7 @@ function MobileStoryTrackPager({
                               selectedWords[
                                 `${ci}-${idx}-${text}` as keyof typeof selectedWords
                               ]
-                                ? "underline decoration-[#4040f2] decoration-2"
+                                ? "bg-[#4040f2]/80 rounded"
                                 : isWord && typeof seg.hskLevel === "number"
                                   ? hskUnderlineClass(seg.hskLevel)
                                   : ""
@@ -639,10 +639,11 @@ export function StorySection({
                     >
                       <span
                         className={`underline-offset-[3px] ${
-                          multiSelect && selectedWords[
+                          multiSelect &&
+                          selectedWords[
                             `${ci}-${idx}-${seg.text}` as keyof typeof selectedWords
                           ]
-                            ? "underline decoration-[#4040f2] decoration-2"
+                            ? "bg-[#4040f2]/80 rounded"
                             : hskUnderlineClass(seg.hskLevel)
                         }`}
                       >
