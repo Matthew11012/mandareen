@@ -63,51 +63,70 @@ export function usePopup<TData = unknown>(options: UsePopupOptions) {
     const modal = popupRef.current;
     const container = containerRef.current;
     if (!modal || !container) return;
-    const modalRect = modal.getBoundingClientRect();
-    const contRect = container.getBoundingClientRect();
-    const contW = contRect.width;
-    const contH = contRect.height;
 
-    // Visible vertical region accounting for sticky toolbar and viewport
-    const toolbar = toolbarSelector
-      ? (document.querySelector(toolbarSelector) as HTMLElement | null)
-      : null;
-    const toolbarRect = toolbar?.getBoundingClientRect();
-    const toolbarBottom = toolbarRect ? toolbarRect.bottom : 0;
-    const visibleTopInContainer = Math.max(0, toolbarBottom - contRect.top);
-    const visibleBottomInContainer = Math.min(
-      contH,
-      Math.max(0, window.innerHeight - contRect.top)
-    );
+    const calculatePosition = () => {
+      const modalRect = modal.getBoundingClientRect();
+      const contRect = container.getBoundingClientRect();
+      const contW = contRect.width;
+      const contH = contRect.height;
 
-    // Horizontal: center on anchor, then clamp within container bounds
-    let left = state.x - modalRect.width / 2;
-    left = Math.max(margin, Math.min(left, contW - modalRect.width - margin));
-
-    // Vertical: decide above/below by available space within visible region
-    const anchorH = state.anchorH || 0;
-    const availableAbove = state.y - visibleTopInContainer - margin;
-    const availableBelow =
-      visibleBottomInContainer - (state.y + anchorH) - margin;
-    let top: number;
-    if (modalRect.height <= availableAbove || availableBelow < 0) {
-      top = Math.max(
-        visibleTopInContainer + margin,
-        state.y - modalRect.height - margin
+      // Visible vertical region accounting for sticky toolbar and viewport
+      const toolbar = toolbarSelector
+        ? (document.querySelector(toolbarSelector) as HTMLElement | null)
+        : null;
+      const toolbarRect = toolbar?.getBoundingClientRect();
+      const toolbarBottom = toolbarRect ? toolbarRect.bottom : 0;
+      const visibleTopInContainer = Math.max(0, toolbarBottom - contRect.top);
+      const visibleBottomInContainer = Math.min(
+        contH,
+        Math.max(0, window.innerHeight - contRect.top)
       );
-    } else if (modalRect.height <= availableBelow || availableAbove < 0) {
-      top = Math.min(
-        visibleBottomInContainer - modalRect.height - margin,
-        state.y + anchorH + margin
-      );
-    } else {
-      top = Math.min(
-        visibleBottomInContainer - modalRect.height - margin,
-        Math.max(visibleTopInContainer + margin, state.y + anchorH + margin)
-      );
-    }
 
-    setPosition({ left, top });
+      // Horizontal: center on anchor, then clamp within container bounds
+      let left = state.x - modalRect.width / 2;
+      left = Math.max(margin, Math.min(left, contW - modalRect.width - margin));
+
+      // Vertical: decide above/below by available space within visible region
+      const anchorH = state.anchorH || 0;
+      const availableAbove = state.y - visibleTopInContainer - margin;
+      const availableBelow =
+        visibleBottomInContainer - (state.y + anchorH) - margin;
+      let top: number;
+      if (modalRect.height <= availableAbove || availableBelow < 0) {
+        top = Math.max(
+          visibleTopInContainer + margin,
+          state.y - modalRect.height - margin
+        );
+      } else if (modalRect.height <= availableBelow || availableAbove < 0) {
+        top = Math.min(
+          visibleBottomInContainer - modalRect.height - margin,
+          state.y + anchorH + margin
+        );
+      } else {
+        top = Math.min(
+          visibleBottomInContainer - modalRect.height - margin,
+          Math.max(visibleTopInContainer + margin, state.y + anchorH + margin)
+        );
+      }
+
+      setPosition({ left, top });
+    };
+
+    // Use requestAnimationFrame to ensure DOM is ready, then calculate and attach listeners
+    const setupListeners = () => {
+      calculatePosition();
+      window.addEventListener("resize", calculatePosition, { passive: true });
+      window.addEventListener("scroll", calculatePosition, { passive: true });
+      container.addEventListener("scroll", calculatePosition);
+    };
+    const rafId = requestAnimationFrame(setupListeners);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", calculatePosition);
+      window.removeEventListener("scroll", calculatePosition);
+      container.removeEventListener("scroll", calculatePosition);
+    };
   }, [
     state.open,
     state.x,

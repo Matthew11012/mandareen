@@ -68,6 +68,7 @@ type MobileStoryTrackPagerProps = {
       hskLevel?: number;
     }>
   >;
+  openFromElement?: TokenRendererProps["openFromElement"];
 };
 
 function MobileStoryTrackPager({
@@ -83,6 +84,7 @@ function MobileStoryTrackPager({
   toggleSelectWord,
   contentRef,
   setPopup,
+  openFromElement,
 }: MobileStoryTrackPagerProps) {
   const prefersReducedMotion = useReducedMotion();
   const pathname = usePathname();
@@ -344,6 +346,7 @@ function MobileStoryTrackPager({
                     setPopup={
                       setPopup as unknown as TokenRendererProps["setPopup"]
                     }
+                    openFromElement={openFromElement}
                     contentRef={contentRef}
                     applyHSKUnderline={true}
                     hskUnderlineClass={hskUnderlineClass}
@@ -407,6 +410,7 @@ export function StorySection({
   toggleSelectWord,
   contentRef,
   setPopup,
+  openFromElement,
 }: {
   segmentedParagraphs: LessonToken[][];
   translationParagraphs: Array<string | undefined>;
@@ -448,6 +452,7 @@ export function StorySection({
       hskLevel?: number;
     }>
   >;
+  openFromElement?: TokenRendererProps["openFromElement"];
 }) {
   return (
     <>
@@ -465,6 +470,7 @@ export function StorySection({
         toggleSelectWord={toggleSelectWord}
         contentRef={contentRef}
         setPopup={setPopup}
+        openFromElement={openFromElement}
       />
 
       {/* Desktop: original list rendering */}
@@ -537,6 +543,7 @@ export function StorySection({
                 }
                 selectionIndexContext={{ paraIndex: ci }}
                 setPopup={setPopup as unknown as TokenRendererProps["setPopup"]}
+                openFromElement={openFromElement}
                 contentRef={contentRef}
                 applyHSKUnderline={true}
                 hskUnderlineClass={hskUnderlineClass}

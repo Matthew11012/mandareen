@@ -30,6 +30,7 @@ import { useLessonData } from "@/hooks/useLessonData";
 import { StorySection } from "@/components/lessons/StorySection";
 import { DialogueSection } from "@/components/lessons/DialogueSection";
 import { NotesSection } from "@/components/lessons/NotesSection";
+import type { TokenRendererProps } from "@/components/lessons/TokenRenderer";
 import { QuizSection } from "@/components/lessons/QuizSection";
 import { usePopup } from "@/hooks/usePopup";
 import { useMultiSelect } from "@/hooks/useMultiSelect";
@@ -615,6 +616,7 @@ export default function LessonViewerPage() {
     state: popup,
     position: popupPos,
     openWithParams: openMainPopupWithParams,
+    openFromElement: openMainPopupFromElement,
     close: closeMainPopup,
   } = usePopup<MainPopupData>({ containerRef: contentRef });
 
@@ -1199,9 +1201,9 @@ export default function LessonViewerPage() {
       title={data?.title || `Lesson #${id}`}
       subtitle={`HSK ${data?.level ?? ""}`}
     >
-      <div className="p-2 sm:p-6 sm:pt-0 pt-0 space-y-6 overflow-x-hidden">
+      <div className="p-2 sm:p-6 sm:pt-0 pt-0 space-y-6">
         <motion.div
-          className="flex flex-wrap items-center justify-between gap-2 sticky top-0 z-20 -mx-6 px-6 py-2 bg-[#222831]/80 backdrop-blur border-b border-[#30333a] overflow-x-hidden"
+          className="flex flex-wrap items-center justify-between gap-2 sticky top-0 z-20 -mx-6 px-6 py-2 bg-[#222831]/80 backdrop-blur border-b border-[#30333a]"
           role="toolbar"
           aria-label="Lesson controls"
           initial={{ y: 0 }}
@@ -1466,7 +1468,7 @@ export default function LessonViewerPage() {
         ) : (
           <div
             ref={contentRef}
-            className="sm:bg-[#2e323a] rounded-xl sm:p-6 sm:border sm:border-[#404040] relative overflow-x-hidden"
+            className="sm:bg-[#2e323a] sm:rounded-xl sm:p-6 sm:border sm:border-[#404040] relative overflow-x-hidden"
           >
             {story && (
               <StorySection
@@ -1486,6 +1488,9 @@ export default function LessonViewerPage() {
                 toggleSelectWord={toggleSelectWord}
                 contentRef={contentRef}
                 setPopup={setPopup}
+                openFromElement={
+                  openMainPopupFromElement as unknown as TokenRendererProps["openFromElement"]
+                }
               />
             )}
 
@@ -1502,6 +1507,9 @@ export default function LessonViewerPage() {
                 toggleSelectWord={toggleSelectWord}
                 contentRef={contentRef}
                 setPopup={setPopup}
+                openFromElement={
+                  openMainPopupFromElement as unknown as TokenRendererProps["openFromElement"]
+                }
               />
             )}
             {dialogue && (
@@ -1583,6 +1591,9 @@ export default function LessonViewerPage() {
                       toggleSelectWord={toggleSelectWord}
                       contentRef={contentRef}
                       setPopup={setNotesPopup}
+                      openFromElement={
+                        openMainPopupFromElement as unknown as TokenRendererProps["openFromElement"]
+                      }
                       hskUnderlineClass={hskUnderlineClass}
                     />
                   )}
@@ -1677,6 +1688,9 @@ export default function LessonViewerPage() {
                     toggleSelectWord={toggleSelectWord}
                     contentRef={contentRef}
                     setPopup={setNotesPopup}
+                    openFromElement={
+                      openMainPopupFromElement as unknown as TokenRendererProps["openFromElement"]
+                    }
                     hskUnderlineClass={hskUnderlineClass}
                   />
                 </div>

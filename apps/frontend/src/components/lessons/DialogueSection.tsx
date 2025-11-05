@@ -35,6 +35,7 @@ export function DialogueSection({
   toggleSelectWord,
   contentRef,
   setPopup,
+  openFromElement,
 }: {
   turns: DialogueTurn[];
   isTurnPinyinOn: (idx: number) => boolean;
@@ -73,6 +74,7 @@ export function DialogueSection({
     definitions?: string[];
     hskLevel?: number;
   }) => void;
+  openFromElement?: TokenRendererProps["openFromElement"];
 }) {
   if (!Array.isArray(turns) || turns.length === 0) {
     return null;
@@ -157,6 +159,7 @@ export function DialogueSection({
               }
               selectionIndexContext={{ turnIndex: ti }}
               setPopup={setPopup as unknown as TokenRendererProps["setPopup"]}
+              openFromElement={openFromElement}
               contentRef={contentRef}
               applyHSKUnderline={true}
               hskUnderlineClass={hskUnderlineClass}
