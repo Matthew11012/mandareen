@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Providers from "./providers";
 import ServiceWorkerRegister from "../components/ServiceWorkerRegister";
 import { Toaster } from "sonner";
 import "./globals.css";
@@ -48,7 +49,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="antialiased">
-        {children}
+        <Providers>
+          {children}
+        </Providers>
 
         {/* Global Toast Notifications */}
         <Toaster theme="dark" position="top-right" richColors />
