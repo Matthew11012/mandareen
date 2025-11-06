@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState, memo, useMemo } from "react";
+import { useEffect, useRef, useState, memo, useMemo, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout";
 import {
   conversationsApi,
   type Message,
   type ConversationSummary,
 } from "@/lib/api/conversations";
+import { useConversationStream } from "@/lib/hooks/use-conversation-stream";
+import { useAudioRecorder } from "@/lib/hooks/use-audio-recorder";
+import {
+  useConversationsList,
+  useMessages,
+  useStartConversation,
+  useSendMessage,
+  sortConversationsByStartedAt,
+} from "@/lib/hooks/use-conversations";
 import {
   Mic,
   Send,
@@ -63,7 +72,6 @@ export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [recording, setRecording] = useState(false);
   const [conversations, setConversations] = useState<EnrichedConversation[]>(
     []
   );
@@ -80,12 +88,7 @@ export default function ConversationsPage() {
     setNotesModal({ open: true, message: m });
   const closeNotesModal = () => setNotesModal({ open: false, message: null });
   const [playing, setPlaying] = useState<Record<number, boolean>>({});
-  // Per-message toggles are inside AiMessage; no global toggles here
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [recPrompt, setRecPrompt] = useState<string>("Tap to speak");
-  const [uploadingAudio, setUploadingAudio] = useState<boolean>(false);
   const [loadingPreviews, setLoadingPreviews] = useState<boolean>(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     open: boolean;
@@ -96,6 +99,269 @@ export default function ConversationsPage() {
   const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const deleteTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  // Hooks
+  const { streamText, streamAudio } = useConversationStream();
+  const { data: conversationsList, refetch: refetchConversations } =
+    useConversationsList();
+  const { data: messagesData, refetch: refetchMessages } =
+    useMessages(conversationId);
+  const startConversationMutation = useStartConversation();
+  const sendMessageMutation = useSendMessage();
+
+  // Helper to create stream callbacks for updating messages state
+  type _NotesType = NonNullable<Message["notes"]>;
+  type _GrammarNotesType = _NotesType["grammarNotes"];
+  type _TipsRichType = _NotesType["tipsRich"];
+  const createStreamCallbacks = useCallback(
+    (aiMsgId: number) => {
+      // Track the target AI message id; start with caller-provided id, but
+      // switch to the id provided by onStart to ensure consistency with the stream
+      let targetId = aiMsgId;
+      return {
+        onStart: ({ id, createdAt }: { id: number; createdAt: string }) => {
+          targetId = id;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id,
+              role: "ai" as const,
+              hanzi: "",
+              pinyin: "",
+              translation: "",
+              createdAt,
+              segments: undefined,
+              _loadingPinyin: true,
+              _loadingTranslation: true,
+              _loadingAudio: true,
+              _loadingNotes: true,
+            } as Message,
+          ]);
+        },
+        onHanziDelta: (delta: string) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === targetId ? { ...m, hanzi: (m.hanzi || "") + delta } : m
+            )
+          );
+        },
+        onAiEnrichment: (pinyin?: string, segments?: Message["segments"]) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === targetId
+                ? {
+                    ...m,
+                    pinyin: pinyin || m.pinyin,
+                    segments: segments || m.segments,
+                    _loadingPinyin: false,
+                  }
+                : m
+            )
+          );
+        },
+        onAiTranslation: (translation?: string) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === targetId
+                ? {
+                    ...m,
+                    translation: translation || m.translation,
+                    _loadingTranslation: false,
+                  }
+                : m
+            )
+          );
+        },
+        onAiAudio: (audioUrl?: string) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === targetId
+                ? {
+                    ...m,
+                    audioUrl: audioUrl || m.audioUrl,
+                    _loadingAudio: false,
+                  }
+                : m
+            )
+          );
+        },
+        onAiNotes: (notes?: unknown) => {
+          // Normalize notes payload from stream into Message["notes"] shape
+          let normalized: Message["notes"] | undefined = undefined;
+          if (notes && typeof notes === "object") {
+            const r = notes as Record<string, unknown>;
+            const rawGN = r["grammarNotes"] as _GrammarNotesType | undefined;
+            const rawTR = r["tipsRich"] as unknown;
+            const mappedTR = Array.isArray(rawTR)
+              ? typeof rawTR[0] === "string"
+                ? (rawTR as string[]).map((zh) => ({ zh }))
+                : (rawTR as NonNullable<_TipsRichType>)
+              : undefined;
+            normalized = {
+              grammarNotes: rawGN,
+              tipsRich: mappedTR,
+            } as Message["notes"];
+          }
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === targetId
+                ? {
+                    ...m,
+                    notes: normalized || m.notes,
+                    _loadingNotes: false,
+                  }
+                : m
+            )
+          );
+        },
+        // Let onError handle hydration fallback; final event is not strictly required here
+        onUserUpdate: (update: {
+          id: number;
+          pinyin?: string;
+          translation?: string;
+          segments?: Message["segments"];
+        }) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.role === "user" && m.id === update.id
+                ? {
+                    ...m,
+                    pinyin:
+                      typeof update.pinyin === "string"
+                        ? update.pinyin
+                        : m.pinyin,
+                    translation:
+                      typeof update.translation === "string"
+                        ? update.translation
+                        : m.translation,
+                    segments: Array.isArray(update.segments)
+                      ? update.segments
+                      : m.segments,
+                    _loadingPinyin: false,
+                    _loadingTranslation: false,
+                  }
+                : m
+            )
+          );
+        },
+        onFinal: (final: {
+          hanzi?: string;
+          pinyin?: string;
+          translation?: string;
+          audioUrl?: string;
+          segments?: Message["segments"];
+          notes?: unknown;
+        }) => {
+          // Normalize notes from FinalPayload (NotesPayload) to Message["notes"]
+          let normalizedNotes: Message["notes"] | undefined = undefined;
+          if (final.notes && typeof final.notes === "object") {
+            const r = final.notes as Record<string, unknown>;
+            const rawGN = r["grammarNotes"] as _GrammarNotesType | undefined;
+            const rawTR = r["tipsRich"] as unknown;
+            const mappedTR = Array.isArray(rawTR)
+              ? typeof rawTR[0] === "string"
+                ? (rawTR as string[]).map((zh) => ({ zh }))
+                : (rawTR as NonNullable<_TipsRichType>)
+              : undefined;
+            normalizedNotes = {
+              grammarNotes: rawGN,
+              tipsRich: mappedTR,
+            } as Message["notes"];
+          }
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === targetId
+                ? {
+                    ...m,
+                    hanzi: final.hanzi || m.hanzi,
+                    pinyin: final.pinyin || m.pinyin || "",
+                    translation: final.translation || m.translation || "",
+                    audioUrl: final.audioUrl || m.audioUrl,
+                    segments: Array.isArray(final.segments)
+                      ? final.segments
+                      : final.segments === undefined && m.segments
+                        ? m.segments
+                        : buildFallbackSegments(
+                            final.hanzi || m.hanzi || "",
+                            final.pinyin || m.pinyin || ""
+                          ),
+                    notes: normalizedNotes ?? m.notes,
+                    _loadingPinyin: false,
+                    _loadingTranslation: false,
+                    _loadingAudio: false,
+                    _loadingNotes: false,
+                  }
+                : m
+            )
+          );
+        },
+        onError: async () => {
+          // Hydrate AI message if stream ended without explicit final
+          if (conversationId) {
+            try {
+              const list = await conversationsApi.listMessages(conversationId);
+              const latestAi = list
+                .slice()
+                .reverse()
+                .find((m) => m.role === "ai");
+              if (latestAi) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === targetId
+                      ? {
+                          ...m,
+                          hanzi: latestAi.hanzi || m.hanzi,
+                          pinyin: latestAi.pinyin || m.pinyin,
+                          translation: latestAi.translation || m.translation,
+                          audioUrl: latestAi.audioUrl || m.audioUrl,
+                          segments: Array.isArray(latestAi.segments)
+                            ? latestAi.segments
+                            : m.segments,
+                          notes: latestAi.notes || m.notes,
+                          _loadingPinyin: false,
+                          _loadingTranslation: false,
+                          _loadingAudio: false,
+                          _loadingNotes: false,
+                        }
+                      : m
+                  )
+                );
+              }
+            } catch {
+              // ignore
+            }
+          }
+        },
+      };
+    },
+    [conversationId]
+  );
+
+  const {
+    start: startRecording,
+    stop: stopRecording,
+    recording,
+    recPrompt,
+    uploadingAudio,
+  } = useAudioRecorder({
+    onData: async (blob) => {
+      if (!conversationId) return;
+      try {
+        // Upload audio first to get user message (with transcribed hanzi)
+        const { user } = await conversationsApi.sendAudio(conversationId, blob);
+        setMessages((prev) => [...prev, user]);
+        // Then start streaming AI reply (hook will handle SSE)
+        // Note: streamAudio hook also calls sendAudio, but that's okay - server handles idempotency
+        const aiMsgId = Date.now() + 1;
+        await streamAudio(
+          { conversationId, audio: blob },
+          createStreamCallbacks(aiMsgId)
+        );
+      } catch {
+        toast.error("Failed to send audio");
+      }
+    },
+  });
 
   // Memoized date formatter utility
   const formatConversationDate = useMemo(
@@ -262,60 +528,64 @@ export default function ConversationsPage() {
   const [showConversationsSidebar, setShowConversationsSidebar] =
     useState(false);
 
+  // Sync conversations list from query to local state (for preview enrichment)
   useEffect(() => {
-    const init = async () => {
-      try {
-        setLoadingPreviews(true);
-        const list = await conversationsApi.list();
-        setConversations(list);
+    if (conversationsList) {
+      setConversations(conversationsList);
+      // Load previews in background
+      setLoadingPreviews(true);
+      loadConversationPreviews(conversationsList)
+        .then((enriched) => {
+          setConversations(enriched);
+          setLoadingPreviews(false);
+        })
+        .catch(() => {
+          setLoadingPreviews(false);
+        });
+    }
+  }, [conversationsList]);
 
-        // Load previews in background
-        loadConversationPreviews(list)
-          .then((enriched) => {
-            setConversations(enriched);
-            setLoadingPreviews(false);
-          })
-          .catch(() => {
-            setLoadingPreviews(false);
-          });
+  // Sync messages from query to local state
+  useEffect(() => {
+    if (messagesData) {
+      setMessages(messagesData);
+    }
+  }, [messagesData]);
 
-        const saved =
-          typeof window !== "undefined"
-            ? localStorage.getItem("active-conversation-id")
-            : null;
-        const savedId = saved ? Number(saved) : null;
-        if (list.length > 0) {
-          // Sort to find most recent if no saved ID
-          const sorted = list.sort(
-            (a, b) =>
-              new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
-          );
-          const targetId = list.some((c) => c.id === savedId)
-            ? (savedId as number)
-            : sorted[0].id;
-          setConversationId(targetId);
-          const msgs = await conversationsApi.listMessages(targetId);
-          setMessages(msgs);
-        } else {
-          const { id } = await conversationsApi.start();
+  // Initial load: select conversation or create new one
+  useEffect(() => {
+    if (!conversationsList) return;
+    const saved =
+      typeof window !== "undefined"
+        ? localStorage.getItem("active-conversation-id")
+        : null;
+    const savedId = saved ? Number(saved) : null;
+    if (conversationsList.length > 0) {
+      const sorted = sortConversationsByStartedAt(conversationsList);
+      const targetId = conversationsList.some((c) => c.id === savedId)
+        ? (savedId as number)
+        : sorted[0].id;
+      if (conversationId !== targetId) {
+        setConversationId(targetId);
+        if (typeof window !== "undefined")
+          localStorage.setItem("active-conversation-id", String(targetId));
+      }
+    } else {
+      // No conversations, create new one
+      startConversationMutation.mutate(undefined, {
+        onSuccess: async ({ id }) => {
           setConversationId(id);
-          const msgs = await conversationsApi.listMessages(id);
-          setMessages(msgs);
-          const updated = await conversationsApi.list();
-          // Load previews for new conversation list
-          loadConversationPreviews(updated).then((enriched) => {
-            setConversations(enriched);
-          });
           if (typeof window !== "undefined")
             localStorage.setItem("active-conversation-id", String(id));
-        }
-      } catch {
-        toast.error("Failed to load conversations");
-        setLoadingPreviews(false);
-      }
-    };
-    init();
-  }, []);
+          await refetchConversations();
+        },
+        onError: () => {
+          toast.error("Failed to start conversation");
+        },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationsList, startConversationMutation, refetchConversations]);
 
   // Auto-scroll to bottom whenever messages update (new message or AI stream)
   useEffect(() => {
@@ -378,33 +648,18 @@ export default function ConversationsPage() {
     setConversationId(id);
     if (typeof window !== "undefined")
       localStorage.setItem("active-conversation-id", String(id));
-    try {
-      const msgs = await conversationsApi.listMessages(id);
-      setMessages(msgs);
-    } catch {
-      toast.error("Failed to load messages");
-    }
+    // Messages will be loaded via useMessages hook when conversationId changes
+    await refetchMessages();
   };
 
   const newConversation = async () => {
     try {
-      const { id } = await conversationsApi.start();
+      const { id } = await startConversationMutation.mutateAsync(undefined);
       setConversationId(id);
-      const msgs = await conversationsApi.listMessages(id);
-      setMessages(msgs);
-      const updated = await conversationsApi.list();
-      // Sort and load previews for updated list
-      const sorted = updated.sort(
-        (a, b) =>
-          new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
-      );
-      setConversations(sorted);
-      // Load previews in background
-      loadConversationPreviews(updated).then((enriched) => {
-        setConversations(enriched);
-      });
       if (typeof window !== "undefined")
         localStorage.setItem("active-conversation-id", String(id));
+      await refetchConversations();
+      await refetchMessages();
     } catch {
       toast.error("Failed to start conversation");
     }
@@ -541,255 +796,21 @@ export default function ConversationsPage() {
     };
     setMessages((prev) => [...prev, tempUser]);
     try {
-      const { user } = await conversationsApi.send(conversationId, text);
+      const { user } = await sendMessageMutation.mutateAsync({
+        id: conversationId,
+        hanzi: text,
+      });
       // Replace temp user with server user
       setMessages((prev) => {
         const withoutTemp = prev.filter((m) => m !== tempUser);
         return [...withoutTemp, user];
       });
-      // Start SSE stream
-      const url = conversationsApi.streamUrl(conversationId, text);
-      const es = new EventSource(url, { withCredentials: true });
-
-      // Flag to track if we've received the final event
-      let isStreamComplete = false;
+      // Start SSE stream using hook
       const aiMsgId = Date.now() + 1;
-      const createdAt = new Date().toISOString();
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: aiMsgId,
-          role: "ai",
-          hanzi: "",
-          pinyin: "",
-          translation: "",
-          createdAt,
-          // mark streaming state so toggles can be hidden until final
-          segments: undefined,
-          // Add loading flags for progressive SSE events
-          _loadingPinyin: true,
-          _loadingTranslation: true,
-          _loadingAudio: true,
-          _loadingNotes: true,
-        } as Message,
-      ]);
-      es.onmessage = (e) => {
-        try {
-          const payload = JSON.parse(e.data);
-          if (payload.hanziDelta) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aiMsgId
-                  ? { ...m, hanzi: (m.hanzi || "") + payload.hanziDelta }
-                  : m
-              )
-            );
-          } else if (payload.type === "ai-enrichment") {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aiMsgId
-                  ? {
-                      ...m,
-                      pinyin: payload.pinyin || m.pinyin,
-                      segments: payload.segments || m.segments,
-                      _loadingPinyin: false,
-                    }
-                  : m
-              )
-            );
-          } else if (payload.type === "ai-translation") {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aiMsgId
-                  ? {
-                      ...m,
-                      translation: payload.translation || m.translation,
-                      _loadingTranslation: false,
-                    }
-                  : m
-              )
-            );
-          } else if (payload.type === "ai-audio") {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aiMsgId
-                  ? {
-                      ...m,
-                      audioUrl: payload.audioUrl || m.audioUrl,
-                      _loadingAudio: false,
-                    }
-                  : m
-              )
-            );
-          } else if (payload.type === "ai-notes") {
-            const notesCamel = payload.notes
-              ? {
-                  grammarNotes:
-                    payload.notes.grammarNotes || payload.notes.grammar_notes,
-                  tipsRich: payload.notes.tipsRich || payload.notes.tips_rich,
-                }
-              : undefined;
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aiMsgId
-                  ? {
-                      ...m,
-                      notes: notesCamel || m.notes,
-                      _loadingNotes: false,
-                    }
-                  : m
-              )
-            );
-          } else if (
-            payload &&
-            typeof payload === "object" &&
-            payload.id &&
-            (payload.translation !== undefined || payload.segments)
-          ) {
-            // Some servers emit a plain user-update object on the default channel
-            const data = payload as {
-              id: number;
-              pinyin?: string;
-              translation?: string;
-              segments?: Array<{
-                text: string;
-                startIndex: number;
-                endIndex: number;
-                isWord: boolean;
-                hskLevel?: number;
-                pinyin?: string;
-                definition?: string;
-                definitions?: string[];
-              }>;
-            };
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.role === "user" && m.id === data.id
-                  ? {
-                      ...m,
-                      pinyin:
-                        typeof data.pinyin === "string"
-                          ? data.pinyin
-                          : m.pinyin,
-                      translation:
-                        typeof data.translation === "string"
-                          ? data.translation
-                          : m.translation,
-                      segments: Array.isArray(data.segments)
-                        ? data.segments
-                        : m.segments,
-                    }
-                  : m
-              )
-            );
-          } else if (payload.type === "user-update" && payload.data) {
-            // Ignore here to prevent double-processing; rely on named 'user-update' listener below
-          } else if (payload.type === "final" && payload.data) {
-            isStreamComplete = true;
-            // Close the connection gracefully
-            if (es.readyState === EventSource.OPEN) {
-              es.close();
-            }
-          }
-        } catch {}
-      };
-      es.addEventListener("user-update", (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(
-            (e as unknown as MessageEvent).data as string
-          );
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === data.id
-                ? {
-                    ...m,
-                    pinyin:
-                      typeof data.pinyin === "string" ? data.pinyin : m.pinyin,
-                    translation:
-                      typeof data.translation === "string"
-                        ? data.translation
-                        : m.translation,
-                    segments: Array.isArray(data.segments)
-                      ? data.segments
-                      : undefined,
-                    // Clear loading flags when user enrichment arrives
-                    _loadingPinyin: false,
-                    _loadingTranslation: false,
-                  }
-                : m
-            )
-          );
-          // Avoid destructive refetch during SSE; keep AI placeholder intact
-        } catch {}
-      });
-      es.addEventListener("error", (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(
-            (e as unknown as MessageEvent).data as string
-          );
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === data.id
-                ? {
-                    ...m,
-                    pinyin:
-                      typeof data.pinyin === "string" ? data.pinyin : m.pinyin,
-                    translation:
-                      typeof data.translation === "string"
-                        ? data.translation
-                        : m.translation,
-                    segments: Array.isArray(data.segments)
-                      ? data.segments
-                      : m.segments,
-                  }
-                : m
-            )
-          );
-        } catch {}
-        // Hydrate AI message if no final arrived
-        if (conversationId) {
-          void (async () => {
-            try {
-              const list = await conversationsApi.listMessages(conversationId);
-              const latestAi = list
-                .slice()
-                .reverse()
-                .find((m) => m.role === "ai");
-              if (latestAi) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.role === "ai" &&
-                    (m.pinyin?.length === 0 || m.translation?.length === 0)
-                      ? {
-                          ...m,
-                          hanzi: latestAi.hanzi || m.hanzi,
-                          pinyin: latestAi.pinyin || m.pinyin,
-                          translation: latestAi.translation || m.translation,
-                          audioUrl: latestAi.audioUrl || m.audioUrl,
-                          segments: Array.isArray(latestAi.segments)
-                            ? latestAi.segments
-                            : m.segments,
-                          notes: latestAi.notes || m.notes,
-                        }
-                      : m
-                  )
-                );
-              }
-            } catch {}
-          })();
-        }
-        es.close();
-      });
-      es.onerror = () => {
-        // Only log if this is an actual error, not a normal closure
-        if (isStreamComplete || es.readyState === EventSource.CLOSED) {
-          // Stream closed normally, no logging needed
-        } else {
-          console.warn("SSE stream ended unexpectedly");
-        }
-        // Don't try to hydrate if we already have progressive data
-        // The progressive events should have already updated the message
-      };
+      await streamText(
+        { conversationId, text },
+        createStreamCallbacks(aiMsgId)
+      );
     } catch {
       toast.error("Failed to send message");
     }
@@ -850,368 +871,6 @@ export default function ConversationsPage() {
   };
 
   // Note: if needed, we can add an "Add to Flashcards" inline action in the popup later.
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(stream);
-      mediaRecorderRef.current = rec;
-      chunksRef.current = [];
-      rec.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      rec.onstop = async () => {
-        try {
-          if (!conversationId) return;
-          const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-          setUploadingAudio(true);
-          const { user } = await conversationsApi.sendAudio(
-            conversationId,
-            blob
-          );
-          // Append user message
-          setMessages((prev) => [...prev, user]);
-          // Start SSE stream for AI reply using the transcribed hanzi
-          const url = conversationsApi.streamUrl(
-            conversationId,
-            user.hanzi || ""
-          );
-          const es = new EventSource(url, { withCredentials: true });
-          const aiMsgId = Date.now() + 1;
-          const createdAt = new Date().toISOString();
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: aiMsgId,
-              role: "ai",
-              hanzi: "",
-              pinyin: "",
-              translation: "",
-              createdAt,
-              // Add loading flags for progressive SSE events
-              _loadingPinyin: true,
-              _loadingTranslation: true,
-              _loadingAudio: true,
-              _loadingNotes: true,
-            } as Message,
-          ]);
-          es.onmessage = (e) => {
-            try {
-              const payload = JSON.parse(e.data);
-              if (payload.hanziDelta) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === aiMsgId
-                      ? { ...m, hanzi: (m.hanzi || "") + payload.hanziDelta }
-                      : m
-                  )
-                );
-              } else if (payload.type === "ai-enrichment") {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === aiMsgId
-                      ? {
-                          ...m,
-                          pinyin: payload.pinyin || m.pinyin,
-                          segments: payload.segments || m.segments,
-                          _loadingPinyin: false,
-                        }
-                      : m
-                  )
-                );
-              } else if (payload.type === "ai-translation") {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === aiMsgId
-                      ? {
-                          ...m,
-                          translation: payload.translation || m.translation,
-                          _loadingTranslation: false,
-                        }
-                      : m
-                  )
-                );
-              } else if (payload.type === "ai-audio") {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === aiMsgId
-                      ? {
-                          ...m,
-                          audioUrl: payload.audioUrl || m.audioUrl,
-                          _loadingAudio: false,
-                        }
-                      : m
-                  )
-                );
-              } else if (payload.type === "ai-notes") {
-                const notesCamel = payload.notes
-                  ? {
-                      grammarNotes:
-                        payload.notes.grammarNotes ||
-                        payload.notes.grammar_notes,
-                      tipsRich:
-                        payload.notes.tipsRich || payload.notes.tips_rich,
-                    }
-                  : undefined;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === aiMsgId
-                      ? {
-                          ...m,
-                          notes: notesCamel || m.notes,
-                          _loadingNotes: false,
-                        }
-                      : m
-                  )
-                );
-              } else if (
-                payload &&
-                typeof payload === "object" &&
-                payload.id &&
-                (payload.translation !== undefined || payload.segments)
-              ) {
-                const data = payload as {
-                  id: number;
-                  pinyin?: string;
-                  translation?: string;
-                  segments?: Array<{
-                    text: string;
-                    startIndex: number;
-                    endIndex: number;
-                    isWord: boolean;
-                    hskLevel?: number;
-                    pinyin?: string;
-                    definition?: string;
-                    definitions?: string[];
-                  }>;
-                };
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.role === "user" && m.id === data.id
-                      ? {
-                          ...m,
-                          pinyin:
-                            typeof data.pinyin === "string"
-                              ? data.pinyin
-                              : m.pinyin,
-                          translation:
-                            typeof data.translation === "string"
-                              ? data.translation
-                              : m.translation,
-                          segments: Array.isArray(data.segments)
-                            ? data.segments
-                            : m.segments,
-                        }
-                      : m
-                  )
-                );
-              } else if (payload.type === "user-update" && payload.data) {
-                const data = JSON.parse(payload.data);
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === data.id
-                      ? {
-                          ...m,
-                          pinyin:
-                            typeof data.pinyin === "string"
-                              ? data.pinyin
-                              : m.pinyin,
-                          translation:
-                            typeof data.translation === "string"
-                              ? data.translation
-                              : m.translation,
-                          segments: Array.isArray(data.segments)
-                            ? data.segments
-                            : undefined,
-                        }
-                      : m
-                  )
-                );
-              } else if (payload.type === "final" && payload.data) {
-                const data = JSON.parse(payload.data);
-                const notesCamel = data?.notes
-                  ? {
-                      grammarNotes:
-                        data.notes.grammarNotes ||
-                        data.notes.grammar_notes ||
-                        undefined,
-                      tipsRich:
-                        data.notes.tipsRich ||
-                        data.notes.tips_rich ||
-                        undefined,
-                    }
-                  : undefined;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === aiMsgId
-                      ? {
-                          ...m,
-                          hanzi: data.hanzi || m.hanzi,
-                          pinyin: data.pinyin || "",
-                          translation: data.translation || "",
-                          notes: notesCamel ?? m.notes,
-                          audioUrl: data.audioUrl || undefined,
-                          segments: Array.isArray(data.segments)
-                            ? data.segments
-                            : buildFallbackSegments(
-                                data.hanzi || m.hanzi,
-                                data.pinyin || ""
-                              ),
-                        }
-                      : m
-                  )
-                );
-                es.close();
-              }
-            } catch {}
-          };
-          es.addEventListener("user-update", (e: MessageEvent) => {
-            try {
-              const data = JSON.parse(
-                (e as unknown as MessageEvent).data as string
-              );
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === aiMsgId || m.id === data.id
-                    ? {
-                        ...m,
-                        pinyin:
-                          typeof data.pinyin === "string"
-                            ? data.pinyin
-                            : m.pinyin,
-                        translation:
-                          typeof data.translation === "string"
-                            ? data.translation
-                            : m.translation,
-                        segments: Array.isArray(data.segments)
-                          ? data.segments
-                          : undefined,
-                      }
-                    : m
-                )
-              );
-            } catch {}
-          });
-          es.addEventListener("error", (e: MessageEvent) => {
-            try {
-              const data = JSON.parse(
-                (e as unknown as MessageEvent).data as string
-              );
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === aiMsgId || m.id === data.id
-                    ? {
-                        ...m,
-                        pinyin:
-                          typeof data.pinyin === "string"
-                            ? data.pinyin
-                            : m.pinyin,
-                        translation:
-                          typeof data.translation === "string"
-                            ? data.translation
-                            : m.translation,
-                        segments: Array.isArray(data.segments)
-                          ? data.segments
-                          : m.segments,
-                      }
-                    : m
-                )
-              );
-            } catch {}
-            // Hydrate AI message if no final arrived
-            if (conversationId) {
-              void (async () => {
-                try {
-                  const list =
-                    await conversationsApi.listMessages(conversationId);
-                  const latestAi = list
-                    .slice()
-                    .reverse()
-                    .find((m) => m.role === "ai");
-                  if (latestAi) {
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === aiMsgId
-                          ? {
-                              ...m,
-                              hanzi: latestAi.hanzi || m.hanzi,
-                              pinyin: latestAi.pinyin || m.pinyin,
-                              translation:
-                                latestAi.translation || m.translation,
-                              audioUrl: latestAi.audioUrl || m.audioUrl,
-                              segments: Array.isArray(latestAi.segments)
-                                ? latestAi.segments
-                                : m.segments,
-                              notes: latestAi.notes || m.notes,
-                            }
-                          : m
-                      )
-                    );
-                  }
-                } catch {}
-              })();
-            }
-            es.close();
-          });
-          es.onerror = () => {
-            // Hydrate AI message if stream ended without explicit final
-            if (conversationId) {
-              void (async () => {
-                try {
-                  const list =
-                    await conversationsApi.listMessages(conversationId);
-                  const latestAi = list
-                    .slice()
-                    .reverse()
-                    .find((m) => m.role === "ai");
-                  if (latestAi) {
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === aiMsgId
-                          ? {
-                              ...m,
-                              hanzi: latestAi.hanzi || m.hanzi,
-                              pinyin: latestAi.pinyin || m.pinyin,
-                              translation:
-                                latestAi.translation || m.translation,
-                              audioUrl: latestAi.audioUrl || m.audioUrl,
-                              segments: Array.isArray(latestAi.segments)
-                                ? latestAi.segments
-                                : m.segments,
-                              notes: latestAi.notes || m.notes,
-                            }
-                          : m
-                      )
-                    );
-                  }
-                } catch {}
-              })();
-            }
-            es.close();
-          };
-        } catch {
-          toast.error("Failed to send audio");
-        } finally {
-          setUploadingAudio(false);
-          setRecPrompt("Tap to speak");
-        }
-      };
-      rec.start();
-      setRecording(true);
-      setRecPrompt("Listening... Tap when done");
-    } catch {
-      toast.error("Mic permission denied");
-    }
-  };
-
-  const stopRecording = () => {
-    const rec = mediaRecorderRef.current;
-    if (rec && rec.state !== "inactive") {
-      rec.stop();
-      setRecording(false);
-      setRecPrompt("Processing...");
-    }
-  };
 
   function AiMessage({
     m,
@@ -1912,8 +1571,8 @@ export default function ConversationsPage() {
                                 }}
                                 className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
                                   conversationId === c.id
-                                    ? "text-[#c7cdff] hover:bg-[#3d4558] hover:text-red-400"
-                                    : "text-[#808080] hover:bg-[#2e323a] hover:text-red-400"
+                                    ? "text-[#c7cdff] hover:bg-red-600/20 hover:text-red-400"
+                                    : "text-[#808080] hover:bg-red-600/20 hover:text-red-400"
                                 }`}
                                 aria-label="Delete conversation"
                                 title="Delete conversation"
@@ -1978,8 +1637,8 @@ export default function ConversationsPage() {
                                 }}
                                 className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
                                   conversationId === c.id
-                                    ? "text-[#c7cdff] hover:bg-[#3d4558] hover:text-red-400"
-                                    : "text-[#808080] hover:bg-[#2e323a] hover:text-red-400"
+                                    ? "text-[#c7cdff] hover:bg-red-600/20 hover:text-red-400"
+                                    : "text-[#808080] hover:bg-red-600/20 hover:text-red-400"
                                 }`}
                                 aria-label="Delete conversation"
                                 title="Delete conversation"
@@ -2044,8 +1703,8 @@ export default function ConversationsPage() {
                                 }}
                                 className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
                                   conversationId === c.id
-                                    ? "text-[#c7cdff] hover:bg-[#3d4558] hover:text-red-400"
-                                    : "text-[#808080] hover:bg-[#2e323a] hover:text-red-400"
+                                    ? "text-[#c7cdff] hover:bg-red-600/20 hover:text-red-400"
+                                    : "text-[#808080] hover:bg-red-600/20 hover:text-red-400"
                                 }`}
                                 aria-label="Delete conversation"
                                 title="Delete conversation"
@@ -2478,7 +2137,7 @@ export default function ConversationsPage() {
                 <span className="text-[10px] text-[#808080] hidden sm:block">
                   {recording
                     ? "Start speaking • Tap when done"
-                    : "Mic uses your browser audio"}
+                    : ""}
                 </span>
               </div>
               {uploadingAudio ? (
@@ -2493,11 +2152,11 @@ export default function ConversationsPage() {
                 if (e.key === "Enter") sendText();
               }}
               placeholder="Type your message ..."
-              className="flex-1 min-w-0 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-white outline-none"
+              className="flex-1 min-w-0 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-white outline-none h-11"
             />
             <button
               onClick={sendText}
-              className="px-4 py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer shrink-0"
+              className="px-4 py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer shrink-0 h-11"
               type="button"
               aria-label="Send message"
             >
