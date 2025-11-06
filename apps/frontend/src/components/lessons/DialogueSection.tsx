@@ -1,8 +1,10 @@
 "use client";
 
-import React, { MouseEvent as ReactMouseEvent } from "react";
+import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Separator } from "@/components/ui/separator";
+import { TokenRenderer } from "./TokenRenderer";
+import type { TokenRendererProps, SelectedWord } from "./TokenRenderer";
 
 type LessonToken = {
   text: string;
@@ -33,6 +35,7 @@ export function DialogueSection({
   toggleSelectWord,
   contentRef,
   setPopup,
+  openFromElement,
 }: {
   turns: DialogueTurn[];
   isTurnPinyinOn: (idx: number) => boolean;
@@ -71,6 +74,7 @@ export function DialogueSection({
     definitions?: string[];
     hskLevel?: number;
   }) => void;
+  openFromElement?: TokenRendererProps["openFromElement"];
 }) {
   if (!Array.isArray(turns) || turns.length === 0) {
     return null;
@@ -81,13 +85,13 @@ export function DialogueSection({
       {turns.map((turn, ti) => (
         <div
           key={ti}
-          className="sm:bg-[#262a31] rounded-lg p-3 sm:border sm:border-[#3a3a3a]"
+          className="sm:bg-[#262a31] rounded-lg p-3 sm:border sm:border-[#3a3a3a] overflow-x-hidden"
         >
-          <div className="flex items-center justify-between mb-1">
-            <div className="text-[#9aa6ff] font-inter text-sm">
+          <div className="flex items-center justify-between mb-1 gap-2 min-w-0">
+            <div className="text-[#9aa6ff] font-inter text-sm truncate min-w-0">
               {turn.speaker}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={() => setTurnPinyinOn((s) => ({ ...s, [ti]: !s[ti] }))}
                 className={`px-2 py-1 text-xs rounded border ${isTurnPinyinOn(ti) ? "border-[#4040f2] text-[#9aa6ff]" : "border-[#404040] text-[#a6a6a6]"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#262a31]`}
@@ -138,80 +142,28 @@ export function DialogueSection({
               </button>
             </div>
           </div>
-          <Separator className="mb-1 border-1 opacity-50 sm:hidden" />
+          <Separator className="mb-2 border-1 opacity-50 sm:hidden" />
           <div className="leading-10 font-light sm:font-normal text-white font-inter text-[18px]">
-            {(turn.segments ?? []).map((seg: LessonToken, idx) => {
-              const isWord = Boolean(seg.isWord);
-              return (
-                <span
-                  key={`${ti}-${idx}`}
-                  className={`inline-flex flex-col items-center align-top mr-[2px]`}
-                >
-                  {isTurnPinyinOn(ti) ? (
-                    isWord && seg.pinyin ? (
-                      <span className="text-xs font-normal text-[#9aa6ff] leading-none">
-                        {seg.pinyin}
-                      </span>
-                    ) : (
-                      <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
-                        •
-                      </span>
-                    )
-                  ) : null}
-                  <span
-                    className={`px-[1px] rounded ${isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
-                    title={seg.definition || ""}
-                    onClick={(e: ReactMouseEvent<HTMLSpanElement>) => {
-                      if (!isWord) return;
-                      if (multiSelect) {
-                        toggleSelectWord(
-                          `${ti}-${idx}-${seg.text}`,
-                          seg.text,
-                          seg.pinyin,
-                          ti,
-                          idx
-                        );
-                        return;
-                      }
-                      const anchor = (
-                        e.currentTarget as HTMLSpanElement
-                      ).getBoundingClientRect();
-                      const container =
-                        contentRef.current?.getBoundingClientRect();
-                      const px = container
-                        ? anchor.left - container.left + anchor.width / 2
-                        : e.clientX;
-                      const py = container
-                        ? anchor.top - container.top
-                        : e.clientY;
-                      setPopup({
-                        open: true,
-                        x: px,
-                        y: py,
-                        anchorH: anchor.height,
-                        word: seg.text,
-                        pinyin: seg.pinyin,
-                        definition: seg.definition,
-                        definitions: seg.definitions,
-                        hskLevel: seg.hskLevel,
-                      });
-                    }}
-                  >
-                    <span
-                      className={
-                        multiSelect && selectedWords[`${ti}-${idx}-${seg.text}`]
-                          ? "underline decoration-[#4040f2] decoration-2"
-                          : isWord && typeof seg.hskLevel === "number"
-                            ? hskUnderlineClass(seg.hskLevel)
-                            : undefined
-                      }
-                    >
-                      {seg.text}
-                    </span>
-                  </span>
-                </span>
-              );
-            })}
+            <TokenRenderer
+              segments={
+                turn.segments as unknown as TokenRendererProps["segments"]
+              }
+              showPinyin={isTurnPinyinOn(ti)}
+              keyPrefix={`dialogue-turn${ti}`}
+              multiSelect={multiSelect}
+              selectedWords={
+                selectedWords as unknown as Record<string, SelectedWord>
+              }
+              toggleSelectWord={
+                toggleSelectWord as unknown as TokenRendererProps["toggleSelectWord"]
+              }
+              selectionIndexContext={{ turnIndex: ti }}
+              setPopup={setPopup as unknown as TokenRendererProps["setPopup"]}
+              openFromElement={openFromElement}
+              contentRef={contentRef}
+              applyHSKUnderline={true}
+              hskUnderlineClass={hskUnderlineClass}
+            />
           </div>
           <AnimatePresence initial={false}>
             {isTurnTransOn(ti) && turn.translation && (
