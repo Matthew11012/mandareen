@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, memo, useMemo, useCallback } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout";
 import {
   conversationsApi,
@@ -17,10 +17,7 @@ import {
   sortConversationsByStartedAt,
 } from "@/lib/hooks/use-conversations";
 import { buildFallbackSegments } from "@/lib/utils/segments";
-import {
-  addSingleToFlashcards,
-  getSentenceContext,
-} from "@/lib/utils/flashcards";
+import { addSingleToFlashcards } from "@/lib/utils/flashcards";
 import {
   Mic,
   Send,
@@ -33,9 +30,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "framer-motion";
-import { TokenRenderer } from "@/components/lessons/TokenRenderer";
-import type { TokenRendererProps } from "@/components/lessons/TokenRenderer";
 import { NotesSection } from "@/components/lessons/NotesSection";
+import { AiMessage } from "@/components/conversations/AiMessage";
 
 // Local types to avoid `any` usages in notes rendering
 type SegToken = {
@@ -64,17 +60,6 @@ type MessageNotes = {
 
 // Enriched conversation type with optional preview
 type EnrichedConversation = ConversationSummary & { preview?: string };
-
-const TranslationBlock = memo(function TranslationBlock({
-  show,
-  text,
-}: {
-  show: boolean;
-  text?: string;
-}) {
-  if (!show || !text) return null;
-  return <div className="text-[#a6a6a6] text-sm mt-1">{text}</div>;
-});
 
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -911,501 +896,12 @@ export default function ConversationsPage() {
 
   // Note: if needed, we can add an "Add to Flashcards" inline action in the popup later.
 
-  function AiMessage({
-    m,
-    showP,
-    showT,
-    showN,
-  }: {
-    m: Message;
-    showP: boolean;
-    showT: boolean;
-    showN: boolean;
-  }) {
-    const [popup, setPopup] = useState<{
-      open: boolean;
-      x: number;
-      y: number;
-      word: string;
-      pinyin?: string;
-      definition?: string;
-      definitions?: string[];
-      tokenIndex?: number;
-    }>({ open: false, x: 0, y: 0, word: "" });
-    const popupRef = useRef<HTMLDivElement | null>(null);
-    const mobilePopupRef = useRef<HTMLDivElement | null>(null);
-    const contentRef = useRef<HTMLDivElement | null>(null);
-    useEffect(() => {
-      const onClick = (e: MouseEvent) => {
-        const target = e.target as Node;
-        const clickedInsideDesktop = popupRef.current?.contains(target);
-        const clickedInsideMobile = mobilePopupRef.current?.contains(target);
-        // Only close if click is outside both popups
-        if (!clickedInsideDesktop && !clickedInsideMobile) {
-          setPopup((p) => ({ ...p, open: false }));
-        }
-      };
-      if (popup.open) document.addEventListener("mousedown", onClick);
-      return () => document.removeEventListener("mousedown", onClick);
-    }, [popup.open]);
-
-    // Adapter to handle TokenRenderer's openFromElement callback
-    // This maintains absolute positioning (current behavior) instead of container-relative
-    const handleOpenFromElement = useCallback(
-      (el: HTMLElement, data?: unknown, placement?: "above" | "below") => {
-        // Placement is available but not used - we use absolute positioning instead
-        void placement;
-        const rect = el.getBoundingClientRect();
-        const tokenData = data as
-          | {
-              word?: string;
-              pinyin?: string;
-              definition?: string;
-              definitions?: string[];
-            }
-          | undefined;
-
-        // Find token index by searching through segments
-        let tokenIndex = -1;
-        if (Array.isArray(m.segments)) {
-          const wordText = tokenData?.word || "";
-          for (let i = 0; i < m.segments.length; i++) {
-            if (m.segments[i].text === wordText) {
-              tokenIndex = i;
-              break;
-            }
-          }
-        }
-
-        setPopup({
-          open: true,
-          x: rect.left + rect.width / 2,
-          y: rect.top,
-          word: tokenData?.word || "",
-          pinyin: tokenData?.pinyin,
-          definition: tokenData?.definition,
-          definitions: tokenData?.definitions,
-          tokenIndex,
-        });
-      },
-      [m.segments]
-    );
-
-    const renderAligned = (hanzi: string, pinyin?: string) => {
-      // If segments exist, use TokenRenderer
-      if (Array.isArray(m.segments) && m.segments.length > 0) {
-        return (
-          <TokenRenderer
-            segments={m.segments as unknown as TokenRendererProps["segments"]}
-            fallbackZh={hanzi}
-            showPinyin={showP}
-            keyPrefix={`conversation-msg-${m.id}`}
-            textSizeClass="text-base"
-            openFromElement={handleOpenFromElement}
-            contentRef={contentRef}
-            contextSentenceZh={m.hanzi}
-            contextSentenceTranslation={m.translation}
-            applyHSKUnderline={false}
-          />
-        );
-      }
-      // Fallback: build segments from hanzi and pinyin
-      const fallbackSegs = buildFallbackSegments(hanzi, pinyin);
-      if (fallbackSegs.length > 0) {
-        return (
-          <TokenRenderer
-            segments={fallbackSegs as unknown as TokenRendererProps["segments"]}
-            fallbackZh={hanzi}
-            showPinyin={showP}
-            keyPrefix={`conversation-msg-${m.id}-fallback`}
-            textSizeClass="text-base"
-            openFromElement={handleOpenFromElement}
-            contentRef={contentRef}
-            contextSentenceZh={m.hanzi}
-            contextSentenceTranslation={m.translation}
-            applyHSKUnderline={false}
-          />
-        );
-      }
-      // Ultimate fallback: per-character alignment (no segments at all)
-      const chars = Array.from(hanzi || "");
-      const ps = (pinyin || "").split(/\s+/).filter(Boolean);
-      let pi = 0;
-      const isCJK = (ch: string) => /[\u3400-\u9FFF]/.test(ch);
-      return (
-        <div className="leading-8 text-white font-inter text-[16px]">
-          {chars.map((ch, idx) => {
-            const top = showP && isCJK(ch) ? ps[pi] || "" : "";
-            if (isCJK(ch)) pi++;
-            return (
-              <span
-                key={idx}
-                className="inline-flex flex-col items-center align-top mr-[2px]"
-              >
-                {top ? (
-                  <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
-                    {top}
-                  </span>
-                ) : null}
-                <span className="px-[1px] rounded">{ch}</span>
-              </span>
-            );
-          })}
-        </div>
-      );
-    };
-
-    const NotesBlock = () => {
-      const has =
-        Array.isArray(m.notes?.grammarNotes) &&
-        m.notes!.grammarNotes!.length > 0;
-      if (!has) return null;
-      return (
-        <div className="mt-2 border border-[#3a3f47] rounded-md bg-[#1d2128] p-2">
-          <div className="text-xs font-semibold text-white mb-1">
-            Tutor Notes
-          </div>
-          <div className="space-y-3 max-h-56 overflow-hidden relative">
-            {m
-              .notes!.grammarNotes!.slice(0, 2)
-              .map((gn: GrammarNote, idx: number) => (
-                <div
-                  key={idx}
-                  className="text-[12px] text-[#c9d1d9] border border-[#2a2e36] bg-[#1a1f27] rounded-lg p-2 space-y-2"
-                >
-                  {/* Point */}
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
-                        Point
-                      </span>
-                    </div>
-                    <div>
-                      {Array.isArray(gn.pointSegments) &&
-                      gn.pointSegments.length > 0
-                        ? renderSegmentsWithPopup(
-                            gn.pointSegments,
-                            gn.point,
-                            gn.pointEn,
-                            showP
-                          )
-                        : renderNotesPinyin(gn.point, gn.pointPinyin, showP)}
-                    </div>
-                    {gn.pointEn ? (
-                      <div className="text-[11px] text-[#8b949e]">
-                        {gn.pointEn}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {/* Brief */}
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
-                        Brief
-                      </span>
-                    </div>
-                    <div>
-                      {Array.isArray(gn.briefSegments) &&
-                      gn.briefSegments.length > 0
-                        ? renderSegmentsWithPopup(
-                            gn.briefSegments,
-                            gn.brief,
-                            gn.briefEn,
-                            showP
-                          )
-                        : renderNotesPinyin(gn.brief, gn.briefPinyin, showP)}
-                    </div>
-                    {gn.briefEn ? (
-                      <div className="text-[11px] text-[#8b949e]">
-                        {gn.briefEn}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {/* Examples */}
-                  {Array.isArray(gn.examples) && gn.examples.length > 0 ? (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
-                          Examples
-                        </span>
-                      </div>
-                      <ul className="space-y-1 list-disc list-outside pl-4 marker:text-[#596080]">
-                        {gn.examples.map((ex: Tip, i: number) => (
-                          <li key={i}>
-                            {Array.isArray(ex.segments) ? (
-                              renderSegmentsWithPopup(
-                                ex.segments,
-                                ex.zh,
-                                ex.en,
-                                showP
-                              )
-                            ) : (
-                              <>
-                                <div className="text-[#c9d1d9]">{ex.zh}</div>
-                                {showP && ex.pinyin ? (
-                                  <div className="text-[#9aa6ff] text-xs">
-                                    {ex.pinyin}
-                                  </div>
-                                ) : null}
-                                {ex.en ? (
-                                  <div className="text-[#8b949e] text-xs">
-                                    {ex.en}
-                                  </div>
-                                ) : null}
-                              </>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            {m.notes!.grammarNotes!.length > 2 ? (
-              <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#1d2128] to-transparent" />
-            ) : null}
-          </div>
-          {Array.isArray((m.notes as MessageNotes).tipsRich) &&
-          (m.notes as MessageNotes).tipsRich!.length > 0 ? (
-            <div className="mt-2 pt-2 border-t border-[#2a2e36]">
-              <div className="text-[10px] uppercase tracking-wide text-[#8a8f99] mb-1">
-                Tips
-              </div>
-              <ul className="space-y-1 list-disc list-outside pl-4 marker:text-[#596080]">
-                {(m.notes as MessageNotes).tipsRich!.slice(0, 2).map((t, i) => (
-                  <li key={i}>
-                    {Array.isArray(t.segments) && t.segments.length > 0 ? (
-                      <>
-                        {renderSegmentsWithPopup(
-                          t.segments,
-                          t.zh,
-                          t.en,
-                          notesPinyinOn
-                        )}
-                        {t.en ? (
-                          <div className="text-[#8b949e] text-xs">{t.en}</div>
-                        ) : null}
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-[#c9d1d9]">{t.zh}</div>
-                        {notesPinyinOn && t.pinyin ? (
-                          <div className="text-[#9aa6ff] text-xs">
-                            {t.pinyin}
-                          </div>
-                        ) : null}
-                        {t.en ? (
-                          <div className="text-[#8b949e] text-xs">{t.en}</div>
-                        ) : null}
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          <div className="mt-2 flex justify-between items-center">
-            <div className="text-[11px] text-[#a6a6a6]">
-              {Array.isArray((m.notes as MessageNotes).tipsRich) &&
-              (m.notes as MessageNotes).tipsRich!.length > 0
-                ? `${(m.notes as MessageNotes).tipsRich!.length} tips available`
-                : null}
-            </div>
-            <button
-              onClick={() => openNotesModal(m)}
-              className="text-[11px] px-2 py-1 rounded border border-[#404040] hover:border-[#4040f2] text-[#c9d1d9] cursor-pointer"
-            >
-              View all notes
-            </button>
-          </div>
-        </div>
-      );
-    };
-
-    return (
-      <div ref={contentRef}>
-        {renderAligned(m.hanzi, m.pinyin)}
-        <TranslationBlock show={showT} text={m.translation} />
-        {showN ? <NotesBlock /> : null}
-        {popup.open && (
-          <div
-            ref={popupRef}
-            style={{
-              position: "fixed",
-              left: Math.max(
-                10,
-                Math.min(popup.x - 110, window.innerWidth - 260)
-              ),
-              top: Math.max(10, popup.y - 150),
-              zIndex: 1000,
-            }}
-            className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
-          >
-            <div className="font-bold text-white text-lg truncate">
-              {popup.word}
-            </div>
-            {popup.pinyin && (
-              <div className="text-[#c6ceff] text-sm font-medium truncate">
-                {popup.pinyin}
-              </div>
-            )}
-            {Array.isArray(popup.definitions) &&
-            popup.definitions.length > 0 ? (
-              <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
-                {popup.definitions.map((d, i) => (
-                  <div key={i}>• {d}</div>
-                ))}
-              </div>
-            ) : popup.definition ? (
-              <div className="text-xs text-[#a6a6a6] mt-2">
-                {popup.definition}
-              </div>
-            ) : null}
-            <div className="mt-3 pt-3 border-t border-[#404040]">
-              <button
-                onClick={() => {
-                  // Build sentence-level context using segments and token index
-                  const tokenIndex = popup.tokenIndex ?? -1;
-                  const ctx =
-                    tokenIndex >= 0
-                      ? getSentenceContext(m, tokenIndex)
-                      : undefined;
-                  void addSingleToFlashcards(popup.word, ctx);
-                  setPopup((p) => ({ ...p, open: false }));
-                }}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="text-sm font-inter">Add to Flashcards</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Mobile top sheet popup for AiMessage */}
-        <AnimatePresence>
-          {popup.open && (
-            <motion.div
-              ref={mobilePopupRef}
-              initial={{ y: "-100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "-100%" }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 30,
-                duration: 0.3,
-              }}
-              className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
-            >
-              <div className="max-w-sm mx-auto">
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div className="font-bold text-white text-lg truncate">
-                    {popup.word}
-                  </div>
-                </div>
-                {popup.pinyin && (
-                  <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
-                    {popup.pinyin}
-                  </div>
-                )}
-                {Array.isArray(popup.definitions) &&
-                popup.definitions.length > 0 ? (
-                  <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
-                    {popup.definitions.map((d, i) => (
-                      <div key={i}>• {d}</div>
-                    ))}
-                  </div>
-                ) : popup.definition ? (
-                  <div className="text-xs text-[#a6a6a6] mb-3">
-                    {popup.definition}
-                  </div>
-                ) : null}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setPopup((p) => ({ ...p, open: false }));
-                    }}
-                    className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
-                  >
-                    Close
-                  </button>
-                  <button
-                    onClick={async () => {
-                      // Build sentence-level context using segments and token index
-                      const tokenIndex = popup.tokenIndex ?? -1;
-                      const ctx =
-                        tokenIndex >= 0
-                          ? getSentenceContext(m, tokenIndex)
-                          : undefined;
-                      await addSingleToFlashcards(popup.word, ctx);
-                      setPopup((p) => ({ ...p, open: false }));
-                    }}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm font-inter">
-                      Add to Flashcards
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  }
-
-  // Render pinyin above hanzi for notes; skip non-CJK like “OK”/“Alright” tokens.
-  const renderNotesPinyin = (
-    hanzi?: string,
-    pinyin?: string,
-    showPinyin: boolean = true
-  ) => {
-    if (!hanzi) return null;
-    const isCJK = (ch: string) => /[\u3400-\u9FFF]/.test(ch);
-    const tokens = (pinyin || "")
-      .split(/\s+/)
-      .map((t) => t.trim())
-      .filter(Boolean);
-    let pi = 0;
-    const chars = Array.from(hanzi);
-    return (
-      <div className="leading-8 text-white font-inter text-[16px]">
-        {chars.map((ch, idx) => {
-          let top = "";
-          if (isCJK(ch)) top = tokens[pi++] || "";
-          return (
-            <span
-              key={idx}
-              className="inline-flex flex-col items-center align-top mr-[2px]"
-            >
-              {showPinyin && top ? (
-                <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
-                  {top}
-                </span>
-              ) : (
-                <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
-                  •
-                </span>
-              )}
-              <span className="px-[1px] rounded">{ch}</span>
-            </span>
-          );
-        })}
-      </div>
-    );
-  };
-
   return (
     <DashboardLayout
       title="Conversations"
       subtitle="Practice natural dialogues"
     >
-      <div className="p-4 h-full flex gap-4 relative">
+      <div className="p-2 sm:p-4 h-full flex gap-4 relative">
         {/* Mobile Overlay */}
         {isMobile && showConversationsSidebar && (
           <div
@@ -1776,8 +1272,8 @@ export default function ConversationsPage() {
             onClick={toggleConversationsSidebar}
             className={`fixed z-30 p-3 rounded-lg transition-all duration-200 cursor-pointer md:hidden ${
               showConversationsSidebar
-                ? "top-21 left-4 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
-                : "top-21 left-4 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
+                ? "sm:top-22 left-2 sm:left-4 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
+                : "sm:top-22 left-2 sm:left-4 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
             }`}
             title={
               showConversationsSidebar
@@ -1823,7 +1319,7 @@ export default function ConversationsPage() {
         >
           <div
             ref={scrollRef}
-            className="flex-1 overflow-y-auto space-y-3 bg-[#20242b] border border-[#2e2f36] rounded-xl p-4"
+            className="flex-1 overflow-y-auto space-y-3 sm:bg-[#20242b] sm:border sm:border-[#2e2f36] rounded-xl sm:p-4"
             aria-live="polite"
             aria-relevant="additions text"
             role="log"
@@ -2025,16 +1521,11 @@ export default function ConversationsPage() {
                   }`}
                 >
                   <AiMessage
-                    m={{
-                      ...m,
-                      segments:
-                        Array.isArray(m.segments) && m.segments.length > 0
-                          ? m.segments
-                          : buildFallbackSegments(m.hanzi, m.pinyin),
-                    }}
-                    showP={!!aiShowPinyin[m.id]}
-                    showT={!!aiShowTrans[m.id]}
-                    showN={!!aiShowNotes[m.id]}
+                    message={m}
+                    showPinyin={!!aiShowPinyin[m.id]}
+                    showTranslation={!!aiShowTrans[m.id]}
+                    showNotes={!!aiShowNotes[m.id]}
+                    onOpenNotesModal={openNotesModal}
                   />
                   <div className="text-[10px] text-[#808080] mt-1">
                     {new Date(m.createdAt).toLocaleTimeString()}
