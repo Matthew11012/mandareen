@@ -78,7 +78,7 @@ export function NotesSection({
 
   return (
     <div
-      className="mt-4 border border-[#3a3a3a] rounded-lg p-3 bg-[#1e2229]"
+      className="mt-4 sm:border border-[#3a3a3a] rounded-lg p-3 bg-[#1e2229]"
       ref={containerRef}
     >
       <div className="flex items-center justify-between mb-2">
