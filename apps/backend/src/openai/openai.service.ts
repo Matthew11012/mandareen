@@ -82,10 +82,26 @@ export class OpenAIService {
       const result = await this.openai.audio.transcriptions.create({
         file: fileStream as any,
         model,
-        // language can be set to zh if needed: language: 'zh',
+        // Hint the target language and bias model to Simplified Chinese output
+        language: 'zh',
+        prompt:
+          '请使用简体中文（简体字）进行转写，不要使用繁体字。若听到中文请一律以简体字输出。',
       } as any);
-      const text = (result as any)?.text || '';
-      return (text || '').trim();
+      let text = ((result as any)?.text || '').trim();
+      // Deterministic normalization: Traditional -> Simplified using opencc-js
+      try {
+        const ocjs = await import('opencc-js');
+        const converter =
+          typeof (ocjs as any).Converter === 'function'
+            ? (ocjs as any).Converter({ from: 't', to: 'cn' })
+            : null;
+        if (converter) {
+          text = (converter(text) || '').trim();
+        }
+      } catch {
+        // If opencc-js is not available, keep the original (already biased via prompt)
+      }
+      return text;
     } finally {
       // Clean up temp file
       fs.promises.unlink(tempFile).catch(() => undefined);

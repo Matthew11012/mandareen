@@ -29,6 +29,7 @@ export function useAudioRecorder(options?: Options) {
           await options?.onData?.(blob);
         } finally {
           setUploadingAudio(false);
+          setRecPrompt("Tap to speak"); // Reset prompt after upload completes
           // stop tracks
           try {
             stream.getTracks().forEach((t) => t.stop());
@@ -56,5 +57,3 @@ export function useAudioRecorder(options?: Options) {
 
   return { start, stop, recording, recPrompt, uploadingAudio };
 }
-
-

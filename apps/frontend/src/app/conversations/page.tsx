@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, memo, useMemo, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout";
 import {
   conversationsApi,
@@ -17,64 +17,14 @@ import {
   sortConversationsByStartedAt,
 } from "@/lib/hooks/use-conversations";
 import { buildFallbackSegments } from "@/lib/utils/segments";
-import {
-  addSingleToFlashcards,
-  getSentenceContext,
-} from "@/lib/utils/flashcards";
-import {
-  Mic,
-  Send,
-  Plus,
-  MessageCircle,
-  ChevronLeft,
-  Volume2,
-  Loader2,
-  Trash2,
-} from "lucide-react";
+import { MessageCircle, ChevronLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "framer-motion";
-import { TokenRenderer } from "@/components/lessons/TokenRenderer";
-import type { TokenRendererProps } from "@/components/lessons/TokenRenderer";
-import { NotesSection } from "@/components/lessons/NotesSection";
-
-// Local types to avoid `any` usages in notes rendering
-type SegToken = {
-  text: string;
-  isWord?: boolean;
-  pinyin?: string;
-  definition?: string;
-  definitions?: string[];
-};
-type Tip = { zh: string; pinyin?: string; en?: string; segments?: SegToken[] };
-type GrammarNote = {
-  point: string;
-  pointPinyin?: string;
-  pointEn?: string;
-  brief: string;
-  briefPinyin?: string;
-  briefEn?: string;
-  pointSegments?: SegToken[];
-  briefSegments?: SegToken[];
-  examples?: Tip[];
-};
-type MessageNotes = {
-  grammarNotes?: GrammarNote[];
-  tipsRich?: Tip[];
-};
-
-// Enriched conversation type with optional preview
-type EnrichedConversation = ConversationSummary & { preview?: string };
-
-const TranslationBlock = memo(function TranslationBlock({
-  show,
-  text,
-}: {
-  show: boolean;
-  text?: string;
-}) {
-  if (!show || !text) return null;
-  return <div className="text-[#a6a6a6] text-sm mt-1">{text}</div>;
-});
+import { ConversationList } from "@/components/conversations/ConversationList";
+import type { EnrichedConversation } from "@/components/conversations/ConversationList";
+import { MessageView } from "@/components/conversations/MessageView";
+import { MessageInput } from "@/components/conversations/MessageInput";
+import { NotesModal } from "@/components/conversations/NotesModal";
 
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -96,7 +46,6 @@ export default function ConversationsPage() {
     setNotesModal({ open: true, message: m });
   const closeNotesModal = () => setNotesModal({ open: false, message: null });
   const [playing, setPlaying] = useState<Record<number, boolean>>({});
-  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [loadingPreviews, setLoadingPreviews] = useState<boolean>(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     open: boolean;
@@ -106,7 +55,7 @@ export default function ConversationsPage() {
   const deleteModalRef = useRef<HTMLDivElement | null>(null);
   const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
-  const deleteTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const deleteTriggerRef = useRef<HTMLElement | null>(null);
 
   // Hooks
   const { streamText, streamAudio } = useConversationStream();
@@ -355,15 +304,136 @@ export default function ConversationsPage() {
     onData: async (blob) => {
       if (!conversationId) return;
       try {
-        // Upload audio first to get user message (with transcribed hanzi)
+        // Upload audio and get user message (with transcribed hanzi)
+        // Store the user message ID to match with stream updates
         const { user } = await conversationsApi.sendAudio(conversationId, blob);
-        setMessages((prev) => [...prev, user]);
-        // Then start streaming AI reply (hook will handle SSE)
-        // Note: streamAudio hook also calls sendAudio, but that's okay - server handles idempotency
+        // Add user message to state with loading flags for translation and segments
+        const userMessageWithLoading: Message = {
+          ...user,
+          _loadingPinyin: true,
+          _loadingTranslation: true,
+        };
+        setMessages((prev) => [...prev, userMessageWithLoading]);
+
+        // Create stream callbacks that know about the user message ID
         const aiMsgId = Date.now() + 1;
+        const userId = user.id;
+        const callbacks = createStreamCallbacks(aiMsgId);
+
+        // Wrap onUserUpdate to ensure it matches the correct user message ID
+        // The stream should send user-update events with the user message ID from sendAudio
+        const originalOnUserUpdate = callbacks.onUserUpdate;
+        const originalOnFinal = callbacks.onFinal;
+        callbacks.onUserUpdate = (update) => {
+          // Apply update if ID matches our user message
+          // The original handler already handles the update logic correctly
+          if (update.id === userId) {
+            originalOnUserUpdate?.(update);
+          } else {
+            // Fallback: if ID doesn't match, try to update the most recent user message
+            // This handles edge cases where server might return a different ID
+            setMessages((prev) => {
+              // Find the most recent user message that matches our userId
+              const userMsgIndex = prev.findIndex(
+                (m) => m.role === "user" && m.id === userId
+              );
+              if (userMsgIndex !== -1) {
+                const updated = [...prev];
+                const userMsg = updated[userMsgIndex];
+                updated[userMsgIndex] = {
+                  ...userMsg,
+                  pinyin:
+                    typeof update.pinyin === "string"
+                      ? update.pinyin
+                      : userMsg.pinyin,
+                  translation:
+                    typeof update.translation === "string"
+                      ? update.translation
+                      : userMsg.translation,
+                  segments: Array.isArray(update.segments)
+                    ? update.segments
+                    : userMsg.segments,
+                  _loadingPinyin: false,
+                  _loadingTranslation: false,
+                };
+                return updated;
+              }
+              // If we can't find the user message, call original handler as fallback
+              originalOnUserUpdate?.(update);
+              return prev;
+            });
+          }
+        };
+        // Safety: if backend doesn't emit user-update during audio flow,
+        // hydrate the user message after final by refetching from server.
+        callbacks.onFinal = async (...args) => {
+          try {
+            await originalOnFinal?.(...args);
+          } finally {
+            try {
+              const list = await conversationsApi.listMessages(conversationId);
+              const latestUser = list
+                .slice()
+                .reverse()
+                .find((m) => m.role === "user" && m.id === userId);
+              if (latestUser) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.role === "user" && m.id === userId
+                      ? {
+                          ...m,
+                          pinyin: latestUser.pinyin ?? m.pinyin,
+                          translation: latestUser.translation ?? m.translation,
+                          segments: Array.isArray(latestUser.segments)
+                            ? latestUser.segments
+                            : m.segments,
+                          _loadingPinyin: false,
+                          _loadingTranslation: false,
+                        }
+                      : m
+                  )
+                );
+              } else {
+                // Even if not found, stop loading to avoid stuck UI
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.role === "user" && m.id === userId
+                      ? {
+                          ...m,
+                          _loadingPinyin: false,
+                          _loadingTranslation: false,
+                        }
+                      : m
+                  )
+                );
+              }
+            } catch {
+              // Ensure loading flags are cleared to prevent spinner lock
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.role === "user" && m.id === userId
+                    ? {
+                        ...m,
+                        _loadingPinyin: false,
+                        _loadingTranslation: false,
+                      }
+                    : m
+                )
+              );
+            }
+          }
+        };
+
+        // Start streaming - skip sendAudio since we already called it
+        // The user message is already in state, so stream updates will enhance it
         await streamAudio(
-          { conversationId, audio: blob },
-          createStreamCallbacks(aiMsgId)
+          {
+            conversationId,
+            audio: blob,
+            text: user.hanzi,
+            skipSendAudio: true,
+          },
+          callbacks
         );
       } catch {
         toast.error("Failed to send audio");
@@ -372,26 +442,6 @@ export default function ConversationsPage() {
   });
 
   // Memoized date formatter utility
-  const formatConversationDate = useMemo(
-    () =>
-      (dateStr: string): string => {
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diffMs = now.getTime() - date.getTime();
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-        if (diffDays === 0) return "Today";
-        if (diffDays === 1) return "Yesterday";
-        if (diffDays < 7) return `${diffDays} days ago`;
-
-        return date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        });
-      },
-    []
-  );
 
   // Load conversation previews in parallel
   const loadConversationPreviews = async (
@@ -439,200 +489,6 @@ export default function ConversationsPage() {
   };
 
   // Popup for tutor-notes modal (separate from AiMessage popup)
-  const [notesPopup, setNotesPopup] = useState<{
-    open: boolean;
-    x: number;
-    y: number;
-    word: string;
-    pinyin?: string;
-    definition?: string;
-    definitions?: string[];
-    ctx?: { hanzi?: string; pinyin?: string; translation?: string };
-  }>({ open: false, x: 0, y: 0, word: "" });
-  const notesPopupRef = useRef<HTMLDivElement | null>(null);
-  const notesMobilePopupRef = useRef<HTMLDivElement | null>(null);
-  const notesModalContentRef = useRef<HTMLDivElement | null>(null);
-
-  // Handler adapter for NotesSection TokenRenderer popup using openFromElement
-  // This maintains absolute positioning (current behavior)
-  const handleNotesModalOpenFromElement = useCallback(
-    (el: HTMLElement, data?: unknown, placement?: "above" | "below") => {
-      // Placement is available but not used - we use absolute positioning instead
-      void placement;
-      const rect = el.getBoundingClientRect();
-      const tokenData = data as
-        | {
-            word?: string;
-            pinyin?: string;
-            definition?: string;
-            definitions?: string[];
-          }
-        | undefined;
-
-      setNotesPopup({
-        open: true,
-        x: rect.left + rect.width / 2,
-        y: rect.top,
-        word: tokenData?.word || "",
-        pinyin: tokenData?.pinyin,
-        definition: tokenData?.definition,
-        definitions: tokenData?.definitions,
-        ctx: notesModal.message
-          ? {
-              hanzi: notesModal.message.hanzi,
-              pinyin: notesModal.message.pinyin,
-              translation: notesModal.message.translation,
-            }
-          : undefined,
-      });
-    },
-    [notesModal.message]
-  );
-
-  // Handler adapter for NotesSection TokenRenderer popup using setPopup (fallback)
-  const handleNotesModalPopup = useCallback(
-    (popup: {
-      open: boolean;
-      x: number;
-      y: number;
-      anchorH: number;
-      word: string;
-      pinyin?: string;
-      definition?: string;
-      definitions?: string[];
-      paraIndex?: number;
-      tokenIndex?: number;
-      hskLevel?: number;
-    }) => {
-      if (!popup.open) {
-        setNotesPopup((p) => ({ ...p, open: false }));
-        return;
-      }
-      // Convert container-relative coordinates to absolute
-      const container = notesModalContentRef.current;
-      if (container) {
-        const containerRect = container.getBoundingClientRect();
-        const absoluteX = containerRect.left + popup.x;
-        const absoluteY = containerRect.top + popup.y;
-        setNotesPopup({
-          open: true,
-          x: absoluteX,
-          y: absoluteY,
-          word: popup.word,
-          pinyin: popup.pinyin,
-          definition: popup.definition,
-          definitions: popup.definitions,
-          ctx: notesModal.message
-            ? {
-                hanzi: notesModal.message.hanzi,
-                pinyin: notesModal.message.pinyin,
-                translation: notesModal.message.translation,
-              }
-            : undefined,
-        });
-      } else {
-        // Fallback: use provided coordinates directly
-        setNotesPopup({
-          open: true,
-          x: popup.x,
-          y: popup.y,
-          word: popup.word,
-          pinyin: popup.pinyin,
-          definition: popup.definition,
-          definitions: popup.definitions,
-          ctx: notesModal.message
-            ? {
-                hanzi: notesModal.message.hanzi,
-                pinyin: notesModal.message.pinyin,
-                translation: notesModal.message.translation,
-              }
-            : undefined,
-        });
-      }
-    },
-    [notesModal.message]
-  );
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      const clickedInsideDesktop = notesPopupRef.current?.contains(target);
-      const clickedInsideMobile = notesMobilePopupRef.current?.contains(target);
-      // Only close if click is outside both popups
-      if (!clickedInsideDesktop && !clickedInsideMobile) {
-        setNotesPopup((p) => ({ ...p, open: false }));
-      }
-    };
-    if (notesPopup.open) document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [notesPopup.open]);
-
-  const renderSegmentsWithPopup = (
-    segments:
-      | Array<{
-          text: string;
-          isWord?: boolean;
-          pinyin?: string;
-          definition?: string;
-          definitions?: string[];
-        }>
-      | undefined,
-    baseHanzi?: string,
-    baseTranslation?: string,
-    showPinyin: boolean = true
-  ) => {
-    if (!Array.isArray(segments) || segments.length === 0) return null;
-    // Build line-level pinyin by concatenating token pinyin for CJK tokens
-    const linePinyin = segments
-      .map((s) => (s.isWord && s.pinyin ? s.pinyin : ""))
-      .filter(Boolean)
-      .join(" ");
-    return (
-      <div className="leading-8 text-white font-inter text-[16px]">
-        {segments.map((seg, idx) => {
-          const isWord = Boolean(seg.isWord);
-          return (
-            <span
-              key={idx}
-              className="inline-flex flex-col items-center align-top mr-[2px]"
-            >
-              {showPinyin && seg.pinyin ? (
-                <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
-                  {seg.pinyin}
-                </span>
-              ) : showPinyin ? (
-                <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
-                  •
-                </span>
-              ) : null}
-              <span
-                className={`px-[1px] rounded ${isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
-                title={seg.definition || ""}
-                onClick={(e: React.MouseEvent<HTMLSpanElement>) => {
-                  if (!isWord) return;
-                  setNotesPopup({
-                    open: true,
-                    x: e.clientX,
-                    y: e.clientY,
-                    word: seg.text,
-                    pinyin: seg.pinyin,
-                    definition: seg.definition,
-                    definitions: seg.definitions,
-                    ctx: {
-                      hanzi: baseHanzi,
-                      pinyin: linePinyin,
-                      translation: baseTranslation,
-                    },
-                  });
-                }}
-              >
-                {seg.text}
-              </span>
-            </span>
-          );
-        })}
-      </div>
-    );
-  };
 
   // Mobile responsiveness state
   const [isMobile, setIsMobile] = useState(false);
@@ -698,16 +554,22 @@ export default function ConversationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationsList, startConversationMutation, refetchConversations]);
 
-  // Auto-scroll to bottom whenever messages update (new message or AI stream)
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    try {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    } catch {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [messages]);
+  // Audio toggle handler
+  const handleToggleAudio = useCallback(
+    (messageId: number, audioElement: HTMLAudioElement | null) => {
+      if (!audioElement) return;
+      if (audioElement.paused) {
+        void audioElement.play();
+        setPlaying((s) => ({ ...s, [messageId]: true }));
+        audioElement.onended = () =>
+          setPlaying((s) => ({ ...s, [messageId]: false }));
+      } else {
+        audioElement.pause();
+        setPlaying((s) => ({ ...s, [messageId]: false }));
+      }
+    },
+    []
+  );
 
   // Mobile detection and sidebar management
   useEffect(() => {
@@ -776,8 +638,16 @@ export default function ConversationsPage() {
     }
   };
 
-  const handleDeleteConversation = async (id: number) => {
+  const handleDeleteConversation = async (
+    id: number,
+    triggerElement?: HTMLElement
+  ) => {
     if (deleting) return;
+
+    // Store trigger element for focus restoration
+    if (triggerElement) {
+      deleteTriggerRef.current = triggerElement;
+    }
 
     const wasActive = conversationId === id;
     const deletedIndex = conversations.findIndex((c) => c.id === id);
@@ -911,501 +781,12 @@ export default function ConversationsPage() {
 
   // Note: if needed, we can add an "Add to Flashcards" inline action in the popup later.
 
-  function AiMessage({
-    m,
-    showP,
-    showT,
-    showN,
-  }: {
-    m: Message;
-    showP: boolean;
-    showT: boolean;
-    showN: boolean;
-  }) {
-    const [popup, setPopup] = useState<{
-      open: boolean;
-      x: number;
-      y: number;
-      word: string;
-      pinyin?: string;
-      definition?: string;
-      definitions?: string[];
-      tokenIndex?: number;
-    }>({ open: false, x: 0, y: 0, word: "" });
-    const popupRef = useRef<HTMLDivElement | null>(null);
-    const mobilePopupRef = useRef<HTMLDivElement | null>(null);
-    const contentRef = useRef<HTMLDivElement | null>(null);
-    useEffect(() => {
-      const onClick = (e: MouseEvent) => {
-        const target = e.target as Node;
-        const clickedInsideDesktop = popupRef.current?.contains(target);
-        const clickedInsideMobile = mobilePopupRef.current?.contains(target);
-        // Only close if click is outside both popups
-        if (!clickedInsideDesktop && !clickedInsideMobile) {
-          setPopup((p) => ({ ...p, open: false }));
-        }
-      };
-      if (popup.open) document.addEventListener("mousedown", onClick);
-      return () => document.removeEventListener("mousedown", onClick);
-    }, [popup.open]);
-
-    // Adapter to handle TokenRenderer's openFromElement callback
-    // This maintains absolute positioning (current behavior) instead of container-relative
-    const handleOpenFromElement = useCallback(
-      (el: HTMLElement, data?: unknown, placement?: "above" | "below") => {
-        // Placement is available but not used - we use absolute positioning instead
-        void placement;
-        const rect = el.getBoundingClientRect();
-        const tokenData = data as
-          | {
-              word?: string;
-              pinyin?: string;
-              definition?: string;
-              definitions?: string[];
-            }
-          | undefined;
-
-        // Find token index by searching through segments
-        let tokenIndex = -1;
-        if (Array.isArray(m.segments)) {
-          const wordText = tokenData?.word || "";
-          for (let i = 0; i < m.segments.length; i++) {
-            if (m.segments[i].text === wordText) {
-              tokenIndex = i;
-              break;
-            }
-          }
-        }
-
-        setPopup({
-          open: true,
-          x: rect.left + rect.width / 2,
-          y: rect.top,
-          word: tokenData?.word || "",
-          pinyin: tokenData?.pinyin,
-          definition: tokenData?.definition,
-          definitions: tokenData?.definitions,
-          tokenIndex,
-        });
-      },
-      [m.segments]
-    );
-
-    const renderAligned = (hanzi: string, pinyin?: string) => {
-      // If segments exist, use TokenRenderer
-      if (Array.isArray(m.segments) && m.segments.length > 0) {
-        return (
-          <TokenRenderer
-            segments={m.segments as unknown as TokenRendererProps["segments"]}
-            fallbackZh={hanzi}
-            showPinyin={showP}
-            keyPrefix={`conversation-msg-${m.id}`}
-            textSizeClass="text-base"
-            openFromElement={handleOpenFromElement}
-            contentRef={contentRef}
-            contextSentenceZh={m.hanzi}
-            contextSentenceTranslation={m.translation}
-            applyHSKUnderline={false}
-          />
-        );
-      }
-      // Fallback: build segments from hanzi and pinyin
-      const fallbackSegs = buildFallbackSegments(hanzi, pinyin);
-      if (fallbackSegs.length > 0) {
-        return (
-          <TokenRenderer
-            segments={fallbackSegs as unknown as TokenRendererProps["segments"]}
-            fallbackZh={hanzi}
-            showPinyin={showP}
-            keyPrefix={`conversation-msg-${m.id}-fallback`}
-            textSizeClass="text-base"
-            openFromElement={handleOpenFromElement}
-            contentRef={contentRef}
-            contextSentenceZh={m.hanzi}
-            contextSentenceTranslation={m.translation}
-            applyHSKUnderline={false}
-          />
-        );
-      }
-      // Ultimate fallback: per-character alignment (no segments at all)
-      const chars = Array.from(hanzi || "");
-      const ps = (pinyin || "").split(/\s+/).filter(Boolean);
-      let pi = 0;
-      const isCJK = (ch: string) => /[\u3400-\u9FFF]/.test(ch);
-      return (
-        <div className="leading-8 text-white font-inter text-[16px]">
-          {chars.map((ch, idx) => {
-            const top = showP && isCJK(ch) ? ps[pi] || "" : "";
-            if (isCJK(ch)) pi++;
-            return (
-              <span
-                key={idx}
-                className="inline-flex flex-col items-center align-top mr-[2px]"
-              >
-                {top ? (
-                  <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
-                    {top}
-                  </span>
-                ) : null}
-                <span className="px-[1px] rounded">{ch}</span>
-              </span>
-            );
-          })}
-        </div>
-      );
-    };
-
-    const NotesBlock = () => {
-      const has =
-        Array.isArray(m.notes?.grammarNotes) &&
-        m.notes!.grammarNotes!.length > 0;
-      if (!has) return null;
-      return (
-        <div className="mt-2 border border-[#3a3f47] rounded-md bg-[#1d2128] p-2">
-          <div className="text-xs font-semibold text-white mb-1">
-            Tutor Notes
-          </div>
-          <div className="space-y-3 max-h-56 overflow-hidden relative">
-            {m
-              .notes!.grammarNotes!.slice(0, 2)
-              .map((gn: GrammarNote, idx: number) => (
-                <div
-                  key={idx}
-                  className="text-[12px] text-[#c9d1d9] border border-[#2a2e36] bg-[#1a1f27] rounded-lg p-2 space-y-2"
-                >
-                  {/* Point */}
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
-                        Point
-                      </span>
-                    </div>
-                    <div>
-                      {Array.isArray(gn.pointSegments) &&
-                      gn.pointSegments.length > 0
-                        ? renderSegmentsWithPopup(
-                            gn.pointSegments,
-                            gn.point,
-                            gn.pointEn,
-                            showP
-                          )
-                        : renderNotesPinyin(gn.point, gn.pointPinyin, showP)}
-                    </div>
-                    {gn.pointEn ? (
-                      <div className="text-[11px] text-[#8b949e]">
-                        {gn.pointEn}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {/* Brief */}
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
-                        Brief
-                      </span>
-                    </div>
-                    <div>
-                      {Array.isArray(gn.briefSegments) &&
-                      gn.briefSegments.length > 0
-                        ? renderSegmentsWithPopup(
-                            gn.briefSegments,
-                            gn.brief,
-                            gn.briefEn,
-                            showP
-                          )
-                        : renderNotesPinyin(gn.brief, gn.briefPinyin, showP)}
-                    </div>
-                    {gn.briefEn ? (
-                      <div className="text-[11px] text-[#8b949e]">
-                        {gn.briefEn}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {/* Examples */}
-                  {Array.isArray(gn.examples) && gn.examples.length > 0 ? (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[1px] rounded">
-                          Examples
-                        </span>
-                      </div>
-                      <ul className="space-y-1 list-disc list-outside pl-4 marker:text-[#596080]">
-                        {gn.examples.map((ex: Tip, i: number) => (
-                          <li key={i}>
-                            {Array.isArray(ex.segments) ? (
-                              renderSegmentsWithPopup(
-                                ex.segments,
-                                ex.zh,
-                                ex.en,
-                                showP
-                              )
-                            ) : (
-                              <>
-                                <div className="text-[#c9d1d9]">{ex.zh}</div>
-                                {showP && ex.pinyin ? (
-                                  <div className="text-[#9aa6ff] text-xs">
-                                    {ex.pinyin}
-                                  </div>
-                                ) : null}
-                                {ex.en ? (
-                                  <div className="text-[#8b949e] text-xs">
-                                    {ex.en}
-                                  </div>
-                                ) : null}
-                              </>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            {m.notes!.grammarNotes!.length > 2 ? (
-              <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#1d2128] to-transparent" />
-            ) : null}
-          </div>
-          {Array.isArray((m.notes as MessageNotes).tipsRich) &&
-          (m.notes as MessageNotes).tipsRich!.length > 0 ? (
-            <div className="mt-2 pt-2 border-t border-[#2a2e36]">
-              <div className="text-[10px] uppercase tracking-wide text-[#8a8f99] mb-1">
-                Tips
-              </div>
-              <ul className="space-y-1 list-disc list-outside pl-4 marker:text-[#596080]">
-                {(m.notes as MessageNotes).tipsRich!.slice(0, 2).map((t, i) => (
-                  <li key={i}>
-                    {Array.isArray(t.segments) && t.segments.length > 0 ? (
-                      <>
-                        {renderSegmentsWithPopup(
-                          t.segments,
-                          t.zh,
-                          t.en,
-                          notesPinyinOn
-                        )}
-                        {t.en ? (
-                          <div className="text-[#8b949e] text-xs">{t.en}</div>
-                        ) : null}
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-[#c9d1d9]">{t.zh}</div>
-                        {notesPinyinOn && t.pinyin ? (
-                          <div className="text-[#9aa6ff] text-xs">
-                            {t.pinyin}
-                          </div>
-                        ) : null}
-                        {t.en ? (
-                          <div className="text-[#8b949e] text-xs">{t.en}</div>
-                        ) : null}
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          <div className="mt-2 flex justify-between items-center">
-            <div className="text-[11px] text-[#a6a6a6]">
-              {Array.isArray((m.notes as MessageNotes).tipsRich) &&
-              (m.notes as MessageNotes).tipsRich!.length > 0
-                ? `${(m.notes as MessageNotes).tipsRich!.length} tips available`
-                : null}
-            </div>
-            <button
-              onClick={() => openNotesModal(m)}
-              className="text-[11px] px-2 py-1 rounded border border-[#404040] hover:border-[#4040f2] text-[#c9d1d9] cursor-pointer"
-            >
-              View all notes
-            </button>
-          </div>
-        </div>
-      );
-    };
-
-    return (
-      <div ref={contentRef}>
-        {renderAligned(m.hanzi, m.pinyin)}
-        <TranslationBlock show={showT} text={m.translation} />
-        {showN ? <NotesBlock /> : null}
-        {popup.open && (
-          <div
-            ref={popupRef}
-            style={{
-              position: "fixed",
-              left: Math.max(
-                10,
-                Math.min(popup.x - 110, window.innerWidth - 260)
-              ),
-              top: Math.max(10, popup.y - 150),
-              zIndex: 1000,
-            }}
-            className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
-          >
-            <div className="font-bold text-white text-lg truncate">
-              {popup.word}
-            </div>
-            {popup.pinyin && (
-              <div className="text-[#c6ceff] text-sm font-medium truncate">
-                {popup.pinyin}
-              </div>
-            )}
-            {Array.isArray(popup.definitions) &&
-            popup.definitions.length > 0 ? (
-              <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
-                {popup.definitions.map((d, i) => (
-                  <div key={i}>• {d}</div>
-                ))}
-              </div>
-            ) : popup.definition ? (
-              <div className="text-xs text-[#a6a6a6] mt-2">
-                {popup.definition}
-              </div>
-            ) : null}
-            <div className="mt-3 pt-3 border-t border-[#404040]">
-              <button
-                onClick={() => {
-                  // Build sentence-level context using segments and token index
-                  const tokenIndex = popup.tokenIndex ?? -1;
-                  const ctx =
-                    tokenIndex >= 0
-                      ? getSentenceContext(m, tokenIndex)
-                      : undefined;
-                  void addSingleToFlashcards(popup.word, ctx);
-                  setPopup((p) => ({ ...p, open: false }));
-                }}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="text-sm font-inter">Add to Flashcards</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Mobile top sheet popup for AiMessage */}
-        <AnimatePresence>
-          {popup.open && (
-            <motion.div
-              ref={mobilePopupRef}
-              initial={{ y: "-100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "-100%" }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 30,
-                duration: 0.3,
-              }}
-              className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
-            >
-              <div className="max-w-sm mx-auto">
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div className="font-bold text-white text-lg truncate">
-                    {popup.word}
-                  </div>
-                </div>
-                {popup.pinyin && (
-                  <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
-                    {popup.pinyin}
-                  </div>
-                )}
-                {Array.isArray(popup.definitions) &&
-                popup.definitions.length > 0 ? (
-                  <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
-                    {popup.definitions.map((d, i) => (
-                      <div key={i}>• {d}</div>
-                    ))}
-                  </div>
-                ) : popup.definition ? (
-                  <div className="text-xs text-[#a6a6a6] mb-3">
-                    {popup.definition}
-                  </div>
-                ) : null}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setPopup((p) => ({ ...p, open: false }));
-                    }}
-                    className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
-                  >
-                    Close
-                  </button>
-                  <button
-                    onClick={async () => {
-                      // Build sentence-level context using segments and token index
-                      const tokenIndex = popup.tokenIndex ?? -1;
-                      const ctx =
-                        tokenIndex >= 0
-                          ? getSentenceContext(m, tokenIndex)
-                          : undefined;
-                      await addSingleToFlashcards(popup.word, ctx);
-                      setPopup((p) => ({ ...p, open: false }));
-                    }}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm font-inter">
-                      Add to Flashcards
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  }
-
-  // Render pinyin above hanzi for notes; skip non-CJK like “OK”/“Alright” tokens.
-  const renderNotesPinyin = (
-    hanzi?: string,
-    pinyin?: string,
-    showPinyin: boolean = true
-  ) => {
-    if (!hanzi) return null;
-    const isCJK = (ch: string) => /[\u3400-\u9FFF]/.test(ch);
-    const tokens = (pinyin || "")
-      .split(/\s+/)
-      .map((t) => t.trim())
-      .filter(Boolean);
-    let pi = 0;
-    const chars = Array.from(hanzi);
-    return (
-      <div className="leading-8 text-white font-inter text-[16px]">
-        {chars.map((ch, idx) => {
-          let top = "";
-          if (isCJK(ch)) top = tokens[pi++] || "";
-          return (
-            <span
-              key={idx}
-              className="inline-flex flex-col items-center align-top mr-[2px]"
-            >
-              {showPinyin && top ? (
-                <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
-                  {top}
-                </span>
-              ) : (
-                <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
-                  •
-                </span>
-              )}
-              <span className="px-[1px] rounded">{ch}</span>
-            </span>
-          );
-        })}
-      </div>
-    );
-  };
-
   return (
     <DashboardLayout
       title="Conversations"
       subtitle="Practice natural dialogues"
     >
-      <div className="p-4 h-full flex gap-4 relative">
+      <div className="p-2 sm:p-4 h-full flex gap-4 relative">
         {/* Mobile Overlay */}
         {isMobile && showConversationsSidebar && (
           <div
@@ -1415,269 +796,23 @@ export default function ConversationsPage() {
         )}
 
         {/* Sidebar */}
-        <aside
-          className={`bg-[#1b1f26] border border-[#2a2e36] rounded-xl p-3 flex flex-col gap-3 transition-all duration-300 ease-in-out ${
-            isMobile
-              ? `fixed inset-y-0 left-0 z-50 w-64 ${
-                  showConversationsSidebar
-                    ? "translate-x-0"
-                    : "-translate-x-full"
-                }`
-              : showConversationsSidebar
-                ? "w-64 shrink-0"
-                : "w-64 shrink-0"
-          }`}
-        >
-          <div className="px-2 text-xs uppercase tracking-wide text-[#8a8f99]">
-            Conversations
-          </div>
-          <div className="flex flex-col gap-1 overflow-y-auto max-h-[75vh] pr-1">
-            {loadingPreviews && conversations.length === 0 ? (
-              <div className="text-xs text-[#808080] px-3 py-2">
-                Loading conversations...
-              </div>
-            ) : (
-              (() => {
-                // Group conversations by time period
-                const now = new Date();
-                const weekAgo = new Date(
-                  now.getTime() - 7 * 24 * 60 * 60 * 1000
-                );
-                const monthAgo = new Date(
-                  now.getTime() - 30 * 24 * 60 * 60 * 1000
-                );
-
-                const recent: EnrichedConversation[] = [];
-                const lastMonth: EnrichedConversation[] = [];
-                const older: EnrichedConversation[] = [];
-
-                conversations.forEach((c) => {
-                  const date = new Date(c.startedAt);
-                  if (date >= weekAgo) {
-                    recent.push(c);
-                  } else if (date >= monthAgo) {
-                    lastMonth.push(c);
-                  } else {
-                    older.push(c);
-                  }
-                });
-
-                return (
-                  <>
-                    {recent.length > 0 && (
-                      <>
-                        <div className="text-[10px] uppercase tracking-wide text-[#8a8f99] px-3 py-1.5 mt-2">
-                          Recent ({recent.length})
-                        </div>
-                        {recent.map((c) => (
-                          <div
-                            key={c.id}
-                            className={`group relative w-full px-3 py-2 rounded-lg border transition-colors duration-150 ${
-                              conversationId === c.id
-                                ? "bg-[#2d3548] border-[#4040f2] text-[#c7cdff] shadow-sm"
-                                : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#4040f2]"
-                            }`}
-                            data-conversation-id={c.id}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void selectConversation(c.id);
-                                  if (isMobile) {
-                                    setShowConversationsSidebar(false);
-                                  }
-                                }}
-                                className="flex-1 text-left min-w-0 cursor-pointer"
-                                title={
-                                  c.preview ||
-                                  new Date(c.startedAt).toLocaleString()
-                                }
-                                aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
-                              >
-                                <div className="text-base font-medium truncate w-full">
-                                  {c.preview || `Conversation #${c.id}`}
-                                </div>
-                                <div className="text-[10px] text-[#808080]">
-                                  {formatConversationDate(c.startedAt)}
-                                </div>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteTriggerRef.current = e.currentTarget;
-                                  setDeleteConfirm({
-                                    open: true,
-                                    conversationId: c.id,
-                                  });
-                                }}
-                                className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
-                                  conversationId === c.id
-                                    ? "text-[#c7cdff] hover:bg-red-600/20 hover:text-red-400"
-                                    : "text-[#808080] hover:bg-red-600/20 hover:text-red-400"
-                                }`}
-                                aria-label="Delete conversation"
-                                title="Delete conversation"
-                              >
-                                <Trash2
-                                  className="w-4 h-4"
-                                  aria-hidden="true"
-                                />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    )}
-
-                    {lastMonth.length > 0 && (
-                      <>
-                        <div className="text-[10px] uppercase tracking-wide text-[#8a8f99] px-3 py-1.5 mt-2">
-                          Last 30 Days ({lastMonth.length})
-                        </div>
-                        {lastMonth.map((c) => (
-                          <div
-                            key={c.id}
-                            className={`group relative w-full px-3 py-2 rounded-lg border transition-colors duration-150 ${
-                              conversationId === c.id
-                                ? "bg-[#2d3548] border-[#4040f2] text-[#c7cdff] shadow-sm"
-                                : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#4040f2]"
-                            }`}
-                            data-conversation-id={c.id}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void selectConversation(c.id);
-                                  if (isMobile) {
-                                    setShowConversationsSidebar(false);
-                                  }
-                                }}
-                                className="flex-1 text-left min-w-0 cursor-pointer"
-                                title={
-                                  c.preview ||
-                                  new Date(c.startedAt).toLocaleString()
-                                }
-                                aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
-                              >
-                                <div className="text-base font-medium truncate w-full">
-                                  {c.preview || `Conversation #${c.id}`}
-                                </div>
-                                <div className="text-[10px] text-[#808080]">
-                                  {formatConversationDate(c.startedAt)}
-                                </div>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteTriggerRef.current = e.currentTarget;
-                                  setDeleteConfirm({
-                                    open: true,
-                                    conversationId: c.id,
-                                  });
-                                }}
-                                className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
-                                  conversationId === c.id
-                                    ? "text-[#c7cdff] hover:bg-red-600/20 hover:text-red-400"
-                                    : "text-[#808080] hover:bg-red-600/20 hover:text-red-400"
-                                }`}
-                                aria-label="Delete conversation"
-                                title="Delete conversation"
-                              >
-                                <Trash2
-                                  className="w-4 h-4"
-                                  aria-hidden="true"
-                                />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    )}
-
-                    {older.length > 0 && (
-                      <>
-                        <div className="text-[10px] uppercase tracking-wide text-[#8a8f99] px-3 py-1.5 mt-2">
-                          Older ({older.length})
-                        </div>
-                        {older.map((c) => (
-                          <div
-                            key={c.id}
-                            className={`group relative w-full px-3 py-2 rounded-lg border transition-colors duration-150 ${
-                              conversationId === c.id
-                                ? "bg-[#2d3548] border-[#4040f2] text-[#c7cdff] shadow-sm"
-                                : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#4040f2]"
-                            }`}
-                            data-conversation-id={c.id}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void selectConversation(c.id);
-                                  if (isMobile) {
-                                    setShowConversationsSidebar(false);
-                                  }
-                                }}
-                                className="flex-1 text-left min-w-0 cursor-pointer"
-                                title={
-                                  c.preview ||
-                                  new Date(c.startedAt).toLocaleString()
-                                }
-                                aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
-                              >
-                                <div className="text-base font-medium truncate w-full">
-                                  {c.preview || `Conversation #${c.id}`}
-                                </div>
-                                <div className="text-[10px] text-[#808080]">
-                                  {formatConversationDate(c.startedAt)}
-                                </div>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteTriggerRef.current = e.currentTarget;
-                                  setDeleteConfirm({
-                                    open: true,
-                                    conversationId: c.id,
-                                  });
-                                }}
-                                className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
-                                  conversationId === c.id
-                                    ? "text-[#c7cdff] hover:bg-red-600/20 hover:text-red-400"
-                                    : "text-[#808080] hover:bg-red-600/20 hover:text-red-400"
-                                }`}
-                                aria-label="Delete conversation"
-                                title="Delete conversation"
-                              >
-                                <Trash2
-                                  className="w-4 h-4"
-                                  aria-hidden="true"
-                                />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </>
-                );
-              })()
-            )}
-          </div>
-          <button
-            onClick={() => {
-              void newConversation();
-              if (isMobile) {
-                setShowConversationsSidebar(false);
-              }
-            }}
-            className="mt-auto w-full py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] cursor-pointer"
-          >
-            + New Conversation
-          </button>
-        </aside>
+        <ConversationList
+          conversations={conversations}
+          activeConversationId={conversationId}
+          onSelectConversation={selectConversation}
+          onDeleteConversation={(id, triggerElement) => {
+            deleteTriggerRef.current = triggerElement;
+            setDeleteConfirm({
+              open: true,
+              conversationId: id,
+            });
+          }}
+          onNewConversation={newConversation}
+          isMobile={isMobile}
+          showSidebar={showConversationsSidebar}
+          onCloseSidebar={() => setShowConversationsSidebar(false)}
+          loadingPreviews={loadingPreviews}
+        />
 
         {/* Delete Confirmation Modal */}
         <AnimatePresence>
@@ -1776,8 +911,8 @@ export default function ConversationsPage() {
             onClick={toggleConversationsSidebar}
             className={`fixed z-30 p-3 rounded-lg transition-all duration-200 cursor-pointer md:hidden ${
               showConversationsSidebar
-                ? "top-21 left-4 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
-                : "top-21 left-4 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
+                ? "sm:top-22 left-2 sm:left-4 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
+                : "sm:top-22 left-2 sm:left-4 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
             }`}
             title={
               showConversationsSidebar
@@ -1817,557 +952,49 @@ export default function ConversationsPage() {
 
         {/* Main chat column */}
         <div
-          className={`flex-1 h-full flex flex-col gap-3 transition-all duration-300 ease-in-out ${
+          className={`flex-1 h-full flex flex-col gap-2 transition-all duration-300 ease-in-out ${
             isMobile && showConversationsSidebar ? "hidden" : ""
           }`}
         >
-          <div
-            ref={scrollRef}
-            className="flex-1 overflow-y-auto space-y-3 bg-[#20242b] border border-[#2e2f36] rounded-xl p-4"
-            aria-live="polite"
-            aria-relevant="additions text"
-            role="log"
-          >
-            {messages.map((m) => (
-              <div
-                key={`${m.id}-${m.role}`}
-                className={m.role === "user" ? "ml-auto" : "mr-auto"}
-              >
-                <div
-                  className={`mb-1 flex gap-2 w-fit ${
-                    m.role === "user" ? "ml-auto" : ""
-                  }`}
-                >
-                  {m.role === "ai" && m.audioUrl ? (
-                    <audio
-                      id={`audio-${m.id}`}
-                      src={resolveMediaUrl(m.audioUrl)}
-                      preload="none"
-                    />
-                  ) : null}
-                  {/* Always show toggles, disable + spinner if loading */}
-                  <>
-                    {/* Audio toggle (AI only) */}
-                    {m.role === "ai" && (
-                      <button
-                        type="button"
-                        disabled={m._loadingAudio}
-                        onClick={() => {
-                          if (!m._loadingAudio) {
-                            const el = document.getElementById(
-                              `audio-${m.id}`
-                            ) as HTMLAudioElement | null;
-                            if (!el) return;
-                            if (el.paused) {
-                              void el.play();
-                              setPlaying((s) => ({ ...s, [m.id]: true }));
-                              el.onended = () =>
-                                setPlaying((s) => ({ ...s, [m.id]: false }));
-                            } else {
-                              el.pause();
-                              setPlaying((s) => ({ ...s, [m.id]: false }));
-                            }
-                          }
-                        }}
-                        className={`px-2 py-1 text-xs rounded border cursor-pointer ${
-                          m._loadingAudio
-                            ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
-                            : playing[m.id]
-                              ? "border-[#4040f2] text-[#9aa6ff]"
-                              : "border-[#404040] text-[#a6a6a6]"
-                        }`}
-                        title={
-                          m._loadingAudio
-                            ? "Generating audio..."
-                            : playing[m.id]
-                              ? "Pause audio"
-                              : "Play audio"
-                        }
-                      >
-                        <div className="flex items-center gap-1">
-                          {m._loadingAudio && (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          )}
-                          <Volume2 className="w-4 h-4" />
-                        </div>
-                      </button>
-                    )}
+          <MessageView
+            messages={messages}
+            aiShowPinyin={aiShowPinyin}
+            aiShowTrans={aiShowTrans}
+            aiShowNotes={aiShowNotes}
+            playing={playing}
+            onTogglePinyin={(messageId) =>
+              setAiShowPinyin((s) => ({ ...s, [messageId]: !s[messageId] }))
+            }
+            onToggleTranslation={(messageId) =>
+              setAiShowTrans((s) => ({ ...s, [messageId]: !s[messageId] }))
+            }
+            onToggleNotes={(messageId) =>
+              setAiShowNotes((s) => ({ ...s, [messageId]: !s[messageId] }))
+            }
+            onToggleAudio={handleToggleAudio}
+            onOpenNotesModal={openNotesModal}
+            resolveMediaUrl={resolveMediaUrl}
+          />
 
-                    {/* Pinyin toggle */}
-                    <button
-                      type="button"
-                      disabled={m._loadingPinyin}
-                      onClick={() =>
-                        !m._loadingPinyin &&
-                        setAiShowPinyin((s) => ({ ...s, [m.id]: !s[m.id] }))
-                      }
-                      className={`px-2 py-1 text-xs rounded border ${
-                        m._loadingPinyin
-                          ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
-                          : aiShowPinyin[m.id]
-                            ? "border-[#4040f2] text-[#9aa6ff]"
-                            : "border-[#404040] text-[#a6a6a6]"
-                      } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
-                      aria-pressed={!!aiShowPinyin[m.id]}
-                      aria-label={
-                        m._loadingPinyin
-                          ? "Loading pinyin..."
-                          : aiShowPinyin[m.id]
-                            ? "Hide pinyin"
-                            : "Show pinyin"
-                      }
-                    >
-                      <div className="flex items-center gap-1">
-                        {m._loadingPinyin && (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        )}
-                        <span>Pinyin {aiShowPinyin[m.id] ? "On" : "Off"}</span>
-                      </div>
-                    </button>
-
-                    {/* Translation toggle */}
-                    <button
-                      type="button"
-                      disabled={m._loadingTranslation}
-                      onClick={() =>
-                        !m._loadingTranslation &&
-                        setAiShowTrans((s) => ({ ...s, [m.id]: !s[m.id] }))
-                      }
-                      className={`px-2 py-1 text-xs rounded border ${
-                        m._loadingTranslation
-                          ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
-                          : aiShowTrans[m.id]
-                            ? "border-[#4040f2] text-[#9aa6ff]"
-                            : "border-[#404040] text-[#a6a6a6]"
-                      } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
-                      aria-pressed={!!aiShowTrans[m.id]}
-                      aria-label={
-                        m._loadingTranslation
-                          ? "Loading translation..."
-                          : aiShowTrans[m.id]
-                            ? "Hide translation"
-                            : "Show translation"
-                      }
-                    >
-                      <div className="flex items-center gap-1">
-                        {m._loadingTranslation && (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        )}
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="16"
-                          height="16"
-                          viewBox="0 0 26 25"
-                          fill="none"
-                          aria-hidden="true"
-                        >
-                          <path
-                            d="M1 3.46154H9.61539M9.61539 3.46154H15.1539M9.61539 3.46154V1M18.2308 3.46154H15.1539M15.1539 3.46154C14.144 6.82785 12.0292 10.01 9.61539 12.8066M9.61539 12.8066C7.61662 15.1223 5.41282 17.1737 3.46154 18.8462M9.61539 12.8066C8.38462 11.4615 6.41539 8.75385 5.92308 7.76923M9.61539 12.8066L13.3077 16.3846"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                          <path
-                            d="M15.1538 23.1538L16.5605 19.4615M16.5605 19.4615L20.0769 10.2307L23.5933 19.4615M16.5605 19.4615H23.5933M25 23.1538L23.5933 19.4615"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </div>
-                    </button>
-
-                    {/* Notes toggle (AI only, show if notes exist or loading) */}
-                    {m.role === "ai" &&
-                      (m._loadingNotes || m.notes?.grammarNotes?.length) && (
-                        <button
-                          type="button"
-                          disabled={m._loadingNotes}
-                          onClick={() =>
-                            !m._loadingNotes &&
-                            setAiShowNotes((s) => ({ ...s, [m.id]: !s[m.id] }))
-                          }
-                          className={`px-2 py-1 text-xs rounded border ${
-                            m._loadingNotes
-                              ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
-                              : aiShowNotes[m.id]
-                                ? "border-[#4040f2] text-[#9aa6ff]"
-                                : "border-[#404040] text-[#a6a6a6]"
-                          } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
-                          aria-pressed={!!aiShowNotes[m.id]}
-                          aria-label={
-                            m._loadingNotes
-                              ? "Generating notes..."
-                              : aiShowNotes[m.id]
-                                ? "Hide notes"
-                                : "Show notes"
-                          }
-                        >
-                          <div className="flex items-center gap-1">
-                            {m._loadingNotes && (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            )}
-                            <span>
-                              Notes {aiShowNotes[m.id] ? "On" : "Off"}
-                            </span>
-                          </div>
-                        </button>
-                      )}
-                  </>
-                </div>
-                <div
-                  className={`max-w-[85%] w-fit rounded-lg px-3 py-2 border ${
-                    m.role === "user"
-                      ? "ml-auto bg-[#2e323a] border-[#3a3f47]"
-                      : "mr-auto bg-[#26322b] border-[#35503c]"
-                  }`}
-                >
-                  <AiMessage
-                    m={{
-                      ...m,
-                      segments:
-                        Array.isArray(m.segments) && m.segments.length > 0
-                          ? m.segments
-                          : buildFallbackSegments(m.hanzi, m.pinyin),
-                    }}
-                    showP={!!aiShowPinyin[m.id]}
-                    showT={!!aiShowTrans[m.id]}
-                    showN={!!aiShowNotes[m.id]}
-                  />
-                  <div className="text-[10px] text-[#808080] mt-1">
-                    {new Date(m.createdAt).toLocaleTimeString()}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-2 w-full flex-wrap">
-            <button
-              onClick={() => {
-                if (!recording) startRecording();
-                else stopRecording();
-              }}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors duration-200 cursor-pointer max-w-full ${
-                recording
-                  ? "bg-red-600/10 border-red-600/40 text-red-200"
-                  : "bg-[#1b1f26] border-[#2e323a] text-[#a6a6a6] hover:border-[#4040f2]"
-              } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#1b1f26]`}
-              title={recording ? "Tap when done" : "Tap to speak"}
-              type="button"
-              aria-pressed={recording}
-              aria-label={recording ? "Stop recording" : "Start recording"}
-            >
-              <div className="relative shrink-0">
-                <div
-                  className={`rounded-full p-2 ${
-                    recording ? "bg-red-600/20" : "bg-green-600/20"
-                  }`}
-                >
-                  <Mic className="w-4 h-4" />
-                </div>
-                {recording ? (
-                  <span className="absolute inset-0 rounded-full ring-2 ring-red-500 motion-safe:animate-ping" />
-                ) : null}
-              </div>
-              <div className="flex flex-col items-start min-w-0 overflow-hidden hidden sm:block">
-                <span className="text-xs font-medium text-white truncate max-w-[55vw] sm:max-w-none">
-                  {recPrompt}
-                </span>
-                <span className="text-[10px] text-[#808080] hidden sm:block">
-                  {recording ? "Start speaking • Tap when done" : ""}
-                </span>
-              </div>
-              {uploadingAudio ? (
-                <Loader2 className="w-4 h-4 animate-spin ml-2 shrink-0" />
-              ) : null}
-            </button>
-
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") sendText();
-              }}
-              placeholder="Type your message ..."
-              className="flex-1 min-w-0 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-white outline-none h-11"
-            />
-            <button
-              onClick={sendText}
-              className="px-4 py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer shrink-0 h-11"
-              type="button"
-              aria-label="Send message"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
+          <MessageInput
+            input={input}
+            onInputChange={setInput}
+            onSend={sendText}
+            recording={recording}
+            recPrompt={recPrompt}
+            uploadingAudio={uploadingAudio}
+            onStartRecording={startRecording}
+            onStopRecording={stopRecording}
+          />
         </div>
       </div>
-      {notesModal.open && notesModal.message ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/60"
-            onClick={closeNotesModal}
-          />
-          <div className="relative z-50 max-h-[80vh] w-[90vw] max-w-2xl bg-[#1d2128] border border-[#3a3f47] rounded-lg shadow-xl overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2e36] shrink-0">
-              <div className="text-sm font-semibold text-white">
-                Tutor Notes
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setNotesPinyinOn((v) => !v)}
-                  className={`px-2 py-1 text-xs rounded border ${
-                    notesPinyinOn
-                      ? "border-[#4040f2] text-[#9aa6ff]"
-                      : "border-[#404040] text-[#a6a6a6]"
-                  } cursor-pointer`}
-                >
-                  Pinyin {notesPinyinOn ? "On" : "Off"}
-                </button>
-                <button
-                  onClick={closeNotesModal}
-                  className="text-[#a6a6a6] text-xs hover:text-white cursor-pointer"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-            <div
-              className="p-4 overflow-y-auto space-y-3 flex-1"
-              ref={notesModalContentRef}
-            >
-              {Array.isArray(notesModal.message.notes?.grammarNotes) &&
-              notesModal.message.notes!.grammarNotes!.length > 0 ? (
-                <NotesSection
-                  title="Notes"
-                  notes={
-                    notesModal.message.notes!
-                      .grammarNotes! as unknown as Array<{
-                      point: string;
-                      pointPinyin?: string;
-                      pointEn?: string;
-                      brief: string;
-                      briefPinyin?: string;
-                      briefEn?: string;
-                      pointSegments?: Array<{
-                        text: string;
-                        isWord?: boolean;
-                        pinyin?: string;
-                        definition?: string;
-                        definitions?: string[];
-                      }>;
-                      briefSegments?: Array<{
-                        text: string;
-                        isWord?: boolean;
-                        pinyin?: string;
-                        definition?: string;
-                        definitions?: string[];
-                      }>;
-                      examples?: Array<{
-                        zh: string;
-                        en?: string;
-                        pinyin?: string;
-                        segments?: Array<{
-                          text: string;
-                          isWord?: boolean;
-                          pinyin?: string;
-                          definition?: string;
-                          definitions?: string[];
-                        }>;
-                      }>;
-                    }>
-                  }
-                  notesPinyinOn={notesPinyinOn}
-                  onTogglePinyin={() => setNotesPinyinOn((v) => !v)}
-                  sectionKey="story"
-                  multiSelect={false}
-                  selectedWords={{}}
-                  toggleSelectWord={undefined}
-                  contentRef={notesModalContentRef}
-                  setPopup={handleNotesModalPopup}
-                  openFromElement={handleNotesModalOpenFromElement}
-                  hskUnderlineClass={() => ""}
-                  maxItems={Infinity}
-                />
-              ) : null}
-              {Array.isArray(
-                (notesModal.message.notes as MessageNotes)?.tipsRich
-              ) &&
-              (notesModal.message.notes as MessageNotes).tipsRich!.length >
-                0 ? (
-                <div className="pt-2 border-t border-[#2a2e36]">
-                  <div className="text-sm font-semibold text-white mb-2">
-                    Tips
-                  </div>
-                  <ul className="space-y-2 list-disc list-outside pl-5 marker:text-[#596080]">
-                    {(notesModal.message.notes as MessageNotes).tipsRich!.map(
-                      (t: Tip, i: number) => (
-                        <li key={i}>
-                          {Array.isArray(t.segments) &&
-                          t.segments.length > 0 ? (
-                            <>
-                              {renderSegmentsWithPopup(
-                                t.segments,
-                                t.zh,
-                                t.en,
-                                notesPinyinOn
-                              )}
-                              {t.en ? (
-                                <div className="text-[#8b949e] text-xs">
-                                  {t.en}
-                                </div>
-                              ) : null}
-                            </>
-                          ) : (
-                            <>
-                              <div className="text-[#c9d1d9]">{t.zh}</div>
-                              {t.pinyin ? (
-                                <div className="text-[#9aa6ff] text-xs">
-                                  {t.pinyin}
-                                </div>
-                              ) : null}
-                              {t.en ? (
-                                <div className="text-[#8b949e] text-xs">
-                                  {t.en}
-                                </div>
-                              ) : null}
-                            </>
-                          )}
-                        </li>
-                      )
-                    )}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-            {notesPopup.open && (
-              <div
-                ref={notesPopupRef}
-                style={{
-                  position: "fixed",
-                  left: Math.max(
-                    10,
-                    Math.min(notesPopup.x - 110, window.innerWidth - 260)
-                  ),
-                  top: Math.max(10, notesPopup.y - 150),
-                  zIndex: 1000,
-                }}
-                className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
-              >
-                <div className="font-bold text-white text-lg truncate">
-                  {notesPopup.word}
-                </div>
-                {notesPopup.pinyin ? (
-                  <div className="text-[#c6ceff] text-sm font-medium truncate">
-                    {notesPopup.pinyin}
-                  </div>
-                ) : null}
-                {Array.isArray(notesPopup.definitions) &&
-                notesPopup.definitions.length > 0 ? (
-                  <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
-                    {notesPopup.definitions.map((d, i) => (
-                      <div key={i}>• {d}</div>
-                    ))}
-                  </div>
-                ) : notesPopup.definition ? (
-                  <div className="text-xs text-[#a6a6a6] mt-2">
-                    {notesPopup.definition}
-                  </div>
-                ) : null}
-                <div className="mt-3 pt-3 border-t border-[#404040]">
-                  <button
-                    onClick={() => {
-                      void addSingleToFlashcards(
-                        notesPopup.word,
-                        notesPopup.ctx
-                      );
-                      setNotesPopup((p) => ({ ...p, open: false }));
-                    }}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm font-inter">
-                      Add to Flashcards
-                    </span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Mobile top sheet popup for notes modal */}
-            <AnimatePresence>
-              {notesPopup.open && (
-                <motion.div
-                  ref={notesMobilePopupRef}
-                  initial={{ y: "-100%" }}
-                  animate={{ y: 0 }}
-                  exit={{ y: "-100%" }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 300,
-                    damping: 30,
-                    duration: 0.3,
-                  }}
-                  className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
-                >
-                  <div className="max-w-sm mx-auto">
-                    <div className="flex items-center justify-between gap-3 mb-3">
-                      <div className="font-bold text-white text-lg truncate">
-                        {notesPopup.word}
-                      </div>
-                    </div>
-                    {notesPopup.pinyin ? (
-                      <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
-                        {notesPopup.pinyin}
-                      </div>
-                    ) : null}
-                    {Array.isArray(notesPopup.definitions) &&
-                    notesPopup.definitions.length > 0 ? (
-                      <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
-                        {notesPopup.definitions.map((d, i) => (
-                          <div key={i}>• {d}</div>
-                        ))}
-                      </div>
-                    ) : notesPopup.definition ? (
-                      <div className="text-xs text-[#a6a6a6] mb-3">
-                        {notesPopup.definition}
-                      </div>
-                    ) : null}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setNotesPopup((p) => ({ ...p, open: false }));
-                        }}
-                        className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
-                      >
-                        Close
-                      </button>
-                      <button
-                        onClick={async () => {
-                          await addSingleToFlashcards(
-                            notesPopup.word,
-                            notesPopup.ctx
-                          );
-                          setNotesPopup((p) => ({ ...p, open: false }));
-                        }}
-                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span className="text-sm font-inter">
-                          Add to Flashcards
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-      ) : null}
+      <NotesModal
+        open={notesModal.open}
+        message={notesModal.message}
+        onClose={closeNotesModal}
+        notesPinyinOn={notesPinyinOn}
+        onTogglePinyin={() => setNotesPinyinOn((v) => !v)}
+      />
     </DashboardLayout>
   );
 }
