@@ -1,12 +1,26 @@
 "use client";
 
-import { useEffect, useRef, useState, memo, useMemo } from "react";
+import { useEffect, useRef, useState, memo, useMemo, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout";
 import {
   conversationsApi,
   type Message,
   type ConversationSummary,
 } from "@/lib/api/conversations";
+import { useConversationStream } from "@/lib/hooks/use-conversation-stream";
+import { useAudioRecorder } from "@/lib/hooks/use-audio-recorder";
+import {
+  useConversationsList,
+  useMessages,
+  useStartConversation,
+  useSendMessage,
+  sortConversationsByStartedAt,
+} from "@/lib/hooks/use-conversations";
+import { buildFallbackSegments } from "@/lib/utils/segments";
+import {
+  addSingleToFlashcards,
+  getSentenceContext,
+} from "@/lib/utils/flashcards";
 import {
   Mic,
   Send,
@@ -19,6 +33,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "framer-motion";
+import { TokenRenderer } from "@/components/lessons/TokenRenderer";
+import type { TokenRendererProps } from "@/components/lessons/TokenRenderer";
+import { NotesSection } from "@/components/lessons/NotesSection";
 
 // Local types to avoid `any` usages in notes rendering
 type SegToken = {
@@ -63,7 +80,6 @@ export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [recording, setRecording] = useState(false);
   const [conversations, setConversations] = useState<EnrichedConversation[]>(
     []
   );
@@ -80,12 +96,7 @@ export default function ConversationsPage() {
     setNotesModal({ open: true, message: m });
   const closeNotesModal = () => setNotesModal({ open: false, message: null });
   const [playing, setPlaying] = useState<Record<number, boolean>>({});
-  // Per-message toggles are inside AiMessage; no global toggles here
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [recPrompt, setRecPrompt] = useState<string>("Tap to speak");
-  const [uploadingAudio, setUploadingAudio] = useState<boolean>(false);
   const [loadingPreviews, setLoadingPreviews] = useState<boolean>(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     open: boolean;
@@ -96,6 +107,269 @@ export default function ConversationsPage() {
   const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const deleteTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  // Hooks
+  const { streamText, streamAudio } = useConversationStream();
+  const { data: conversationsList, refetch: refetchConversations } =
+    useConversationsList();
+  const { data: messagesData, refetch: refetchMessages } =
+    useMessages(conversationId);
+  const startConversationMutation = useStartConversation();
+  const sendMessageMutation = useSendMessage();
+
+  // Helper to create stream callbacks for updating messages state
+  type _NotesType = NonNullable<Message["notes"]>;
+  type _GrammarNotesType = _NotesType["grammarNotes"];
+  type _TipsRichType = _NotesType["tipsRich"];
+  const createStreamCallbacks = useCallback(
+    (aiMsgId: number) => {
+      // Track the target AI message id; start with caller-provided id, but
+      // switch to the id provided by onStart to ensure consistency with the stream
+      let targetId = aiMsgId;
+      return {
+        onStart: ({ id, createdAt }: { id: number; createdAt: string }) => {
+          targetId = id;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id,
+              role: "ai" as const,
+              hanzi: "",
+              pinyin: "",
+              translation: "",
+              createdAt,
+              segments: undefined,
+              _loadingPinyin: true,
+              _loadingTranslation: true,
+              _loadingAudio: true,
+              _loadingNotes: true,
+            } as Message,
+          ]);
+        },
+        onHanziDelta: (delta: string) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === targetId ? { ...m, hanzi: (m.hanzi || "") + delta } : m
+            )
+          );
+        },
+        onAiEnrichment: (pinyin?: string, segments?: Message["segments"]) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === targetId
+                ? {
+                    ...m,
+                    pinyin: pinyin || m.pinyin,
+                    segments: segments || m.segments,
+                    _loadingPinyin: false,
+                  }
+                : m
+            )
+          );
+        },
+        onAiTranslation: (translation?: string) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === targetId
+                ? {
+                    ...m,
+                    translation: translation || m.translation,
+                    _loadingTranslation: false,
+                  }
+                : m
+            )
+          );
+        },
+        onAiAudio: (audioUrl?: string) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === targetId
+                ? {
+                    ...m,
+                    audioUrl: audioUrl || m.audioUrl,
+                    _loadingAudio: false,
+                  }
+                : m
+            )
+          );
+        },
+        onAiNotes: (notes?: unknown) => {
+          // Normalize notes payload from stream into Message["notes"] shape
+          let normalized: Message["notes"] | undefined = undefined;
+          if (notes && typeof notes === "object") {
+            const r = notes as Record<string, unknown>;
+            const rawGN = r["grammarNotes"] as _GrammarNotesType | undefined;
+            const rawTR = r["tipsRich"] as unknown;
+            const mappedTR = Array.isArray(rawTR)
+              ? typeof rawTR[0] === "string"
+                ? (rawTR as string[]).map((zh) => ({ zh }))
+                : (rawTR as NonNullable<_TipsRichType>)
+              : undefined;
+            normalized = {
+              grammarNotes: rawGN,
+              tipsRich: mappedTR,
+            } as Message["notes"];
+          }
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === targetId
+                ? {
+                    ...m,
+                    notes: normalized || m.notes,
+                    _loadingNotes: false,
+                  }
+                : m
+            )
+          );
+        },
+        // Let onError handle hydration fallback; final event is not strictly required here
+        onUserUpdate: (update: {
+          id: number;
+          pinyin?: string;
+          translation?: string;
+          segments?: Message["segments"];
+        }) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.role === "user" && m.id === update.id
+                ? {
+                    ...m,
+                    pinyin:
+                      typeof update.pinyin === "string"
+                        ? update.pinyin
+                        : m.pinyin,
+                    translation:
+                      typeof update.translation === "string"
+                        ? update.translation
+                        : m.translation,
+                    segments: Array.isArray(update.segments)
+                      ? update.segments
+                      : m.segments,
+                    _loadingPinyin: false,
+                    _loadingTranslation: false,
+                  }
+                : m
+            )
+          );
+        },
+        onFinal: (final: {
+          hanzi?: string;
+          pinyin?: string;
+          translation?: string;
+          audioUrl?: string;
+          segments?: Message["segments"];
+          notes?: unknown;
+        }) => {
+          // Normalize notes from FinalPayload (NotesPayload) to Message["notes"]
+          let normalizedNotes: Message["notes"] | undefined = undefined;
+          if (final.notes && typeof final.notes === "object") {
+            const r = final.notes as Record<string, unknown>;
+            const rawGN = r["grammarNotes"] as _GrammarNotesType | undefined;
+            const rawTR = r["tipsRich"] as unknown;
+            const mappedTR = Array.isArray(rawTR)
+              ? typeof rawTR[0] === "string"
+                ? (rawTR as string[]).map((zh) => ({ zh }))
+                : (rawTR as NonNullable<_TipsRichType>)
+              : undefined;
+            normalizedNotes = {
+              grammarNotes: rawGN,
+              tipsRich: mappedTR,
+            } as Message["notes"];
+          }
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === targetId
+                ? {
+                    ...m,
+                    hanzi: final.hanzi || m.hanzi,
+                    pinyin: final.pinyin || m.pinyin || "",
+                    translation: final.translation || m.translation || "",
+                    audioUrl: final.audioUrl || m.audioUrl,
+                    segments: Array.isArray(final.segments)
+                      ? final.segments
+                      : final.segments === undefined && m.segments
+                        ? m.segments
+                        : buildFallbackSegments(
+                            final.hanzi || m.hanzi || "",
+                            final.pinyin || m.pinyin || ""
+                          ),
+                    notes: normalizedNotes ?? m.notes,
+                    _loadingPinyin: false,
+                    _loadingTranslation: false,
+                    _loadingAudio: false,
+                    _loadingNotes: false,
+                  }
+                : m
+            )
+          );
+        },
+        onError: async () => {
+          // Hydrate AI message if stream ended without explicit final
+          if (conversationId) {
+            try {
+              const list = await conversationsApi.listMessages(conversationId);
+              const latestAi = list
+                .slice()
+                .reverse()
+                .find((m) => m.role === "ai");
+              if (latestAi) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === targetId
+                      ? {
+                          ...m,
+                          hanzi: latestAi.hanzi || m.hanzi,
+                          pinyin: latestAi.pinyin || m.pinyin,
+                          translation: latestAi.translation || m.translation,
+                          audioUrl: latestAi.audioUrl || m.audioUrl,
+                          segments: Array.isArray(latestAi.segments)
+                            ? latestAi.segments
+                            : m.segments,
+                          notes: latestAi.notes || m.notes,
+                          _loadingPinyin: false,
+                          _loadingTranslation: false,
+                          _loadingAudio: false,
+                          _loadingNotes: false,
+                        }
+                      : m
+                  )
+                );
+              }
+            } catch {
+              // ignore
+            }
+          }
+        },
+      };
+    },
+    [conversationId]
+  );
+
+  const {
+    start: startRecording,
+    stop: stopRecording,
+    recording,
+    recPrompt,
+    uploadingAudio,
+  } = useAudioRecorder({
+    onData: async (blob) => {
+      if (!conversationId) return;
+      try {
+        // Upload audio first to get user message (with transcribed hanzi)
+        const { user } = await conversationsApi.sendAudio(conversationId, blob);
+        setMessages((prev) => [...prev, user]);
+        // Then start streaming AI reply (hook will handle SSE)
+        // Note: streamAudio hook also calls sendAudio, but that's okay - server handles idempotency
+        const aiMsgId = Date.now() + 1;
+        await streamAudio(
+          { conversationId, audio: blob },
+          createStreamCallbacks(aiMsgId)
+        );
+      } catch {
+        toast.error("Failed to send audio");
+      }
+    },
+  });
 
   // Memoized date formatter utility
   const formatConversationDate = useMemo(
@@ -176,12 +450,115 @@ export default function ConversationsPage() {
     ctx?: { hanzi?: string; pinyin?: string; translation?: string };
   }>({ open: false, x: 0, y: 0, word: "" });
   const notesPopupRef = useRef<HTMLDivElement | null>(null);
+  const notesMobilePopupRef = useRef<HTMLDivElement | null>(null);
+  const notesModalContentRef = useRef<HTMLDivElement | null>(null);
+
+  // Handler adapter for NotesSection TokenRenderer popup using openFromElement
+  // This maintains absolute positioning (current behavior)
+  const handleNotesModalOpenFromElement = useCallback(
+    (el: HTMLElement, data?: unknown, placement?: "above" | "below") => {
+      // Placement is available but not used - we use absolute positioning instead
+      void placement;
+      const rect = el.getBoundingClientRect();
+      const tokenData = data as
+        | {
+            word?: string;
+            pinyin?: string;
+            definition?: string;
+            definitions?: string[];
+          }
+        | undefined;
+
+      setNotesPopup({
+        open: true,
+        x: rect.left + rect.width / 2,
+        y: rect.top,
+        word: tokenData?.word || "",
+        pinyin: tokenData?.pinyin,
+        definition: tokenData?.definition,
+        definitions: tokenData?.definitions,
+        ctx: notesModal.message
+          ? {
+              hanzi: notesModal.message.hanzi,
+              pinyin: notesModal.message.pinyin,
+              translation: notesModal.message.translation,
+            }
+          : undefined,
+      });
+    },
+    [notesModal.message]
+  );
+
+  // Handler adapter for NotesSection TokenRenderer popup using setPopup (fallback)
+  const handleNotesModalPopup = useCallback(
+    (popup: {
+      open: boolean;
+      x: number;
+      y: number;
+      anchorH: number;
+      word: string;
+      pinyin?: string;
+      definition?: string;
+      definitions?: string[];
+      paraIndex?: number;
+      tokenIndex?: number;
+      hskLevel?: number;
+    }) => {
+      if (!popup.open) {
+        setNotesPopup((p) => ({ ...p, open: false }));
+        return;
+      }
+      // Convert container-relative coordinates to absolute
+      const container = notesModalContentRef.current;
+      if (container) {
+        const containerRect = container.getBoundingClientRect();
+        const absoluteX = containerRect.left + popup.x;
+        const absoluteY = containerRect.top + popup.y;
+        setNotesPopup({
+          open: true,
+          x: absoluteX,
+          y: absoluteY,
+          word: popup.word,
+          pinyin: popup.pinyin,
+          definition: popup.definition,
+          definitions: popup.definitions,
+          ctx: notesModal.message
+            ? {
+                hanzi: notesModal.message.hanzi,
+                pinyin: notesModal.message.pinyin,
+                translation: notesModal.message.translation,
+              }
+            : undefined,
+        });
+      } else {
+        // Fallback: use provided coordinates directly
+        setNotesPopup({
+          open: true,
+          x: popup.x,
+          y: popup.y,
+          word: popup.word,
+          pinyin: popup.pinyin,
+          definition: popup.definition,
+          definitions: popup.definitions,
+          ctx: notesModal.message
+            ? {
+                hanzi: notesModal.message.hanzi,
+                pinyin: notesModal.message.pinyin,
+                translation: notesModal.message.translation,
+              }
+            : undefined,
+        });
+      }
+    },
+    [notesModal.message]
+  );
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
-      if (
-        notesPopupRef.current &&
-        !notesPopupRef.current.contains(e.target as Node)
-      ) {
+      const target = e.target as Node;
+      const clickedInsideDesktop = notesPopupRef.current?.contains(target);
+      const clickedInsideMobile = notesMobilePopupRef.current?.contains(target);
+      // Only close if click is outside both popups
+      if (!clickedInsideDesktop && !clickedInsideMobile) {
         setNotesPopup((p) => ({ ...p, open: false }));
       }
     };
@@ -262,60 +639,64 @@ export default function ConversationsPage() {
   const [showConversationsSidebar, setShowConversationsSidebar] =
     useState(false);
 
+  // Sync conversations list from query to local state (for preview enrichment)
   useEffect(() => {
-    const init = async () => {
-      try {
-        setLoadingPreviews(true);
-        const list = await conversationsApi.list();
-        setConversations(list);
+    if (conversationsList) {
+      setConversations(conversationsList);
+      // Load previews in background
+      setLoadingPreviews(true);
+      loadConversationPreviews(conversationsList)
+        .then((enriched) => {
+          setConversations(enriched);
+          setLoadingPreviews(false);
+        })
+        .catch(() => {
+          setLoadingPreviews(false);
+        });
+    }
+  }, [conversationsList]);
 
-        // Load previews in background
-        loadConversationPreviews(list)
-          .then((enriched) => {
-            setConversations(enriched);
-            setLoadingPreviews(false);
-          })
-          .catch(() => {
-            setLoadingPreviews(false);
-          });
+  // Sync messages from query to local state
+  useEffect(() => {
+    if (messagesData) {
+      setMessages(messagesData);
+    }
+  }, [messagesData]);
 
-        const saved =
-          typeof window !== "undefined"
-            ? localStorage.getItem("active-conversation-id")
-            : null;
-        const savedId = saved ? Number(saved) : null;
-        if (list.length > 0) {
-          // Sort to find most recent if no saved ID
-          const sorted = list.sort(
-            (a, b) =>
-              new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
-          );
-          const targetId = list.some((c) => c.id === savedId)
-            ? (savedId as number)
-            : sorted[0].id;
-          setConversationId(targetId);
-          const msgs = await conversationsApi.listMessages(targetId);
-          setMessages(msgs);
-        } else {
-          const { id } = await conversationsApi.start();
+  // Initial load: select conversation or create new one
+  useEffect(() => {
+    if (!conversationsList) return;
+    const saved =
+      typeof window !== "undefined"
+        ? localStorage.getItem("active-conversation-id")
+        : null;
+    const savedId = saved ? Number(saved) : null;
+    if (conversationsList.length > 0) {
+      const sorted = sortConversationsByStartedAt(conversationsList);
+      const targetId = conversationsList.some((c) => c.id === savedId)
+        ? (savedId as number)
+        : sorted[0].id;
+      if (conversationId !== targetId) {
+        setConversationId(targetId);
+        if (typeof window !== "undefined")
+          localStorage.setItem("active-conversation-id", String(targetId));
+      }
+    } else {
+      // No conversations, create new one
+      startConversationMutation.mutate(undefined, {
+        onSuccess: async ({ id }) => {
           setConversationId(id);
-          const msgs = await conversationsApi.listMessages(id);
-          setMessages(msgs);
-          const updated = await conversationsApi.list();
-          // Load previews for new conversation list
-          loadConversationPreviews(updated).then((enriched) => {
-            setConversations(enriched);
-          });
           if (typeof window !== "undefined")
             localStorage.setItem("active-conversation-id", String(id));
-        }
-      } catch {
-        toast.error("Failed to load conversations");
-        setLoadingPreviews(false);
-      }
-    };
-    init();
-  }, []);
+          await refetchConversations();
+        },
+        onError: () => {
+          toast.error("Failed to start conversation");
+        },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationsList, startConversationMutation, refetchConversations]);
 
   // Auto-scroll to bottom whenever messages update (new message or AI stream)
   useEffect(() => {
@@ -378,33 +759,18 @@ export default function ConversationsPage() {
     setConversationId(id);
     if (typeof window !== "undefined")
       localStorage.setItem("active-conversation-id", String(id));
-    try {
-      const msgs = await conversationsApi.listMessages(id);
-      setMessages(msgs);
-    } catch {
-      toast.error("Failed to load messages");
-    }
+    // Messages will be loaded via useMessages hook when conversationId changes
+    await refetchMessages();
   };
 
   const newConversation = async () => {
     try {
-      const { id } = await conversationsApi.start();
+      const { id } = await startConversationMutation.mutateAsync(undefined);
       setConversationId(id);
-      const msgs = await conversationsApi.listMessages(id);
-      setMessages(msgs);
-      const updated = await conversationsApi.list();
-      // Sort and load previews for updated list
-      const sorted = updated.sort(
-        (a, b) =>
-          new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
-      );
-      setConversations(sorted);
-      // Load previews in background
-      loadConversationPreviews(updated).then((enriched) => {
-        setConversations(enriched);
-      });
       if (typeof window !== "undefined")
         localStorage.setItem("active-conversation-id", String(id));
+      await refetchConversations();
+      await refetchMessages();
     } catch {
       toast.error("Failed to start conversation");
     }
@@ -505,24 +871,6 @@ export default function ConversationsPage() {
     setShowConversationsSidebar(!showConversationsSidebar);
   };
 
-  const addSingleToFlashcards = async (
-    hanzi: string,
-    context?: { hanzi?: string; pinyin?: string; translation?: string }
-  ) => {
-    try {
-      const { post } = await import("@/lib/http/http");
-      await post("flashcards", {
-        hanzi,
-        sentenceHanzi: context?.hanzi,
-        sentencePinyin: context?.pinyin,
-        sentenceTranslation: context?.translation,
-      });
-      toast.success("Added to flashcards");
-    } catch {
-      toast.error("Failed to add to flashcards");
-    }
-  };
-
   const sendText = async () => {
     if (!conversationId || !input.trim()) return;
     const text = input.trim();
@@ -541,677 +889,27 @@ export default function ConversationsPage() {
     };
     setMessages((prev) => [...prev, tempUser]);
     try {
-      const { user } = await conversationsApi.send(conversationId, text);
+      const { user } = await sendMessageMutation.mutateAsync({
+        id: conversationId,
+        hanzi: text,
+      });
       // Replace temp user with server user
       setMessages((prev) => {
         const withoutTemp = prev.filter((m) => m !== tempUser);
         return [...withoutTemp, user];
       });
-      // Start SSE stream
-      const url = conversationsApi.streamUrl(conversationId, text);
-      const es = new EventSource(url, { withCredentials: true });
-
-      // Flag to track if we've received the final event
-      let isStreamComplete = false;
+      // Start SSE stream using hook
       const aiMsgId = Date.now() + 1;
-      const createdAt = new Date().toISOString();
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: aiMsgId,
-          role: "ai",
-          hanzi: "",
-          pinyin: "",
-          translation: "",
-          createdAt,
-          // mark streaming state so toggles can be hidden until final
-          segments: undefined,
-          // Add loading flags for progressive SSE events
-          _loadingPinyin: true,
-          _loadingTranslation: true,
-          _loadingAudio: true,
-          _loadingNotes: true,
-        } as Message,
-      ]);
-      es.onmessage = (e) => {
-        try {
-          const payload = JSON.parse(e.data);
-          if (payload.hanziDelta) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aiMsgId
-                  ? { ...m, hanzi: (m.hanzi || "") + payload.hanziDelta }
-                  : m
-              )
-            );
-          } else if (payload.type === "ai-enrichment") {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aiMsgId
-                  ? {
-                      ...m,
-                      pinyin: payload.pinyin || m.pinyin,
-                      segments: payload.segments || m.segments,
-                      _loadingPinyin: false,
-                    }
-                  : m
-              )
-            );
-          } else if (payload.type === "ai-translation") {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aiMsgId
-                  ? {
-                      ...m,
-                      translation: payload.translation || m.translation,
-                      _loadingTranslation: false,
-                    }
-                  : m
-              )
-            );
-          } else if (payload.type === "ai-audio") {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aiMsgId
-                  ? {
-                      ...m,
-                      audioUrl: payload.audioUrl || m.audioUrl,
-                      _loadingAudio: false,
-                    }
-                  : m
-              )
-            );
-          } else if (payload.type === "ai-notes") {
-            const notesCamel = payload.notes
-              ? {
-                  grammarNotes:
-                    payload.notes.grammarNotes || payload.notes.grammar_notes,
-                  tipsRich: payload.notes.tipsRich || payload.notes.tips_rich,
-                }
-              : undefined;
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aiMsgId
-                  ? {
-                      ...m,
-                      notes: notesCamel || m.notes,
-                      _loadingNotes: false,
-                    }
-                  : m
-              )
-            );
-          } else if (
-            payload &&
-            typeof payload === "object" &&
-            payload.id &&
-            (payload.translation !== undefined || payload.segments)
-          ) {
-            // Some servers emit a plain user-update object on the default channel
-            const data = payload as {
-              id: number;
-              pinyin?: string;
-              translation?: string;
-              segments?: Array<{
-                text: string;
-                startIndex: number;
-                endIndex: number;
-                isWord: boolean;
-                hskLevel?: number;
-                pinyin?: string;
-                definition?: string;
-                definitions?: string[];
-              }>;
-            };
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.role === "user" && m.id === data.id
-                  ? {
-                      ...m,
-                      pinyin:
-                        typeof data.pinyin === "string"
-                          ? data.pinyin
-                          : m.pinyin,
-                      translation:
-                        typeof data.translation === "string"
-                          ? data.translation
-                          : m.translation,
-                      segments: Array.isArray(data.segments)
-                        ? data.segments
-                        : m.segments,
-                    }
-                  : m
-              )
-            );
-          } else if (payload.type === "user-update" && payload.data) {
-            // Ignore here to prevent double-processing; rely on named 'user-update' listener below
-          } else if (payload.type === "final" && payload.data) {
-            isStreamComplete = true;
-            // Close the connection gracefully
-            if (es.readyState === EventSource.OPEN) {
-              es.close();
-            }
-          }
-        } catch {}
-      };
-      es.addEventListener("user-update", (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(
-            (e as unknown as MessageEvent).data as string
-          );
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === data.id
-                ? {
-                    ...m,
-                    pinyin:
-                      typeof data.pinyin === "string" ? data.pinyin : m.pinyin,
-                    translation:
-                      typeof data.translation === "string"
-                        ? data.translation
-                        : m.translation,
-                    segments: Array.isArray(data.segments)
-                      ? data.segments
-                      : undefined,
-                    // Clear loading flags when user enrichment arrives
-                    _loadingPinyin: false,
-                    _loadingTranslation: false,
-                  }
-                : m
-            )
-          );
-          // Avoid destructive refetch during SSE; keep AI placeholder intact
-        } catch {}
-      });
-      es.addEventListener("error", (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(
-            (e as unknown as MessageEvent).data as string
-          );
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === data.id
-                ? {
-                    ...m,
-                    pinyin:
-                      typeof data.pinyin === "string" ? data.pinyin : m.pinyin,
-                    translation:
-                      typeof data.translation === "string"
-                        ? data.translation
-                        : m.translation,
-                    segments: Array.isArray(data.segments)
-                      ? data.segments
-                      : m.segments,
-                  }
-                : m
-            )
-          );
-        } catch {}
-        // Hydrate AI message if no final arrived
-        if (conversationId) {
-          void (async () => {
-            try {
-              const list = await conversationsApi.listMessages(conversationId);
-              const latestAi = list
-                .slice()
-                .reverse()
-                .find((m) => m.role === "ai");
-              if (latestAi) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.role === "ai" &&
-                    (m.pinyin?.length === 0 || m.translation?.length === 0)
-                      ? {
-                          ...m,
-                          hanzi: latestAi.hanzi || m.hanzi,
-                          pinyin: latestAi.pinyin || m.pinyin,
-                          translation: latestAi.translation || m.translation,
-                          audioUrl: latestAi.audioUrl || m.audioUrl,
-                          segments: Array.isArray(latestAi.segments)
-                            ? latestAi.segments
-                            : m.segments,
-                          notes: latestAi.notes || m.notes,
-                        }
-                      : m
-                  )
-                );
-              }
-            } catch {}
-          })();
-        }
-        es.close();
-      });
-      es.onerror = () => {
-        // Only log if this is an actual error, not a normal closure
-        if (isStreamComplete || es.readyState === EventSource.CLOSED) {
-          // Stream closed normally, no logging needed
-        } else {
-          console.warn("SSE stream ended unexpectedly");
-        }
-        // Don't try to hydrate if we already have progressive data
-        // The progressive events should have already updated the message
-      };
+      await streamText(
+        { conversationId, text },
+        createStreamCallbacks(aiMsgId)
+      );
     } catch {
       toast.error("Failed to send message");
     }
   };
 
-  const buildFallbackSegments = (
-    hanzi: string,
-    pinyin?: string
-  ): Array<{
-    text: string;
-    startIndex: number;
-    endIndex: number;
-    isWord: boolean;
-    pinyin?: string;
-  }> => {
-    const chars = Array.from(hanzi || "");
-    const ps = (pinyin || "").split(/\s+/).filter(Boolean);
-    let pi = 0;
-    const isCJK = (ch: string) => /[\u3400-\u9FFF]/.test(ch);
-    const segs: Array<{
-      text: string;
-      startIndex: number;
-      endIndex: number;
-      isWord: boolean;
-      pinyin?: string;
-    }> = [];
-    let buffer = "";
-    let bufStart = 0;
-    const flushBuffer = (idx: number) => {
-      if (buffer.length > 0) {
-        segs.push({
-          text: buffer,
-          startIndex: bufStart,
-          endIndex: idx,
-          isWord: false,
-        });
-        buffer = "";
-      }
-    };
-    for (let i = 0; i < chars.length; i++) {
-      const ch = chars[i];
-      if (isCJK(ch)) {
-        flushBuffer(i);
-        segs.push({
-          text: ch,
-          startIndex: i,
-          endIndex: i + 1,
-          isWord: true,
-          pinyin: ps[pi++] || "",
-        });
-      } else {
-        if (buffer.length === 0) bufStart = i;
-        buffer += ch;
-      }
-    }
-    flushBuffer(chars.length);
-    return segs;
-  };
-
   // Note: if needed, we can add an "Add to Flashcards" inline action in the popup later.
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(stream);
-      mediaRecorderRef.current = rec;
-      chunksRef.current = [];
-      rec.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      rec.onstop = async () => {
-        try {
-          if (!conversationId) return;
-          const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-          setUploadingAudio(true);
-          const { user } = await conversationsApi.sendAudio(
-            conversationId,
-            blob
-          );
-          // Append user message
-          setMessages((prev) => [...prev, user]);
-          // Start SSE stream for AI reply using the transcribed hanzi
-          const url = conversationsApi.streamUrl(
-            conversationId,
-            user.hanzi || ""
-          );
-          const es = new EventSource(url, { withCredentials: true });
-          const aiMsgId = Date.now() + 1;
-          const createdAt = new Date().toISOString();
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: aiMsgId,
-              role: "ai",
-              hanzi: "",
-              pinyin: "",
-              translation: "",
-              createdAt,
-              // Add loading flags for progressive SSE events
-              _loadingPinyin: true,
-              _loadingTranslation: true,
-              _loadingAudio: true,
-              _loadingNotes: true,
-            } as Message,
-          ]);
-          es.onmessage = (e) => {
-            try {
-              const payload = JSON.parse(e.data);
-              if (payload.hanziDelta) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === aiMsgId
-                      ? { ...m, hanzi: (m.hanzi || "") + payload.hanziDelta }
-                      : m
-                  )
-                );
-              } else if (payload.type === "ai-enrichment") {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === aiMsgId
-                      ? {
-                          ...m,
-                          pinyin: payload.pinyin || m.pinyin,
-                          segments: payload.segments || m.segments,
-                          _loadingPinyin: false,
-                        }
-                      : m
-                  )
-                );
-              } else if (payload.type === "ai-translation") {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === aiMsgId
-                      ? {
-                          ...m,
-                          translation: payload.translation || m.translation,
-                          _loadingTranslation: false,
-                        }
-                      : m
-                  )
-                );
-              } else if (payload.type === "ai-audio") {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === aiMsgId
-                      ? {
-                          ...m,
-                          audioUrl: payload.audioUrl || m.audioUrl,
-                          _loadingAudio: false,
-                        }
-                      : m
-                  )
-                );
-              } else if (payload.type === "ai-notes") {
-                const notesCamel = payload.notes
-                  ? {
-                      grammarNotes:
-                        payload.notes.grammarNotes ||
-                        payload.notes.grammar_notes,
-                      tipsRich:
-                        payload.notes.tipsRich || payload.notes.tips_rich,
-                    }
-                  : undefined;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === aiMsgId
-                      ? {
-                          ...m,
-                          notes: notesCamel || m.notes,
-                          _loadingNotes: false,
-                        }
-                      : m
-                  )
-                );
-              } else if (
-                payload &&
-                typeof payload === "object" &&
-                payload.id &&
-                (payload.translation !== undefined || payload.segments)
-              ) {
-                const data = payload as {
-                  id: number;
-                  pinyin?: string;
-                  translation?: string;
-                  segments?: Array<{
-                    text: string;
-                    startIndex: number;
-                    endIndex: number;
-                    isWord: boolean;
-                    hskLevel?: number;
-                    pinyin?: string;
-                    definition?: string;
-                    definitions?: string[];
-                  }>;
-                };
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.role === "user" && m.id === data.id
-                      ? {
-                          ...m,
-                          pinyin:
-                            typeof data.pinyin === "string"
-                              ? data.pinyin
-                              : m.pinyin,
-                          translation:
-                            typeof data.translation === "string"
-                              ? data.translation
-                              : m.translation,
-                          segments: Array.isArray(data.segments)
-                            ? data.segments
-                            : m.segments,
-                        }
-                      : m
-                  )
-                );
-              } else if (payload.type === "user-update" && payload.data) {
-                const data = JSON.parse(payload.data);
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === data.id
-                      ? {
-                          ...m,
-                          pinyin:
-                            typeof data.pinyin === "string"
-                              ? data.pinyin
-                              : m.pinyin,
-                          translation:
-                            typeof data.translation === "string"
-                              ? data.translation
-                              : m.translation,
-                          segments: Array.isArray(data.segments)
-                            ? data.segments
-                            : undefined,
-                        }
-                      : m
-                  )
-                );
-              } else if (payload.type === "final" && payload.data) {
-                const data = JSON.parse(payload.data);
-                const notesCamel = data?.notes
-                  ? {
-                      grammarNotes:
-                        data.notes.grammarNotes ||
-                        data.notes.grammar_notes ||
-                        undefined,
-                      tipsRich:
-                        data.notes.tipsRich ||
-                        data.notes.tips_rich ||
-                        undefined,
-                    }
-                  : undefined;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === aiMsgId
-                      ? {
-                          ...m,
-                          hanzi: data.hanzi || m.hanzi,
-                          pinyin: data.pinyin || "",
-                          translation: data.translation || "",
-                          notes: notesCamel ?? m.notes,
-                          audioUrl: data.audioUrl || undefined,
-                          segments: Array.isArray(data.segments)
-                            ? data.segments
-                            : buildFallbackSegments(
-                                data.hanzi || m.hanzi,
-                                data.pinyin || ""
-                              ),
-                        }
-                      : m
-                  )
-                );
-                es.close();
-              }
-            } catch {}
-          };
-          es.addEventListener("user-update", (e: MessageEvent) => {
-            try {
-              const data = JSON.parse(
-                (e as unknown as MessageEvent).data as string
-              );
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === aiMsgId || m.id === data.id
-                    ? {
-                        ...m,
-                        pinyin:
-                          typeof data.pinyin === "string"
-                            ? data.pinyin
-                            : m.pinyin,
-                        translation:
-                          typeof data.translation === "string"
-                            ? data.translation
-                            : m.translation,
-                        segments: Array.isArray(data.segments)
-                          ? data.segments
-                          : undefined,
-                      }
-                    : m
-                )
-              );
-            } catch {}
-          });
-          es.addEventListener("error", (e: MessageEvent) => {
-            try {
-              const data = JSON.parse(
-                (e as unknown as MessageEvent).data as string
-              );
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === aiMsgId || m.id === data.id
-                    ? {
-                        ...m,
-                        pinyin:
-                          typeof data.pinyin === "string"
-                            ? data.pinyin
-                            : m.pinyin,
-                        translation:
-                          typeof data.translation === "string"
-                            ? data.translation
-                            : m.translation,
-                        segments: Array.isArray(data.segments)
-                          ? data.segments
-                          : m.segments,
-                      }
-                    : m
-                )
-              );
-            } catch {}
-            // Hydrate AI message if no final arrived
-            if (conversationId) {
-              void (async () => {
-                try {
-                  const list =
-                    await conversationsApi.listMessages(conversationId);
-                  const latestAi = list
-                    .slice()
-                    .reverse()
-                    .find((m) => m.role === "ai");
-                  if (latestAi) {
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === aiMsgId
-                          ? {
-                              ...m,
-                              hanzi: latestAi.hanzi || m.hanzi,
-                              pinyin: latestAi.pinyin || m.pinyin,
-                              translation:
-                                latestAi.translation || m.translation,
-                              audioUrl: latestAi.audioUrl || m.audioUrl,
-                              segments: Array.isArray(latestAi.segments)
-                                ? latestAi.segments
-                                : m.segments,
-                              notes: latestAi.notes || m.notes,
-                            }
-                          : m
-                      )
-                    );
-                  }
-                } catch {}
-              })();
-            }
-            es.close();
-          });
-          es.onerror = () => {
-            // Hydrate AI message if stream ended without explicit final
-            if (conversationId) {
-              void (async () => {
-                try {
-                  const list =
-                    await conversationsApi.listMessages(conversationId);
-                  const latestAi = list
-                    .slice()
-                    .reverse()
-                    .find((m) => m.role === "ai");
-                  if (latestAi) {
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === aiMsgId
-                          ? {
-                              ...m,
-                              hanzi: latestAi.hanzi || m.hanzi,
-                              pinyin: latestAi.pinyin || m.pinyin,
-                              translation:
-                                latestAi.translation || m.translation,
-                              audioUrl: latestAi.audioUrl || m.audioUrl,
-                              segments: Array.isArray(latestAi.segments)
-                                ? latestAi.segments
-                                : m.segments,
-                              notes: latestAi.notes || m.notes,
-                            }
-                          : m
-                      )
-                    );
-                  }
-                } catch {}
-              })();
-            }
-            es.close();
-          };
-        } catch {
-          toast.error("Failed to send audio");
-        } finally {
-          setUploadingAudio(false);
-          setRecPrompt("Tap to speak");
-        }
-      };
-      rec.start();
-      setRecording(true);
-      setRecPrompt("Listening... Tap when done");
-    } catch {
-      toast.error("Mic permission denied");
-    }
-  };
-
-  const stopRecording = () => {
-    const rec = mediaRecorderRef.current;
-    if (rec && rec.state !== "inactive") {
-      rec.stop();
-      setRecording(false);
-      setRecPrompt("Processing...");
-    }
-  };
 
   function AiMessage({
     m,
@@ -1235,9 +933,15 @@ export default function ConversationsPage() {
       tokenIndex?: number;
     }>({ open: false, x: 0, y: 0, word: "" });
     const popupRef = useRef<HTMLDivElement | null>(null);
+    const mobilePopupRef = useRef<HTMLDivElement | null>(null);
+    const contentRef = useRef<HTMLDivElement | null>(null);
     useEffect(() => {
       const onClick = (e: MouseEvent) => {
-        if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        const target = e.target as Node;
+        const clickedInsideDesktop = popupRef.current?.contains(target);
+        const clickedInsideMobile = mobilePopupRef.current?.contains(target);
+        // Only close if click is outside both popups
+        if (!clickedInsideDesktop && !clickedInsideMobile) {
           setPopup((p) => ({ ...p, open: false }));
         }
       };
@@ -1245,56 +949,85 @@ export default function ConversationsPage() {
       return () => document.removeEventListener("mousedown", onClick);
     }, [popup.open]);
 
+    // Adapter to handle TokenRenderer's openFromElement callback
+    // This maintains absolute positioning (current behavior) instead of container-relative
+    const handleOpenFromElement = useCallback(
+      (el: HTMLElement, data?: unknown, placement?: "above" | "below") => {
+        // Placement is available but not used - we use absolute positioning instead
+        void placement;
+        const rect = el.getBoundingClientRect();
+        const tokenData = data as
+          | {
+              word?: string;
+              pinyin?: string;
+              definition?: string;
+              definitions?: string[];
+            }
+          | undefined;
+
+        // Find token index by searching through segments
+        let tokenIndex = -1;
+        if (Array.isArray(m.segments)) {
+          const wordText = tokenData?.word || "";
+          for (let i = 0; i < m.segments.length; i++) {
+            if (m.segments[i].text === wordText) {
+              tokenIndex = i;
+              break;
+            }
+          }
+        }
+
+        setPopup({
+          open: true,
+          x: rect.left + rect.width / 2,
+          y: rect.top,
+          word: tokenData?.word || "",
+          pinyin: tokenData?.pinyin,
+          definition: tokenData?.definition,
+          definitions: tokenData?.definitions,
+          tokenIndex,
+        });
+      },
+      [m.segments]
+    );
+
     const renderAligned = (hanzi: string, pinyin?: string) => {
-      // If segments exist, render segment-aware with click-to-popup
+      // If segments exist, use TokenRenderer
       if (Array.isArray(m.segments) && m.segments.length > 0) {
         return (
-          <div className="leading-8 text-white font-inter text-[16px]">
-            {m.segments.map((seg, idx) => {
-              const isCJK = /[\u3400-\u9FFF]/.test(seg.text || "");
-              const isWord = Boolean(seg.isWord) || isCJK;
-              return (
-                <span
-                  key={idx}
-                  className={`inline-flex flex-col items-center align-top mr-[2px]`}
-                >
-                  {showP ? (
-                    isWord && seg.pinyin ? (
-                      <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
-                        {seg.pinyin}
-                      </span>
-                    ) : (
-                      <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
-                        •
-                      </span>
-                    )
-                  ) : null}
-                  <span
-                    className={`px-[1px] rounded ${isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
-                    title={seg.definition || ""}
-                    onClick={(e: React.MouseEvent<HTMLSpanElement>) => {
-                      if (!isWord) return;
-                      setPopup({
-                        open: true,
-                        x: e.clientX,
-                        y: e.clientY,
-                        word: seg.text,
-                        pinyin: seg.pinyin,
-                        definition: seg.definition,
-                        definitions: seg.definitions,
-                        tokenIndex: idx,
-                      });
-                    }}
-                  >
-                    {seg.text}
-                  </span>
-                </span>
-              );
-            })}
-          </div>
+          <TokenRenderer
+            segments={m.segments as unknown as TokenRendererProps["segments"]}
+            fallbackZh={hanzi}
+            showPinyin={showP}
+            keyPrefix={`conversation-msg-${m.id}`}
+            textSizeClass="text-base"
+            openFromElement={handleOpenFromElement}
+            contentRef={contentRef}
+            contextSentenceZh={m.hanzi}
+            contextSentenceTranslation={m.translation}
+            applyHSKUnderline={false}
+          />
         );
       }
-      // Fallback to per-character alignment
+      // Fallback: build segments from hanzi and pinyin
+      const fallbackSegs = buildFallbackSegments(hanzi, pinyin);
+      if (fallbackSegs.length > 0) {
+        return (
+          <TokenRenderer
+            segments={fallbackSegs as unknown as TokenRendererProps["segments"]}
+            fallbackZh={hanzi}
+            showPinyin={showP}
+            keyPrefix={`conversation-msg-${m.id}-fallback`}
+            textSizeClass="text-base"
+            openFromElement={handleOpenFromElement}
+            contentRef={contentRef}
+            contextSentenceZh={m.hanzi}
+            contextSentenceTranslation={m.translation}
+            applyHSKUnderline={false}
+          />
+        );
+      }
+      // Ultimate fallback: per-character alignment (no segments at all)
       const chars = Array.from(hanzi || "");
       const ps = (pinyin || "").split(/\s+/).filter(Boolean);
       let pi = 0;
@@ -1492,7 +1225,7 @@ export default function ConversationsPage() {
     };
 
     return (
-      <div>
+      <div ref={contentRef}>
         {renderAligned(m.hanzi, m.pinyin)}
         <TranslationBlock show={showT} text={m.translation} />
         {showN ? <NotesBlock /> : null}
@@ -1534,75 +1267,11 @@ export default function ConversationsPage() {
               <button
                 onClick={() => {
                   // Build sentence-level context using segments and token index
-                  let ctx:
-                    | {
-                        hanzi?: string;
-                        pinyin?: string;
-                        translation?: string;
-                      }
-                    | undefined;
                   const tokenIndex = popup.tokenIndex ?? -1;
-                  if (Array.isArray(m.segments) && tokenIndex >= 0) {
-                    const messageHanzi = m.hanzi || "";
-                    const segments = m.segments || [];
-                    const tokenStart = segments
-                      .slice(0, tokenIndex)
-                      .reduce((acc, s) => acc + (s.text?.length || 0), 0);
-                    const hanziSentences = messageHanzi
-                      .split(/(?<=[。！？!?])/)
-                      .map((s) => s.trim())
-                      .filter(Boolean);
-                    let accLen = 0;
-                    let sentenceIdx = 0;
-                    for (let si = 0; si < hanziSentences.length; si++) {
-                      const sTxt = hanziSentences[si];
-                      const sLen = sTxt.length;
-                      if (tokenStart >= accLen && tokenStart < accLen + sLen) {
-                        sentenceIdx = si;
-                        break;
-                      }
-                      accLen += sLen;
-                    }
-                    const chosenHanzi =
-                      sentenceIdx >= 0
-                        ? hanziSentences[sentenceIdx]
-                        : hanziSentences[0] || messageHanzi;
-                    // Rebuild per-character pinyin aligned to message hanzi
-                    const pinyinTokens = (m.pinyin || "")
-                      .split(/\s+/)
-                      .map((s) => s.trim())
-                      .filter((s) => s.length > 0);
-                    const chars = Array.from(messageHanzi);
-                    const perChar: string[] = new Array(chars.length).fill("");
-                    let t = 0;
-                    for (let i = 0; i < chars.length; i++) {
-                      if (/^[\u3400-\u9FFF]$/.test(chars[i])) {
-                        perChar[i] = pinyinTokens[t] || "";
-                        if (pinyinTokens[t]) t++;
-                      }
-                    }
-                    const sentStartInMsg = hanziSentences
-                      .slice(0, sentenceIdx)
-                      .join("").length;
-                    const sentLen = chosenHanzi.length;
-                    const chosenPinyin = perChar
-                      .slice(sentStartInMsg, sentStartInMsg + sentLen)
-                      .join(" ")
-                      .trim();
-                    const transSentences = (m.translation || "")
-                      .split(/(?<=[.!?])\s+/)
-                      .map((s) => s.trim())
-                      .filter(Boolean);
-                    const chosenTrans =
-                      sentenceIdx >= 0 && transSentences[sentenceIdx]
-                        ? transSentences[sentenceIdx]
-                        : undefined;
-                    ctx = {
-                      hanzi: chosenHanzi,
-                      pinyin: chosenPinyin,
-                      translation: chosenTrans,
-                    };
-                  }
+                  const ctx =
+                    tokenIndex >= 0
+                      ? getSentenceContext(m, tokenIndex)
+                      : undefined;
                   void addSingleToFlashcards(popup.word, ctx);
                   setPopup((p) => ({ ...p, open: false }));
                 }}
@@ -1619,6 +1288,7 @@ export default function ConversationsPage() {
         <AnimatePresence>
           {popup.open && (
             <motion.div
+              ref={mobilePopupRef}
               initial={{ y: "-100%" }}
               animate={{ y: 0 }}
               exit={{ y: "-100%" }}
@@ -1665,80 +1335,11 @@ export default function ConversationsPage() {
                   <button
                     onClick={async () => {
                       // Build sentence-level context using segments and token index
-                      let ctx:
-                        | {
-                            hanzi?: string;
-                            pinyin?: string;
-                            translation?: string;
-                          }
-                        | undefined;
                       const tokenIndex = popup.tokenIndex ?? -1;
-                      if (Array.isArray(m.segments) && tokenIndex >= 0) {
-                        const messageHanzi = m.hanzi || "";
-                        const segments = m.segments || [];
-                        const tokenStart = segments
-                          .slice(0, tokenIndex)
-                          .reduce((acc, s) => acc + (s.text?.length || 0), 0);
-                        const hanziSentences = messageHanzi
-                          .split(/(?<=[。！？!?])/)
-                          .map((s) => s.trim())
-                          .filter(Boolean);
-                        let accLen = 0;
-                        let sentenceIdx = 0;
-                        for (let si = 0; si < hanziSentences.length; si++) {
-                          const sTxt = hanziSentences[si];
-                          const sLen = sTxt.length;
-                          if (
-                            tokenStart >= accLen &&
-                            tokenStart < accLen + sLen
-                          ) {
-                            sentenceIdx = si;
-                            break;
-                          }
-                          accLen += sLen;
-                        }
-                        const chosenHanzi =
-                          sentenceIdx >= 0
-                            ? hanziSentences[sentenceIdx]
-                            : hanziSentences[0] || messageHanzi;
-                        // Rebuild per-character pinyin aligned to message hanzi
-                        const pinyinTokens = (m.pinyin || "")
-                          .split(/\s+/)
-                          .map((s) => s.trim())
-                          .filter((s) => s.length > 0);
-                        const chars = Array.from(messageHanzi);
-                        const perChar: string[] = new Array(chars.length).fill(
-                          ""
-                        );
-                        let t = 0;
-                        for (let i = 0; i < chars.length; i++) {
-                          if (/^[\u3400-\u9FFF]$/.test(chars[i])) {
-                            perChar[i] = pinyinTokens[t] || "";
-                            if (pinyinTokens[t]) t++;
-                          }
-                        }
-                        const sentStartInMsg = hanziSentences
-                          .slice(0, sentenceIdx)
-                          .join("").length;
-                        const sentLen = chosenHanzi.length;
-                        const chosenPinyin = perChar
-                          .slice(sentStartInMsg, sentStartInMsg + sentLen)
-                          .join(" ")
-                          .trim();
-                        const transSentences = (m.translation || "")
-                          .split(/(?<=[.!?])\s+/)
-                          .map((s) => s.trim())
-                          .filter(Boolean);
-                        const chosenTrans =
-                          sentenceIdx >= 0 && transSentences[sentenceIdx]
-                            ? transSentences[sentenceIdx]
-                            : undefined;
-                        ctx = {
-                          hanzi: chosenHanzi,
-                          pinyin: chosenPinyin,
-                          translation: chosenTrans,
-                        };
-                      }
+                      const ctx =
+                        tokenIndex >= 0
+                          ? getSentenceContext(m, tokenIndex)
+                          : undefined;
                       await addSingleToFlashcards(popup.word, ctx);
                       setPopup((p) => ({ ...p, open: false }));
                     }}
@@ -1912,8 +1513,8 @@ export default function ConversationsPage() {
                                 }}
                                 className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
                                   conversationId === c.id
-                                    ? "text-[#c7cdff] hover:bg-[#3d4558] hover:text-red-400"
-                                    : "text-[#808080] hover:bg-[#2e323a] hover:text-red-400"
+                                    ? "text-[#c7cdff] hover:bg-red-600/20 hover:text-red-400"
+                                    : "text-[#808080] hover:bg-red-600/20 hover:text-red-400"
                                 }`}
                                 aria-label="Delete conversation"
                                 title="Delete conversation"
@@ -1978,8 +1579,8 @@ export default function ConversationsPage() {
                                 }}
                                 className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
                                   conversationId === c.id
-                                    ? "text-[#c7cdff] hover:bg-[#3d4558] hover:text-red-400"
-                                    : "text-[#808080] hover:bg-[#2e323a] hover:text-red-400"
+                                    ? "text-[#c7cdff] hover:bg-red-600/20 hover:text-red-400"
+                                    : "text-[#808080] hover:bg-red-600/20 hover:text-red-400"
                                 }`}
                                 aria-label="Delete conversation"
                                 title="Delete conversation"
@@ -2044,8 +1645,8 @@ export default function ConversationsPage() {
                                 }}
                                 className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
                                   conversationId === c.id
-                                    ? "text-[#c7cdff] hover:bg-[#3d4558] hover:text-red-400"
-                                    : "text-[#808080] hover:bg-[#2e323a] hover:text-red-400"
+                                    ? "text-[#c7cdff] hover:bg-red-600/20 hover:text-red-400"
+                                    : "text-[#808080] hover:bg-red-600/20 hover:text-red-400"
                                 }`}
                                 aria-label="Delete conversation"
                                 title="Delete conversation"
@@ -2476,9 +2077,7 @@ export default function ConversationsPage() {
                   {recPrompt}
                 </span>
                 <span className="text-[10px] text-[#808080] hidden sm:block">
-                  {recording
-                    ? "Start speaking • Tap when done"
-                    : "Mic uses your browser audio"}
+                  {recording ? "Start speaking • Tap when done" : ""}
                 </span>
               </div>
               {uploadingAudio ? (
@@ -2493,11 +2092,11 @@ export default function ConversationsPage() {
                 if (e.key === "Enter") sendText();
               }}
               placeholder="Type your message ..."
-              className="flex-1 min-w-0 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-white outline-none"
+              className="flex-1 min-w-0 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-white outline-none h-11"
             />
             <button
               onClick={sendText}
-              className="px-4 py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer shrink-0"
+              className="px-4 py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer shrink-0 h-11"
               type="button"
               aria-label="Send message"
             >
@@ -2536,11 +2135,23 @@ export default function ConversationsPage() {
                 </button>
               </div>
             </div>
-            <div className="p-4 overflow-y-auto space-y-3 flex-1">
+            <div
+              className="p-4 overflow-y-auto space-y-3 flex-1"
+              ref={notesModalContentRef}
+            >
               {Array.isArray(notesModal.message.notes?.grammarNotes) &&
-                notesModal.message.notes!.grammarNotes!.map(
-                  (
-                    gn: GrammarNote & {
+              notesModal.message.notes!.grammarNotes!.length > 0 ? (
+                <NotesSection
+                  title="Notes"
+                  notes={
+                    notesModal.message.notes!
+                      .grammarNotes! as unknown as Array<{
+                      point: string;
+                      pointPinyin?: string;
+                      pointEn?: string;
+                      brief: string;
+                      briefPinyin?: string;
+                      briefEn?: string;
                       pointSegments?: Array<{
                         text: string;
                         isWord?: boolean;
@@ -2555,132 +2166,33 @@ export default function ConversationsPage() {
                         definition?: string;
                         definitions?: string[];
                       }>;
-                      examples?: Array<
-                        Tip & {
-                          segments?: Array<{
-                            text: string;
-                            isWord?: boolean;
-                            pinyin?: string;
-                            definition?: string;
-                            definitions?: string[];
-                          }>;
-                        }
-                      >;
-                    },
-                    idx: number
-                  ) => (
-                    <div
-                      key={idx}
-                      className="text-sm text-[#c9d1d9] border border-[#2a2e36] bg-[#1a1f27] rounded-lg p-3 space-y-3"
-                    >
-                      {/* Point */}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[2px] rounded">
-                            Point
-                          </span>
-                        </div>
-                        <div>
-                          {Array.isArray(gn.pointSegments) &&
-                          gn.pointSegments.length > 0
-                            ? renderSegmentsWithPopup(
-                                gn.pointSegments,
-                                gn.point,
-                                gn.pointEn,
-                                notesPinyinOn
-                              )
-                            : renderNotesPinyin(
-                                gn.point,
-                                gn.pointPinyin,
-                                notesPinyinOn
-                              )}
-                        </div>
-                        {gn.pointEn ? (
-                          <div className="text-xs text-[#8b949e]">
-                            {gn.pointEn}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {/* Brief */}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[2px] rounded">
-                            Brief
-                          </span>
-                        </div>
-                        <div>
-                          {Array.isArray(gn.briefSegments) &&
-                          gn.briefSegments.length > 0
-                            ? renderSegmentsWithPopup(
-                                gn.briefSegments,
-                                gn.brief,
-                                gn.briefEn,
-                                notesPinyinOn
-                              )
-                            : renderNotesPinyin(
-                                gn.brief,
-                                gn.briefPinyin,
-                                notesPinyinOn
-                              )}
-                        </div>
-                        {gn.briefEn ? (
-                          <div className="text-xs text-[#8b949e]">
-                            {gn.briefEn}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {/* Examples */}
-                      {Array.isArray(gn.examples) && gn.examples.length > 0 ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[2px] rounded">
-                              Examples
-                            </span>
-                          </div>
-                          <ul className="space-y-2 list-disc list-outside pl-5 marker:text-[#596080]">
-                            {gn.examples.map((ex: Tip, i: number) => (
-                              <li key={i}>
-                                {Array.isArray(ex.segments) ? (
-                                  <>
-                                    {renderSegmentsWithPopup(
-                                      ex.segments,
-                                      ex.zh,
-                                      ex.en,
-                                      notesPinyinOn
-                                    )}
-                                    {ex.en ? (
-                                      <div className="text-[#8b949e] text-xs">
-                                        {ex.en}
-                                      </div>
-                                    ) : null}
-                                  </>
-                                ) : (
-                                  <>
-                                    <div className="text-[#c9d1d9]">
-                                      {ex.zh}
-                                    </div>
-                                    {notesPinyinOn && ex.pinyin ? (
-                                      <div className="text-[#9aa6ff] text-xs">
-                                        {ex.pinyin}
-                                      </div>
-                                    ) : null}
-                                    {ex.en ? (
-                                      <div className="text-[#8b949e] text-xs">
-                                        {ex.en}
-                                      </div>
-                                    ) : null}
-                                  </>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : null}
-                    </div>
-                  )
-                )}
+                      examples?: Array<{
+                        zh: string;
+                        en?: string;
+                        pinyin?: string;
+                        segments?: Array<{
+                          text: string;
+                          isWord?: boolean;
+                          pinyin?: string;
+                          definition?: string;
+                          definitions?: string[];
+                        }>;
+                      }>;
+                    }>
+                  }
+                  notesPinyinOn={notesPinyinOn}
+                  onTogglePinyin={() => setNotesPinyinOn((v) => !v)}
+                  sectionKey="story"
+                  multiSelect={false}
+                  selectedWords={{}}
+                  toggleSelectWord={undefined}
+                  contentRef={notesModalContentRef}
+                  setPopup={handleNotesModalPopup}
+                  openFromElement={handleNotesModalOpenFromElement}
+                  hskUnderlineClass={() => ""}
+                  maxItems={Infinity}
+                />
+              ) : null}
               {Array.isArray(
                 (notesModal.message.notes as MessageNotes)?.tipsRich
               ) &&
@@ -2789,6 +2301,7 @@ export default function ConversationsPage() {
             <AnimatePresence>
               {notesPopup.open && (
                 <motion.div
+                  ref={notesMobilePopupRef}
                   initial={{ y: "-100%" }}
                   animate={{ y: 0 }}
                   exit={{ y: "-100%" }}
