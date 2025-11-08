@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout";
 import {
   conversationsApi,
@@ -26,12 +26,13 @@ import {
   ChevronLeft,
   Volume2,
   Loader2,
-  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "framer-motion";
 import { NotesSection } from "@/components/lessons/NotesSection";
 import { AiMessage } from "@/components/conversations/AiMessage";
+import { ConversationList } from "@/components/conversations/ConversationList";
+import type { EnrichedConversation } from "@/components/conversations/ConversationList";
 
 // Local types to avoid `any` usages in notes rendering
 type SegToken = {
@@ -57,9 +58,6 @@ type MessageNotes = {
   grammarNotes?: GrammarNote[];
   tipsRich?: Tip[];
 };
-
-// Enriched conversation type with optional preview
-type EnrichedConversation = ConversationSummary & { preview?: string };
 
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -91,7 +89,7 @@ export default function ConversationsPage() {
   const deleteModalRef = useRef<HTMLDivElement | null>(null);
   const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
-  const deleteTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const deleteTriggerRef = useRef<HTMLElement | null>(null);
 
   // Hooks
   const { streamText, streamAudio } = useConversationStream();
@@ -357,26 +355,6 @@ export default function ConversationsPage() {
   });
 
   // Memoized date formatter utility
-  const formatConversationDate = useMemo(
-    () =>
-      (dateStr: string): string => {
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diffMs = now.getTime() - date.getTime();
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-        if (diffDays === 0) return "Today";
-        if (diffDays === 1) return "Yesterday";
-        if (diffDays < 7) return `${diffDays} days ago`;
-
-        return date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        });
-      },
-    []
-  );
 
   // Load conversation previews in parallel
   const loadConversationPreviews = async (
@@ -761,8 +739,16 @@ export default function ConversationsPage() {
     }
   };
 
-  const handleDeleteConversation = async (id: number) => {
+  const handleDeleteConversation = async (
+    id: number,
+    triggerElement?: HTMLElement
+  ) => {
     if (deleting) return;
+
+    // Store trigger element for focus restoration
+    if (triggerElement) {
+      deleteTriggerRef.current = triggerElement;
+    }
 
     const wasActive = conversationId === id;
     const deletedIndex = conversations.findIndex((c) => c.id === id);
@@ -911,269 +897,23 @@ export default function ConversationsPage() {
         )}
 
         {/* Sidebar */}
-        <aside
-          className={`bg-[#1b1f26] border border-[#2a2e36] rounded-xl p-3 flex flex-col gap-3 transition-all duration-300 ease-in-out ${
-            isMobile
-              ? `fixed inset-y-0 left-0 z-50 w-64 ${
-                  showConversationsSidebar
-                    ? "translate-x-0"
-                    : "-translate-x-full"
-                }`
-              : showConversationsSidebar
-                ? "w-64 shrink-0"
-                : "w-64 shrink-0"
-          }`}
-        >
-          <div className="px-2 text-xs uppercase tracking-wide text-[#8a8f99]">
-            Conversations
-          </div>
-          <div className="flex flex-col gap-1 overflow-y-auto max-h-[75vh] pr-1">
-            {loadingPreviews && conversations.length === 0 ? (
-              <div className="text-xs text-[#808080] px-3 py-2">
-                Loading conversations...
-              </div>
-            ) : (
-              (() => {
-                // Group conversations by time period
-                const now = new Date();
-                const weekAgo = new Date(
-                  now.getTime() - 7 * 24 * 60 * 60 * 1000
-                );
-                const monthAgo = new Date(
-                  now.getTime() - 30 * 24 * 60 * 60 * 1000
-                );
-
-                const recent: EnrichedConversation[] = [];
-                const lastMonth: EnrichedConversation[] = [];
-                const older: EnrichedConversation[] = [];
-
-                conversations.forEach((c) => {
-                  const date = new Date(c.startedAt);
-                  if (date >= weekAgo) {
-                    recent.push(c);
-                  } else if (date >= monthAgo) {
-                    lastMonth.push(c);
-                  } else {
-                    older.push(c);
-                  }
-                });
-
-                return (
-                  <>
-                    {recent.length > 0 && (
-                      <>
-                        <div className="text-[10px] uppercase tracking-wide text-[#8a8f99] px-3 py-1.5 mt-2">
-                          Recent ({recent.length})
-                        </div>
-                        {recent.map((c) => (
-                          <div
-                            key={c.id}
-                            className={`group relative w-full px-3 py-2 rounded-lg border transition-colors duration-150 ${
-                              conversationId === c.id
-                                ? "bg-[#2d3548] border-[#4040f2] text-[#c7cdff] shadow-sm"
-                                : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#4040f2]"
-                            }`}
-                            data-conversation-id={c.id}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void selectConversation(c.id);
-                                  if (isMobile) {
-                                    setShowConversationsSidebar(false);
-                                  }
-                                }}
-                                className="flex-1 text-left min-w-0 cursor-pointer"
-                                title={
-                                  c.preview ||
-                                  new Date(c.startedAt).toLocaleString()
-                                }
-                                aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
-                              >
-                                <div className="text-base font-medium truncate w-full">
-                                  {c.preview || `Conversation #${c.id}`}
-                                </div>
-                                <div className="text-[10px] text-[#808080]">
-                                  {formatConversationDate(c.startedAt)}
-                                </div>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteTriggerRef.current = e.currentTarget;
-                                  setDeleteConfirm({
-                                    open: true,
-                                    conversationId: c.id,
-                                  });
-                                }}
-                                className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
-                                  conversationId === c.id
-                                    ? "text-[#c7cdff] hover:bg-red-600/20 hover:text-red-400"
-                                    : "text-[#808080] hover:bg-red-600/20 hover:text-red-400"
-                                }`}
-                                aria-label="Delete conversation"
-                                title="Delete conversation"
-                              >
-                                <Trash2
-                                  className="w-4 h-4"
-                                  aria-hidden="true"
-                                />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    )}
-
-                    {lastMonth.length > 0 && (
-                      <>
-                        <div className="text-[10px] uppercase tracking-wide text-[#8a8f99] px-3 py-1.5 mt-2">
-                          Last 30 Days ({lastMonth.length})
-                        </div>
-                        {lastMonth.map((c) => (
-                          <div
-                            key={c.id}
-                            className={`group relative w-full px-3 py-2 rounded-lg border transition-colors duration-150 ${
-                              conversationId === c.id
-                                ? "bg-[#2d3548] border-[#4040f2] text-[#c7cdff] shadow-sm"
-                                : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#4040f2]"
-                            }`}
-                            data-conversation-id={c.id}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void selectConversation(c.id);
-                                  if (isMobile) {
-                                    setShowConversationsSidebar(false);
-                                  }
-                                }}
-                                className="flex-1 text-left min-w-0 cursor-pointer"
-                                title={
-                                  c.preview ||
-                                  new Date(c.startedAt).toLocaleString()
-                                }
-                                aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
-                              >
-                                <div className="text-base font-medium truncate w-full">
-                                  {c.preview || `Conversation #${c.id}`}
-                                </div>
-                                <div className="text-[10px] text-[#808080]">
-                                  {formatConversationDate(c.startedAt)}
-                                </div>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteTriggerRef.current = e.currentTarget;
-                                  setDeleteConfirm({
-                                    open: true,
-                                    conversationId: c.id,
-                                  });
-                                }}
-                                className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
-                                  conversationId === c.id
-                                    ? "text-[#c7cdff] hover:bg-red-600/20 hover:text-red-400"
-                                    : "text-[#808080] hover:bg-red-600/20 hover:text-red-400"
-                                }`}
-                                aria-label="Delete conversation"
-                                title="Delete conversation"
-                              >
-                                <Trash2
-                                  className="w-4 h-4"
-                                  aria-hidden="true"
-                                />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    )}
-
-                    {older.length > 0 && (
-                      <>
-                        <div className="text-[10px] uppercase tracking-wide text-[#8a8f99] px-3 py-1.5 mt-2">
-                          Older ({older.length})
-                        </div>
-                        {older.map((c) => (
-                          <div
-                            key={c.id}
-                            className={`group relative w-full px-3 py-2 rounded-lg border transition-colors duration-150 ${
-                              conversationId === c.id
-                                ? "bg-[#2d3548] border-[#4040f2] text-[#c7cdff] shadow-sm"
-                                : "bg-[#20242b] border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#4040f2]"
-                            }`}
-                            data-conversation-id={c.id}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void selectConversation(c.id);
-                                  if (isMobile) {
-                                    setShowConversationsSidebar(false);
-                                  }
-                                }}
-                                className="flex-1 text-left min-w-0 cursor-pointer"
-                                title={
-                                  c.preview ||
-                                  new Date(c.startedAt).toLocaleString()
-                                }
-                                aria-label={`${c.preview || "Conversation"} from ${formatConversationDate(c.startedAt)}`}
-                              >
-                                <div className="text-base font-medium truncate w-full">
-                                  {c.preview || `Conversation #${c.id}`}
-                                </div>
-                                <div className="text-[10px] text-[#808080]">
-                                  {formatConversationDate(c.startedAt)}
-                                </div>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteTriggerRef.current = e.currentTarget;
-                                  setDeleteConfirm({
-                                    open: true,
-                                    conversationId: c.id,
-                                  });
-                                }}
-                                className={`flex items-center justify-center w-6 h-6 rounded transition-colors duration-150 cursor-pointer touch-manipulation ${
-                                  conversationId === c.id
-                                    ? "text-[#c7cdff] hover:bg-red-600/20 hover:text-red-400"
-                                    : "text-[#808080] hover:bg-red-600/20 hover:text-red-400"
-                                }`}
-                                aria-label="Delete conversation"
-                                title="Delete conversation"
-                              >
-                                <Trash2
-                                  className="w-4 h-4"
-                                  aria-hidden="true"
-                                />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </>
-                );
-              })()
-            )}
-          </div>
-          <button
-            onClick={() => {
-              void newConversation();
-              if (isMobile) {
-                setShowConversationsSidebar(false);
-              }
-            }}
-            className="mt-auto w-full py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] cursor-pointer"
-          >
-            + New Conversation
-          </button>
-        </aside>
+        <ConversationList
+          conversations={conversations}
+          activeConversationId={conversationId}
+          onSelectConversation={selectConversation}
+          onDeleteConversation={(id, triggerElement) => {
+            deleteTriggerRef.current = triggerElement;
+            setDeleteConfirm({
+              open: true,
+              conversationId: id,
+            });
+          }}
+          onNewConversation={newConversation}
+          isMobile={isMobile}
+          showSidebar={showConversationsSidebar}
+          onCloseSidebar={() => setShowConversationsSidebar(false)}
+          loadingPreviews={loadingPreviews}
+        />
 
         {/* Delete Confirmation Modal */}
         <AnimatePresence>
@@ -1313,7 +1053,7 @@ export default function ConversationsPage() {
 
         {/* Main chat column */}
         <div
-          className={`flex-1 h-full flex flex-col gap-3 transition-all duration-300 ease-in-out ${
+          className={`flex-1 h-full flex flex-col gap-2 transition-all duration-300 ease-in-out ${
             isMobile && showConversationsSidebar ? "hidden" : ""
           }`}
         >

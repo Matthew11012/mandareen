@@ -38,13 +38,7 @@ type MessageNotes = {
 };
 
 // TranslationBlock component (simple memo component)
-const TranslationBlock = ({
-  show,
-  text,
-}: {
-  show: boolean;
-  text?: string;
-}) => {
+const TranslationBlock = ({ show, text }: { show: boolean; text?: string }) => {
   if (!show || !text) return null;
   return <div className="text-[#a6a6a6] text-sm mt-1">{text}</div>;
 };
@@ -192,11 +186,6 @@ export function AiMessage({
     showPinyinState: boolean = true
   ) => {
     if (!Array.isArray(segments) || segments.length === 0) return null;
-    // Build line-level pinyin by concatenating token pinyin for CJK tokens
-    const linePinyin = segments
-      .map((s) => (s.isWord && s.pinyin ? s.pinyin : ""))
-      .filter(Boolean)
-      .join(" ");
     return (
       <div className="leading-8 text-white font-inter text-[16px]">
         {segments.map((seg, idx) => {
@@ -246,7 +235,9 @@ export function AiMessage({
     if (Array.isArray(message.segments) && message.segments.length > 0) {
       return (
         <TokenRenderer
-          segments={message.segments as unknown as TokenRendererProps["segments"]}
+          segments={
+            message.segments as unknown as TokenRendererProps["segments"]
+          }
           fallbackZh={hanzi}
           showPinyin={showPinyin}
           keyPrefix={`conversation-msg-${message.id}`}
@@ -312,9 +303,7 @@ export function AiMessage({
     if (!has) return null;
     return (
       <div className="mt-2 border border-[#3a3f47] rounded-md bg-[#1d2128] p-2">
-        <div className="text-xs font-semibold text-white mb-1">
-          Tutor Notes
-        </div>
+        <div className="text-xs font-semibold text-white mb-1">Tutor Notes</div>
         <div className="space-y-3 max-h-56 overflow-hidden relative">
           {message
             .notes!.grammarNotes!.slice(0, 2)
@@ -424,35 +413,37 @@ export function AiMessage({
               Tips
             </div>
             <ul className="space-y-1 list-disc list-outside pl-4 marker:text-[#596080]">
-              {(message.notes as MessageNotes).tipsRich!.slice(0, 2).map((t, i) => (
-                <li key={i}>
-                  {Array.isArray(t.segments) && t.segments.length > 0 ? (
-                    <>
-                      {renderSegmentsWithPopup(
-                        t.segments,
-                        t.zh,
-                        t.en,
-                        showPinyin
-                      )}
-                      {t.en ? (
-                        <div className="text-[#8b949e] text-xs">{t.en}</div>
-                      ) : null}
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-[#c9d1d9]">{t.zh}</div>
-                      {showPinyin && t.pinyin ? (
-                        <div className="text-[#9aa6ff] text-xs">
-                          {t.pinyin}
-                        </div>
-                      ) : null}
-                      {t.en ? (
-                        <div className="text-[#8b949e] text-xs">{t.en}</div>
-                      ) : null}
-                    </>
-                  )}
-                </li>
-              ))}
+              {(message.notes as MessageNotes)
+                .tipsRich!.slice(0, 2)
+                .map((t, i) => (
+                  <li key={i}>
+                    {Array.isArray(t.segments) && t.segments.length > 0 ? (
+                      <>
+                        {renderSegmentsWithPopup(
+                          t.segments,
+                          t.zh,
+                          t.en,
+                          showPinyin
+                        )}
+                        {t.en ? (
+                          <div className="text-[#8b949e] text-xs">{t.en}</div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-[#c9d1d9]">{t.zh}</div>
+                        {showPinyin && t.pinyin ? (
+                          <div className="text-[#9aa6ff] text-xs">
+                            {t.pinyin}
+                          </div>
+                        ) : null}
+                        {t.en ? (
+                          <div className="text-[#8b949e] text-xs">{t.en}</div>
+                        ) : null}
+                      </>
+                    )}
+                  </li>
+                ))}
             </ul>
           </div>
         ) : null}
@@ -501,8 +492,7 @@ export function AiMessage({
               {popup.pinyin}
             </div>
           )}
-          {Array.isArray(popup.definitions) &&
-          popup.definitions.length > 0 ? (
+          {Array.isArray(popup.definitions) && popup.definitions.length > 0 ? (
             <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
               {popup.definitions.map((d, i) => (
                 <div key={i}>• {d}</div>
@@ -596,9 +586,7 @@ export function AiMessage({
                   className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  <span className="text-sm font-inter">
-                    Add to Flashcards
-                  </span>
+                  <span className="text-sm font-inter">Add to Flashcards</span>
                 </button>
               </div>
             </div>
@@ -608,4 +596,3 @@ export function AiMessage({
     </div>
   );
 }
-
