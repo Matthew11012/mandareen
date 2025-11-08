@@ -33,6 +33,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "framer-motion";
+import { TokenRenderer } from "@/components/lessons/TokenRenderer";
+import type { TokenRendererProps } from "@/components/lessons/TokenRenderer";
+import { NotesSection } from "@/components/lessons/NotesSection";
 
 // Local types to avoid `any` usages in notes rendering
 type SegToken = {
@@ -448,6 +451,107 @@ export default function ConversationsPage() {
   }>({ open: false, x: 0, y: 0, word: "" });
   const notesPopupRef = useRef<HTMLDivElement | null>(null);
   const notesMobilePopupRef = useRef<HTMLDivElement | null>(null);
+  const notesModalContentRef = useRef<HTMLDivElement | null>(null);
+
+  // Handler adapter for NotesSection TokenRenderer popup using openFromElement
+  // This maintains absolute positioning (current behavior)
+  const handleNotesModalOpenFromElement = useCallback(
+    (el: HTMLElement, data?: unknown, placement?: "above" | "below") => {
+      // Placement is available but not used - we use absolute positioning instead
+      void placement;
+      const rect = el.getBoundingClientRect();
+      const tokenData = data as
+        | {
+            word?: string;
+            pinyin?: string;
+            definition?: string;
+            definitions?: string[];
+          }
+        | undefined;
+
+      setNotesPopup({
+        open: true,
+        x: rect.left + rect.width / 2,
+        y: rect.top,
+        word: tokenData?.word || "",
+        pinyin: tokenData?.pinyin,
+        definition: tokenData?.definition,
+        definitions: tokenData?.definitions,
+        ctx: notesModal.message
+          ? {
+              hanzi: notesModal.message.hanzi,
+              pinyin: notesModal.message.pinyin,
+              translation: notesModal.message.translation,
+            }
+          : undefined,
+      });
+    },
+    [notesModal.message]
+  );
+
+  // Handler adapter for NotesSection TokenRenderer popup using setPopup (fallback)
+  const handleNotesModalPopup = useCallback(
+    (popup: {
+      open: boolean;
+      x: number;
+      y: number;
+      anchorH: number;
+      word: string;
+      pinyin?: string;
+      definition?: string;
+      definitions?: string[];
+      paraIndex?: number;
+      tokenIndex?: number;
+      hskLevel?: number;
+    }) => {
+      if (!popup.open) {
+        setNotesPopup((p) => ({ ...p, open: false }));
+        return;
+      }
+      // Convert container-relative coordinates to absolute
+      const container = notesModalContentRef.current;
+      if (container) {
+        const containerRect = container.getBoundingClientRect();
+        const absoluteX = containerRect.left + popup.x;
+        const absoluteY = containerRect.top + popup.y;
+        setNotesPopup({
+          open: true,
+          x: absoluteX,
+          y: absoluteY,
+          word: popup.word,
+          pinyin: popup.pinyin,
+          definition: popup.definition,
+          definitions: popup.definitions,
+          ctx: notesModal.message
+            ? {
+                hanzi: notesModal.message.hanzi,
+                pinyin: notesModal.message.pinyin,
+                translation: notesModal.message.translation,
+              }
+            : undefined,
+        });
+      } else {
+        // Fallback: use provided coordinates directly
+        setNotesPopup({
+          open: true,
+          x: popup.x,
+          y: popup.y,
+          word: popup.word,
+          pinyin: popup.pinyin,
+          definition: popup.definition,
+          definitions: popup.definitions,
+          ctx: notesModal.message
+            ? {
+                hanzi: notesModal.message.hanzi,
+                pinyin: notesModal.message.pinyin,
+                translation: notesModal.message.translation,
+              }
+            : undefined,
+        });
+      }
+    },
+    [notesModal.message]
+  );
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       const target = e.target as Node;
@@ -830,6 +934,7 @@ export default function ConversationsPage() {
     }>({ open: false, x: 0, y: 0, word: "" });
     const popupRef = useRef<HTMLDivElement | null>(null);
     const mobilePopupRef = useRef<HTMLDivElement | null>(null);
+    const contentRef = useRef<HTMLDivElement | null>(null);
     useEffect(() => {
       const onClick = (e: MouseEvent) => {
         const target = e.target as Node;
@@ -844,56 +949,85 @@ export default function ConversationsPage() {
       return () => document.removeEventListener("mousedown", onClick);
     }, [popup.open]);
 
+    // Adapter to handle TokenRenderer's openFromElement callback
+    // This maintains absolute positioning (current behavior) instead of container-relative
+    const handleOpenFromElement = useCallback(
+      (el: HTMLElement, data?: unknown, placement?: "above" | "below") => {
+        // Placement is available but not used - we use absolute positioning instead
+        void placement;
+        const rect = el.getBoundingClientRect();
+        const tokenData = data as
+          | {
+              word?: string;
+              pinyin?: string;
+              definition?: string;
+              definitions?: string[];
+            }
+          | undefined;
+
+        // Find token index by searching through segments
+        let tokenIndex = -1;
+        if (Array.isArray(m.segments)) {
+          const wordText = tokenData?.word || "";
+          for (let i = 0; i < m.segments.length; i++) {
+            if (m.segments[i].text === wordText) {
+              tokenIndex = i;
+              break;
+            }
+          }
+        }
+
+        setPopup({
+          open: true,
+          x: rect.left + rect.width / 2,
+          y: rect.top,
+          word: tokenData?.word || "",
+          pinyin: tokenData?.pinyin,
+          definition: tokenData?.definition,
+          definitions: tokenData?.definitions,
+          tokenIndex,
+        });
+      },
+      [m.segments]
+    );
+
     const renderAligned = (hanzi: string, pinyin?: string) => {
-      // If segments exist, render segment-aware with click-to-popup
+      // If segments exist, use TokenRenderer
       if (Array.isArray(m.segments) && m.segments.length > 0) {
         return (
-          <div className="leading-8 text-white font-inter text-[16px]">
-            {m.segments.map((seg, idx) => {
-              const isCJK = /[\u3400-\u9FFF]/.test(seg.text || "");
-              const isWord = Boolean(seg.isWord) || isCJK;
-              return (
-                <span
-                  key={idx}
-                  className={`inline-flex flex-col items-center align-top mr-[2px]`}
-                >
-                  {showP ? (
-                    isWord && seg.pinyin ? (
-                      <span className="text-xs text-[#9aa6ff] leading-none mb-[2px]">
-                        {seg.pinyin}
-                      </span>
-                    ) : (
-                      <span className="text-xs opacity-0 leading-none mb-[2px] select-none">
-                        •
-                      </span>
-                    )
-                  ) : null}
-                  <span
-                    className={`px-[1px] rounded ${isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
-                    title={seg.definition || ""}
-                    onClick={(e: React.MouseEvent<HTMLSpanElement>) => {
-                      if (!isWord) return;
-                      setPopup({
-                        open: true,
-                        x: e.clientX,
-                        y: e.clientY,
-                        word: seg.text,
-                        pinyin: seg.pinyin,
-                        definition: seg.definition,
-                        definitions: seg.definitions,
-                        tokenIndex: idx,
-                      });
-                    }}
-                  >
-                    {seg.text}
-                  </span>
-                </span>
-              );
-            })}
-          </div>
+          <TokenRenderer
+            segments={m.segments as unknown as TokenRendererProps["segments"]}
+            fallbackZh={hanzi}
+            showPinyin={showP}
+            keyPrefix={`conversation-msg-${m.id}`}
+            textSizeClass="text-base"
+            openFromElement={handleOpenFromElement}
+            contentRef={contentRef}
+            contextSentenceZh={m.hanzi}
+            contextSentenceTranslation={m.translation}
+            applyHSKUnderline={false}
+          />
         );
       }
-      // Fallback to per-character alignment
+      // Fallback: build segments from hanzi and pinyin
+      const fallbackSegs = buildFallbackSegments(hanzi, pinyin);
+      if (fallbackSegs.length > 0) {
+        return (
+          <TokenRenderer
+            segments={fallbackSegs as unknown as TokenRendererProps["segments"]}
+            fallbackZh={hanzi}
+            showPinyin={showP}
+            keyPrefix={`conversation-msg-${m.id}-fallback`}
+            textSizeClass="text-base"
+            openFromElement={handleOpenFromElement}
+            contentRef={contentRef}
+            contextSentenceZh={m.hanzi}
+            contextSentenceTranslation={m.translation}
+            applyHSKUnderline={false}
+          />
+        );
+      }
+      // Ultimate fallback: per-character alignment (no segments at all)
       const chars = Array.from(hanzi || "");
       const ps = (pinyin || "").split(/\s+/).filter(Boolean);
       let pi = 0;
@@ -1091,7 +1225,7 @@ export default function ConversationsPage() {
     };
 
     return (
-      <div>
+      <div ref={contentRef}>
         {renderAligned(m.hanzi, m.pinyin)}
         <TranslationBlock show={showT} text={m.translation} />
         {showN ? <NotesBlock /> : null}
@@ -2001,11 +2135,23 @@ export default function ConversationsPage() {
                 </button>
               </div>
             </div>
-            <div className="p-4 overflow-y-auto space-y-3 flex-1">
+            <div
+              className="p-4 overflow-y-auto space-y-3 flex-1"
+              ref={notesModalContentRef}
+            >
               {Array.isArray(notesModal.message.notes?.grammarNotes) &&
-                notesModal.message.notes!.grammarNotes!.map(
-                  (
-                    gn: GrammarNote & {
+              notesModal.message.notes!.grammarNotes!.length > 0 ? (
+                <NotesSection
+                  title="Notes"
+                  notes={
+                    notesModal.message.notes!
+                      .grammarNotes! as unknown as Array<{
+                      point: string;
+                      pointPinyin?: string;
+                      pointEn?: string;
+                      brief: string;
+                      briefPinyin?: string;
+                      briefEn?: string;
                       pointSegments?: Array<{
                         text: string;
                         isWord?: boolean;
@@ -2020,132 +2166,33 @@ export default function ConversationsPage() {
                         definition?: string;
                         definitions?: string[];
                       }>;
-                      examples?: Array<
-                        Tip & {
-                          segments?: Array<{
-                            text: string;
-                            isWord?: boolean;
-                            pinyin?: string;
-                            definition?: string;
-                            definitions?: string[];
-                          }>;
-                        }
-                      >;
-                    },
-                    idx: number
-                  ) => (
-                    <div
-                      key={idx}
-                      className="text-sm text-[#c9d1d9] border border-[#2a2e36] bg-[#1a1f27] rounded-lg p-3 space-y-3"
-                    >
-                      {/* Point */}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[2px] rounded">
-                            Point
-                          </span>
-                        </div>
-                        <div>
-                          {Array.isArray(gn.pointSegments) &&
-                          gn.pointSegments.length > 0
-                            ? renderSegmentsWithPopup(
-                                gn.pointSegments,
-                                gn.point,
-                                gn.pointEn,
-                                notesPinyinOn
-                              )
-                            : renderNotesPinyin(
-                                gn.point,
-                                gn.pointPinyin,
-                                notesPinyinOn
-                              )}
-                        </div>
-                        {gn.pointEn ? (
-                          <div className="text-xs text-[#8b949e]">
-                            {gn.pointEn}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {/* Brief */}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[2px] rounded">
-                            Brief
-                          </span>
-                        </div>
-                        <div>
-                          {Array.isArray(gn.briefSegments) &&
-                          gn.briefSegments.length > 0
-                            ? renderSegmentsWithPopup(
-                                gn.briefSegments,
-                                gn.brief,
-                                gn.briefEn,
-                                notesPinyinOn
-                              )
-                            : renderNotesPinyin(
-                                gn.brief,
-                                gn.briefPinyin,
-                                notesPinyinOn
-                              )}
-                        </div>
-                        {gn.briefEn ? (
-                          <div className="text-xs text-[#8b949e]">
-                            {gn.briefEn}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {/* Examples */}
-                      {Array.isArray(gn.examples) && gn.examples.length > 0 ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] uppercase tracking-wide text-[#8a8f99] bg-[#2a2e36] px-2 py-[2px] rounded">
-                              Examples
-                            </span>
-                          </div>
-                          <ul className="space-y-2 list-disc list-outside pl-5 marker:text-[#596080]">
-                            {gn.examples.map((ex: Tip, i: number) => (
-                              <li key={i}>
-                                {Array.isArray(ex.segments) ? (
-                                  <>
-                                    {renderSegmentsWithPopup(
-                                      ex.segments,
-                                      ex.zh,
-                                      ex.en,
-                                      notesPinyinOn
-                                    )}
-                                    {ex.en ? (
-                                      <div className="text-[#8b949e] text-xs">
-                                        {ex.en}
-                                      </div>
-                                    ) : null}
-                                  </>
-                                ) : (
-                                  <>
-                                    <div className="text-[#c9d1d9]">
-                                      {ex.zh}
-                                    </div>
-                                    {notesPinyinOn && ex.pinyin ? (
-                                      <div className="text-[#9aa6ff] text-xs">
-                                        {ex.pinyin}
-                                      </div>
-                                    ) : null}
-                                    {ex.en ? (
-                                      <div className="text-[#8b949e] text-xs">
-                                        {ex.en}
-                                      </div>
-                                    ) : null}
-                                  </>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : null}
-                    </div>
-                  )
-                )}
+                      examples?: Array<{
+                        zh: string;
+                        en?: string;
+                        pinyin?: string;
+                        segments?: Array<{
+                          text: string;
+                          isWord?: boolean;
+                          pinyin?: string;
+                          definition?: string;
+                          definitions?: string[];
+                        }>;
+                      }>;
+                    }>
+                  }
+                  notesPinyinOn={notesPinyinOn}
+                  onTogglePinyin={() => setNotesPinyinOn((v) => !v)}
+                  sectionKey="story"
+                  multiSelect={false}
+                  selectedWords={{}}
+                  toggleSelectWord={undefined}
+                  contentRef={notesModalContentRef}
+                  setPopup={handleNotesModalPopup}
+                  openFromElement={handleNotesModalOpenFromElement}
+                  hskUnderlineClass={() => ""}
+                  maxItems={Infinity}
+                />
+              ) : null}
               {Array.isArray(
                 (notesModal.message.notes as MessageNotes)?.tipsRich
               ) &&
