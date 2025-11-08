@@ -17,14 +17,14 @@ import {
   sortConversationsByStartedAt,
 } from "@/lib/hooks/use-conversations";
 import { buildFallbackSegments } from "@/lib/utils/segments";
-import { MessageCircle, ChevronLeft, Loader2 } from "lucide-react";
+import { MessageCircle, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
-import { AnimatePresence, motion } from "framer-motion";
 import { ConversationList } from "@/components/conversations/ConversationList";
 import type { EnrichedConversation } from "@/components/conversations/ConversationList";
 import { MessageView } from "@/components/conversations/MessageView";
 import { MessageInput } from "@/components/conversations/MessageInput";
 import { NotesModal } from "@/components/conversations/NotesModal";
+import { DeleteConfirmationModal } from "@/components/conversations/DeleteConfirmationModal";
 
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -52,9 +52,6 @@ export default function ConversationsPage() {
     conversationId: number | null;
   }>({ open: false, conversationId: null });
   const [deleting, setDeleting] = useState<boolean>(false);
-  const deleteModalRef = useRef<HTMLDivElement | null>(null);
-  const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
-  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const deleteTriggerRef = useRef<HTMLElement | null>(null);
 
   // Hooks
@@ -585,37 +582,6 @@ export default function ConversationsPage() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Keyboard handling for delete confirmation modal
-  useEffect(() => {
-    if (!deleteConfirm.open) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !deleting) {
-        setDeleteConfirm({ open: false, conversationId: null });
-        // Return focus to trigger button
-        deleteTriggerRef.current?.focus();
-      }
-      if (e.key === "Enter" && e.target === cancelButtonRef.current) {
-        e.preventDefault();
-        if (!deleting) {
-          setDeleteConfirm({ open: false, conversationId: null });
-          deleteTriggerRef.current?.focus();
-        }
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-
-    // Focus first button when modal opens
-    setTimeout(() => {
-      cancelButtonRef.current?.focus();
-    }, 100);
-
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [deleteConfirm.open, deleting]);
-
   const selectConversation = async (id: number) => {
     if (conversationId === id) return;
     setConversationId(id);
@@ -705,6 +671,7 @@ export default function ConversationsPage() {
       });
       setDeleteConfirm({ open: false, conversationId: null });
       // Focus moves to next conversation automatically via selectConversation
+      // Note: Focus restoration handled by DeleteConfirmationModal
     } catch {
       // Rollback on failure
       const restored = [...conversations];
@@ -815,95 +782,18 @@ export default function ConversationsPage() {
         />
 
         {/* Delete Confirmation Modal */}
-        <AnimatePresence>
-          {deleteConfirm.open && deleteConfirm.conversationId !== null && (
-            <>
-              {/* Backdrop */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="fixed inset-0 bg-black/50 z-50"
-                onClick={() =>
-                  !deleting &&
-                  setDeleteConfirm({ open: false, conversationId: null })
-                }
-                aria-hidden="true"
-              />
-              {/* Modal */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
-                className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="delete-dialog-title"
-                aria-describedby="delete-dialog-description"
-              >
-                <div
-                  ref={deleteModalRef}
-                  className="bg-[#1b1f26] border border-[#2e323a] rounded-xl p-6 max-w-sm w-full shadow-xl pointer-events-auto"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <h2
-                    id="delete-dialog-title"
-                    className="text-lg font-semibold text-white mb-2"
-                  >
-                    Delete conversation?
-                  </h2>
-                  <p
-                    id="delete-dialog-description"
-                    className="text-sm text-[#a6a6a6] mb-6"
-                  >
-                    This will permanently delete this conversation.
-                  </p>
-                  <div className="flex gap-3 justify-end">
-                    <button
-                      ref={cancelButtonRef}
-                      onClick={() =>
-                        !deleting &&
-                        setDeleteConfirm({ open: false, conversationId: null })
-                      }
-                      disabled={deleting}
-                      className="px-4 py-2 rounded-lg border border-[#2e323a] text-[#a6a6a6] hover:bg-[#252932] hover:border-[#404040] transition-colors duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1b1f26]"
-                      aria-label="Cancel deletion"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      ref={deleteButtonRef}
-                      onClick={() => {
-                        if (
-                          deleteConfirm.conversationId !== null &&
-                          !deleting
-                        ) {
-                          void handleDeleteConversation(
-                            deleteConfirm.conversationId
-                          );
-                        }
-                      }}
-                      disabled={deleting}
-                      className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1b1f26] flex items-center gap-2 min-h-[44px]"
-                      aria-label="Confirm deletion"
-                    >
-                      {deleting ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Deleting...</span>
-                        </>
-                      ) : (
-                        "Delete"
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
+        <DeleteConfirmationModal
+          open={deleteConfirm.open}
+          conversationId={deleteConfirm.conversationId}
+          deleting={deleting}
+          onConfirm={(id) => {
+            void handleDeleteConversation(id);
+          }}
+          onCancel={() => {
+            setDeleteConfirm({ open: false, conversationId: null });
+          }}
+          triggerRef={deleteTriggerRef}
+        />
 
         {/* Conversations Toggle Button */}
         {isMobile && (
