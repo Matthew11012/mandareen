@@ -244,6 +244,8 @@ export function useConversationStream() {
       params: {
         conversationId: number;
         audio: Blob;
+        text?: string; // Optional: pass transcribed hanzi to enable user-update events
+        skipSendAudio?: boolean; // If true, skip sendAudio call (already done by caller)
       },
       cb: StreamCallbacks
     ) => {
@@ -252,9 +254,17 @@ export function useConversationStream() {
       const createdAt = new Date().toISOString();
       cb.onStart?.({ id: aiId, createdAt });
 
-      // First upload audio to obtain server-side user message; server will stream AI reply
-      await conversationsApi.sendAudio(params.conversationId, params.audio);
-      const url = conversationsApi.streamUrl(params.conversationId, "");
+      // Only upload audio if not already done by caller
+      // This prevents duplicate user messages when sendAudio is called in onData callback
+      if (!params.skipSendAudio) {
+        await conversationsApi.sendAudio(params.conversationId, params.audio);
+      }
+      // If text is provided, include it so servers that emit "user-update"
+      // for text flows will do the same for audio flows.
+      const url = conversationsApi.streamUrl(
+        params.conversationId,
+        params.text ?? ""
+      );
       const es = new EventSource(url, { withCredentials: true });
       currentEsRef.current = es;
       wireHandlers(es, cb);

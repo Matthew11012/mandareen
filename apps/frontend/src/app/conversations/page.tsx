@@ -18,20 +18,14 @@ import {
 } from "@/lib/hooks/use-conversations";
 import { buildFallbackSegments } from "@/lib/utils/segments";
 import { addSingleToFlashcards } from "@/lib/utils/flashcards";
-import {
-  Mic,
-  Send,
-  Plus,
-  MessageCircle,
-  ChevronLeft,
-  Loader2,
-} from "lucide-react";
+import { Plus, MessageCircle, ChevronLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "framer-motion";
 import { NotesSection } from "@/components/lessons/NotesSection";
 import { ConversationList } from "@/components/conversations/ConversationList";
 import type { EnrichedConversation } from "@/components/conversations/ConversationList";
 import { MessageView } from "@/components/conversations/MessageView";
+import { MessageInput } from "@/components/conversations/MessageInput";
 
 // Local types to avoid `any` usages in notes rendering
 type SegToken = {
@@ -336,15 +330,136 @@ export default function ConversationsPage() {
     onData: async (blob) => {
       if (!conversationId) return;
       try {
-        // Upload audio first to get user message (with transcribed hanzi)
+        // Upload audio and get user message (with transcribed hanzi)
+        // Store the user message ID to match with stream updates
         const { user } = await conversationsApi.sendAudio(conversationId, blob);
-        setMessages((prev) => [...prev, user]);
-        // Then start streaming AI reply (hook will handle SSE)
-        // Note: streamAudio hook also calls sendAudio, but that's okay - server handles idempotency
+        // Add user message to state with loading flags for translation and segments
+        const userMessageWithLoading: Message = {
+          ...user,
+          _loadingPinyin: true,
+          _loadingTranslation: true,
+        };
+        setMessages((prev) => [...prev, userMessageWithLoading]);
+
+        // Create stream callbacks that know about the user message ID
         const aiMsgId = Date.now() + 1;
+        const userId = user.id;
+        const callbacks = createStreamCallbacks(aiMsgId);
+
+        // Wrap onUserUpdate to ensure it matches the correct user message ID
+        // The stream should send user-update events with the user message ID from sendAudio
+        const originalOnUserUpdate = callbacks.onUserUpdate;
+        const originalOnFinal = callbacks.onFinal;
+        callbacks.onUserUpdate = (update) => {
+          // Apply update if ID matches our user message
+          // The original handler already handles the update logic correctly
+          if (update.id === userId) {
+            originalOnUserUpdate?.(update);
+          } else {
+            // Fallback: if ID doesn't match, try to update the most recent user message
+            // This handles edge cases where server might return a different ID
+            setMessages((prev) => {
+              // Find the most recent user message that matches our userId
+              const userMsgIndex = prev.findIndex(
+                (m) => m.role === "user" && m.id === userId
+              );
+              if (userMsgIndex !== -1) {
+                const updated = [...prev];
+                const userMsg = updated[userMsgIndex];
+                updated[userMsgIndex] = {
+                  ...userMsg,
+                  pinyin:
+                    typeof update.pinyin === "string"
+                      ? update.pinyin
+                      : userMsg.pinyin,
+                  translation:
+                    typeof update.translation === "string"
+                      ? update.translation
+                      : userMsg.translation,
+                  segments: Array.isArray(update.segments)
+                    ? update.segments
+                    : userMsg.segments,
+                  _loadingPinyin: false,
+                  _loadingTranslation: false,
+                };
+                return updated;
+              }
+              // If we can't find the user message, call original handler as fallback
+              originalOnUserUpdate?.(update);
+              return prev;
+            });
+          }
+        };
+        // Safety: if backend doesn't emit user-update during audio flow,
+        // hydrate the user message after final by refetching from server.
+        callbacks.onFinal = async (...args) => {
+          try {
+            await originalOnFinal?.(...args);
+          } finally {
+            try {
+              const list = await conversationsApi.listMessages(conversationId);
+              const latestUser = list
+                .slice()
+                .reverse()
+                .find((m) => m.role === "user" && m.id === userId);
+              if (latestUser) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.role === "user" && m.id === userId
+                      ? {
+                          ...m,
+                          pinyin: latestUser.pinyin ?? m.pinyin,
+                          translation: latestUser.translation ?? m.translation,
+                          segments: Array.isArray(latestUser.segments)
+                            ? latestUser.segments
+                            : m.segments,
+                          _loadingPinyin: false,
+                          _loadingTranslation: false,
+                        }
+                      : m
+                  )
+                );
+              } else {
+                // Even if not found, stop loading to avoid stuck UI
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.role === "user" && m.id === userId
+                      ? {
+                          ...m,
+                          _loadingPinyin: false,
+                          _loadingTranslation: false,
+                        }
+                      : m
+                  )
+                );
+              }
+            } catch {
+              // Ensure loading flags are cleared to prevent spinner lock
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.role === "user" && m.id === userId
+                    ? {
+                        ...m,
+                        _loadingPinyin: false,
+                        _loadingTranslation: false,
+                      }
+                    : m
+                )
+              );
+            }
+          }
+        };
+
+        // Start streaming - skip sendAudio since we already called it
+        // The user message is already in state, so stream updates will enhance it
         await streamAudio(
-          { conversationId, audio: blob },
-          createStreamCallbacks(aiMsgId)
+          {
+            conversationId,
+            audio: blob,
+            text: user.hanzi,
+            skipSendAudio: true,
+          },
+          callbacks
         );
       } catch {
         toast.error("Failed to send audio");
@@ -1081,65 +1196,16 @@ export default function ConversationsPage() {
             resolveMediaUrl={resolveMediaUrl}
           />
 
-          <div className="flex items-center gap-2 w-full flex-wrap">
-            <button
-              onClick={() => {
-                if (!recording) startRecording();
-                else stopRecording();
-              }}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors duration-200 cursor-pointer max-w-full ${
-                recording
-                  ? "bg-red-600/10 border-red-600/40 text-red-200"
-                  : "bg-[#1b1f26] border-[#2e323a] text-[#a6a6a6] hover:border-[#4040f2]"
-              } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#1b1f26]`}
-              title={recording ? "Tap when done" : "Tap to speak"}
-              type="button"
-              aria-pressed={recording}
-              aria-label={recording ? "Stop recording" : "Start recording"}
-            >
-              <div className="relative shrink-0">
-                <div
-                  className={`rounded-full p-2 ${
-                    recording ? "bg-red-600/20" : "bg-green-600/20"
-                  }`}
-                >
-                  <Mic className="w-4 h-4" />
-                </div>
-                {recording ? (
-                  <span className="absolute inset-0 rounded-full ring-2 ring-red-500 motion-safe:animate-ping" />
-                ) : null}
-              </div>
-              <div className="flex flex-col items-start min-w-0 overflow-hidden hidden sm:block">
-                <span className="text-xs font-medium text-white truncate max-w-[55vw] sm:max-w-none">
-                  {recPrompt}
-                </span>
-                <span className="text-[10px] text-[#808080] hidden sm:block">
-                  {recording ? "Start speaking • Tap when done" : ""}
-                </span>
-              </div>
-              {uploadingAudio ? (
-                <Loader2 className="w-4 h-4 animate-spin ml-2 shrink-0" />
-              ) : null}
-            </button>
-
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") sendText();
-              }}
-              placeholder="Type your message ..."
-              className="flex-1 min-w-0 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-white outline-none h-11"
-            />
-            <button
-              onClick={sendText}
-              className="px-4 py-2 rounded-lg bg-[#4040f2] text-white text-sm hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer shrink-0 h-11"
-              type="button"
-              aria-label="Send message"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
+          <MessageInput
+            input={input}
+            onInputChange={setInput}
+            onSend={sendText}
+            recording={recording}
+            recPrompt={recPrompt}
+            uploadingAudio={uploadingAudio}
+            onStartRecording={startRecording}
+            onStopRecording={stopRecording}
+          />
         </div>
       </div>
       {notesModal.open && notesModal.message ? (
