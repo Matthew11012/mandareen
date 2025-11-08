@@ -16,6 +16,11 @@ import {
   useSendMessage,
   sortConversationsByStartedAt,
 } from "@/lib/hooks/use-conversations";
+import { buildFallbackSegments } from "@/lib/utils/segments";
+import {
+  addSingleToFlashcards,
+  getSentenceContext,
+} from "@/lib/utils/flashcards";
 import {
   Mic,
   Send,
@@ -442,12 +447,14 @@ export default function ConversationsPage() {
     ctx?: { hanzi?: string; pinyin?: string; translation?: string };
   }>({ open: false, x: 0, y: 0, word: "" });
   const notesPopupRef = useRef<HTMLDivElement | null>(null);
+  const notesMobilePopupRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
-      if (
-        notesPopupRef.current &&
-        !notesPopupRef.current.contains(e.target as Node)
-      ) {
+      const target = e.target as Node;
+      const clickedInsideDesktop = notesPopupRef.current?.contains(target);
+      const clickedInsideMobile = notesMobilePopupRef.current?.contains(target);
+      // Only close if click is outside both popups
+      if (!clickedInsideDesktop && !clickedInsideMobile) {
         setNotesPopup((p) => ({ ...p, open: false }));
       }
     };
@@ -760,24 +767,6 @@ export default function ConversationsPage() {
     setShowConversationsSidebar(!showConversationsSidebar);
   };
 
-  const addSingleToFlashcards = async (
-    hanzi: string,
-    context?: { hanzi?: string; pinyin?: string; translation?: string }
-  ) => {
-    try {
-      const { post } = await import("@/lib/http/http");
-      await post("flashcards", {
-        hanzi,
-        sentenceHanzi: context?.hanzi,
-        sentencePinyin: context?.pinyin,
-        sentenceTranslation: context?.translation,
-      });
-      toast.success("Added to flashcards");
-    } catch {
-      toast.error("Failed to add to flashcards");
-    }
-  };
-
   const sendText = async () => {
     if (!conversationId || !input.trim()) return;
     const text = input.trim();
@@ -816,60 +805,6 @@ export default function ConversationsPage() {
     }
   };
 
-  const buildFallbackSegments = (
-    hanzi: string,
-    pinyin?: string
-  ): Array<{
-    text: string;
-    startIndex: number;
-    endIndex: number;
-    isWord: boolean;
-    pinyin?: string;
-  }> => {
-    const chars = Array.from(hanzi || "");
-    const ps = (pinyin || "").split(/\s+/).filter(Boolean);
-    let pi = 0;
-    const isCJK = (ch: string) => /[\u3400-\u9FFF]/.test(ch);
-    const segs: Array<{
-      text: string;
-      startIndex: number;
-      endIndex: number;
-      isWord: boolean;
-      pinyin?: string;
-    }> = [];
-    let buffer = "";
-    let bufStart = 0;
-    const flushBuffer = (idx: number) => {
-      if (buffer.length > 0) {
-        segs.push({
-          text: buffer,
-          startIndex: bufStart,
-          endIndex: idx,
-          isWord: false,
-        });
-        buffer = "";
-      }
-    };
-    for (let i = 0; i < chars.length; i++) {
-      const ch = chars[i];
-      if (isCJK(ch)) {
-        flushBuffer(i);
-        segs.push({
-          text: ch,
-          startIndex: i,
-          endIndex: i + 1,
-          isWord: true,
-          pinyin: ps[pi++] || "",
-        });
-      } else {
-        if (buffer.length === 0) bufStart = i;
-        buffer += ch;
-      }
-    }
-    flushBuffer(chars.length);
-    return segs;
-  };
-
   // Note: if needed, we can add an "Add to Flashcards" inline action in the popup later.
 
   function AiMessage({
@@ -894,9 +829,14 @@ export default function ConversationsPage() {
       tokenIndex?: number;
     }>({ open: false, x: 0, y: 0, word: "" });
     const popupRef = useRef<HTMLDivElement | null>(null);
+    const mobilePopupRef = useRef<HTMLDivElement | null>(null);
     useEffect(() => {
       const onClick = (e: MouseEvent) => {
-        if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        const target = e.target as Node;
+        const clickedInsideDesktop = popupRef.current?.contains(target);
+        const clickedInsideMobile = mobilePopupRef.current?.contains(target);
+        // Only close if click is outside both popups
+        if (!clickedInsideDesktop && !clickedInsideMobile) {
           setPopup((p) => ({ ...p, open: false }));
         }
       };
@@ -1193,75 +1133,11 @@ export default function ConversationsPage() {
               <button
                 onClick={() => {
                   // Build sentence-level context using segments and token index
-                  let ctx:
-                    | {
-                        hanzi?: string;
-                        pinyin?: string;
-                        translation?: string;
-                      }
-                    | undefined;
                   const tokenIndex = popup.tokenIndex ?? -1;
-                  if (Array.isArray(m.segments) && tokenIndex >= 0) {
-                    const messageHanzi = m.hanzi || "";
-                    const segments = m.segments || [];
-                    const tokenStart = segments
-                      .slice(0, tokenIndex)
-                      .reduce((acc, s) => acc + (s.text?.length || 0), 0);
-                    const hanziSentences = messageHanzi
-                      .split(/(?<=[。！？!?])/)
-                      .map((s) => s.trim())
-                      .filter(Boolean);
-                    let accLen = 0;
-                    let sentenceIdx = 0;
-                    for (let si = 0; si < hanziSentences.length; si++) {
-                      const sTxt = hanziSentences[si];
-                      const sLen = sTxt.length;
-                      if (tokenStart >= accLen && tokenStart < accLen + sLen) {
-                        sentenceIdx = si;
-                        break;
-                      }
-                      accLen += sLen;
-                    }
-                    const chosenHanzi =
-                      sentenceIdx >= 0
-                        ? hanziSentences[sentenceIdx]
-                        : hanziSentences[0] || messageHanzi;
-                    // Rebuild per-character pinyin aligned to message hanzi
-                    const pinyinTokens = (m.pinyin || "")
-                      .split(/\s+/)
-                      .map((s) => s.trim())
-                      .filter((s) => s.length > 0);
-                    const chars = Array.from(messageHanzi);
-                    const perChar: string[] = new Array(chars.length).fill("");
-                    let t = 0;
-                    for (let i = 0; i < chars.length; i++) {
-                      if (/^[\u3400-\u9FFF]$/.test(chars[i])) {
-                        perChar[i] = pinyinTokens[t] || "";
-                        if (pinyinTokens[t]) t++;
-                      }
-                    }
-                    const sentStartInMsg = hanziSentences
-                      .slice(0, sentenceIdx)
-                      .join("").length;
-                    const sentLen = chosenHanzi.length;
-                    const chosenPinyin = perChar
-                      .slice(sentStartInMsg, sentStartInMsg + sentLen)
-                      .join(" ")
-                      .trim();
-                    const transSentences = (m.translation || "")
-                      .split(/(?<=[.!?])\s+/)
-                      .map((s) => s.trim())
-                      .filter(Boolean);
-                    const chosenTrans =
-                      sentenceIdx >= 0 && transSentences[sentenceIdx]
-                        ? transSentences[sentenceIdx]
-                        : undefined;
-                    ctx = {
-                      hanzi: chosenHanzi,
-                      pinyin: chosenPinyin,
-                      translation: chosenTrans,
-                    };
-                  }
+                  const ctx =
+                    tokenIndex >= 0
+                      ? getSentenceContext(m, tokenIndex)
+                      : undefined;
                   void addSingleToFlashcards(popup.word, ctx);
                   setPopup((p) => ({ ...p, open: false }));
                 }}
@@ -1278,6 +1154,7 @@ export default function ConversationsPage() {
         <AnimatePresence>
           {popup.open && (
             <motion.div
+              ref={mobilePopupRef}
               initial={{ y: "-100%" }}
               animate={{ y: 0 }}
               exit={{ y: "-100%" }}
@@ -1324,80 +1201,11 @@ export default function ConversationsPage() {
                   <button
                     onClick={async () => {
                       // Build sentence-level context using segments and token index
-                      let ctx:
-                        | {
-                            hanzi?: string;
-                            pinyin?: string;
-                            translation?: string;
-                          }
-                        | undefined;
                       const tokenIndex = popup.tokenIndex ?? -1;
-                      if (Array.isArray(m.segments) && tokenIndex >= 0) {
-                        const messageHanzi = m.hanzi || "";
-                        const segments = m.segments || [];
-                        const tokenStart = segments
-                          .slice(0, tokenIndex)
-                          .reduce((acc, s) => acc + (s.text?.length || 0), 0);
-                        const hanziSentences = messageHanzi
-                          .split(/(?<=[。！？!?])/)
-                          .map((s) => s.trim())
-                          .filter(Boolean);
-                        let accLen = 0;
-                        let sentenceIdx = 0;
-                        for (let si = 0; si < hanziSentences.length; si++) {
-                          const sTxt = hanziSentences[si];
-                          const sLen = sTxt.length;
-                          if (
-                            tokenStart >= accLen &&
-                            tokenStart < accLen + sLen
-                          ) {
-                            sentenceIdx = si;
-                            break;
-                          }
-                          accLen += sLen;
-                        }
-                        const chosenHanzi =
-                          sentenceIdx >= 0
-                            ? hanziSentences[sentenceIdx]
-                            : hanziSentences[0] || messageHanzi;
-                        // Rebuild per-character pinyin aligned to message hanzi
-                        const pinyinTokens = (m.pinyin || "")
-                          .split(/\s+/)
-                          .map((s) => s.trim())
-                          .filter((s) => s.length > 0);
-                        const chars = Array.from(messageHanzi);
-                        const perChar: string[] = new Array(chars.length).fill(
-                          ""
-                        );
-                        let t = 0;
-                        for (let i = 0; i < chars.length; i++) {
-                          if (/^[\u3400-\u9FFF]$/.test(chars[i])) {
-                            perChar[i] = pinyinTokens[t] || "";
-                            if (pinyinTokens[t]) t++;
-                          }
-                        }
-                        const sentStartInMsg = hanziSentences
-                          .slice(0, sentenceIdx)
-                          .join("").length;
-                        const sentLen = chosenHanzi.length;
-                        const chosenPinyin = perChar
-                          .slice(sentStartInMsg, sentStartInMsg + sentLen)
-                          .join(" ")
-                          .trim();
-                        const transSentences = (m.translation || "")
-                          .split(/(?<=[.!?])\s+/)
-                          .map((s) => s.trim())
-                          .filter(Boolean);
-                        const chosenTrans =
-                          sentenceIdx >= 0 && transSentences[sentenceIdx]
-                            ? transSentences[sentenceIdx]
-                            : undefined;
-                        ctx = {
-                          hanzi: chosenHanzi,
-                          pinyin: chosenPinyin,
-                          translation: chosenTrans,
-                        };
-                      }
+                      const ctx =
+                        tokenIndex >= 0
+                          ? getSentenceContext(m, tokenIndex)
+                          : undefined;
                       await addSingleToFlashcards(popup.word, ctx);
                       setPopup((p) => ({ ...p, open: false }));
                     }}
@@ -2135,9 +1943,7 @@ export default function ConversationsPage() {
                   {recPrompt}
                 </span>
                 <span className="text-[10px] text-[#808080] hidden sm:block">
-                  {recording
-                    ? "Start speaking • Tap when done"
-                    : ""}
+                  {recording ? "Start speaking • Tap when done" : ""}
                 </span>
               </div>
               {uploadingAudio ? (
@@ -2448,6 +2254,7 @@ export default function ConversationsPage() {
             <AnimatePresence>
               {notesPopup.open && (
                 <motion.div
+                  ref={notesMobilePopupRef}
                   initial={{ y: "-100%" }}
                   animate={{ y: 0 }}
                   exit={{ y: "-100%" }}
