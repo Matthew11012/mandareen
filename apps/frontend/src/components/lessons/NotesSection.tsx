@@ -46,6 +46,7 @@ export function NotesSection({
   setPopup,
   openFromElement,
   hskUnderlineClass,
+  maxItems,
 }: {
   title?: string;
   notes: GrammarNote[];
@@ -59,15 +60,25 @@ export function NotesSection({
   setPopup: TokenRendererProps["setPopup"];
   openFromElement?: TokenRendererProps["openFromElement"];
   hskUnderlineClass: (level?: number) => string;
+  maxItems?: number; // Optional: limit number of notes to show (default: 3)
 }) {
   const internalRef = useRef<HTMLDivElement | null>(null);
   const containerRef = contentRef || internalRef;
 
   if (!Array.isArray(notes) || notes.length === 0) return null;
 
+  // If maxItems is undefined, default to 3 (for lessons page)
+  // If maxItems is a number, use it. If maxItems is Infinity or very large, show all
+  const displayNotes =
+    maxItems === undefined
+      ? notes.slice(0, 3)
+      : maxItems >= notes.length
+        ? notes
+        : notes.slice(0, maxItems);
+
   return (
     <div
-      className="mt-4 border border-[#3a3a3a] rounded-lg p-3 bg-[#1e2229]"
+      className="mt-4 sm:border border-[#3a3a3a] rounded-lg p-3 bg-[#1e2229]"
       ref={containerRef}
     >
       <div className="flex items-center justify-between mb-2">
@@ -92,7 +103,7 @@ export function NotesSection({
       </div>
 
       <div className="space-y-3">
-        {notes.slice(0, 3).map((gn, gi) => (
+        {displayNotes.map((gn, gi) => (
           <div
             key={gi}
             className="text-[16px] text-[#c9d1d9] border border-[#2a2e36] bg-[#1a1f27] rounded-lg p-2 space-y-2"

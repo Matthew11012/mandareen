@@ -58,6 +58,20 @@ export const flashcardsApi = {
     return post<{ flashcard: { id: number } }>("flashcards", { hanzi });
   },
 
+  async createWithSentenceContext(params: {
+    hanzi: string;
+    sentenceHanzi?: string;
+    sentencePinyin?: string;
+    sentenceTranslation?: string;
+  }) {
+    return post<{ flashcard: { id: number } }>("flashcards", {
+      hanzi: params.hanzi,
+      sentenceHanzi: params.sentenceHanzi,
+      sentencePinyin: params.sentencePinyin,
+      sentenceTranslation: params.sentenceTranslation,
+    });
+  },
+
   async due(): Promise<DueFlashcardItem[]> {
     return get<DueFlashcardItem[]>("flashcards/due");
   },
