@@ -14,6 +14,9 @@ import {
   useMessages,
   useStartConversation,
   useSendMessage,
+  useDeleteConversation,
+  useSendAudio,
+  useUpdateMessagesCache,
   sortConversationsByStartedAt,
 } from "@/lib/hooks/use-conversations";
 import { buildFallbackSegments } from "@/lib/utils/segments";
@@ -28,11 +31,7 @@ import { DeleteConfirmationModal } from "@/components/conversations/DeleteConfir
 
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [conversations, setConversations] = useState<EnrichedConversation[]>(
-    []
-  );
   const [aiShowPinyin, setAiShowPinyin] = useState<Record<number, boolean>>({});
   const [aiShowTrans, setAiShowTrans] = useState<Record<number, boolean>>({});
   const [aiShowNotes, setAiShowNotes] = useState<Record<number, boolean>>({});
@@ -62,20 +61,44 @@ export default function ConversationsPage() {
     useMessages(conversationId);
   const startConversationMutation = useStartConversation();
   const sendMessageMutation = useSendMessage();
+  const deleteConversationMutation = useDeleteConversation();
+  const sendAudioMutation = useSendAudio();
+  const updateMessagesCache = useUpdateMessagesCache();
 
-  // Helper to create stream callbacks for updating messages state
+  // Use query data directly
+  const messages = messagesData ?? [];
+
+  // Enriched conversations state (with previews)
+  const [enrichedConversations, setEnrichedConversations] = useState<
+    EnrichedConversation[]
+  >([]);
+
+  // Helper to create stream callbacks for updating messages cache
   type _NotesType = NonNullable<Message["notes"]>;
   type _GrammarNotesType = _NotesType["grammarNotes"];
   type _TipsRichType = _NotesType["tipsRich"];
   const createStreamCallbacks = useCallback(
     (aiMsgId: number) => {
+      if (!conversationId) {
+        return {
+          onStart: () => {},
+          onHanziDelta: () => {},
+          onAiEnrichment: () => {},
+          onAiTranslation: () => {},
+          onAiAudio: () => {},
+          onAiNotes: () => {},
+          onUserUpdate: () => {},
+          onFinal: () => {},
+          onError: async () => {},
+        };
+      }
       // Track the target AI message id; start with caller-provided id, but
       // switch to the id provided by onStart to ensure consistency with the stream
       let targetId = aiMsgId;
       return {
         onStart: ({ id, createdAt }: { id: number; createdAt: string }) => {
           targetId = id;
-          setMessages((prev) => [
+          updateMessagesCache(conversationId, (prev) => [
             ...prev,
             {
               id,
@@ -93,14 +116,14 @@ export default function ConversationsPage() {
           ]);
         },
         onHanziDelta: (delta: string) => {
-          setMessages((prev) =>
+          updateMessagesCache(conversationId, (prev) =>
             prev.map((m) =>
               m.id === targetId ? { ...m, hanzi: (m.hanzi || "") + delta } : m
             )
           );
         },
         onAiEnrichment: (pinyin?: string, segments?: Message["segments"]) => {
-          setMessages((prev) =>
+          updateMessagesCache(conversationId, (prev) =>
             prev.map((m) =>
               m.id === targetId
                 ? {
@@ -114,7 +137,7 @@ export default function ConversationsPage() {
           );
         },
         onAiTranslation: (translation?: string) => {
-          setMessages((prev) =>
+          updateMessagesCache(conversationId, (prev) =>
             prev.map((m) =>
               m.id === targetId
                 ? {
@@ -127,7 +150,7 @@ export default function ConversationsPage() {
           );
         },
         onAiAudio: (audioUrl?: string) => {
-          setMessages((prev) =>
+          updateMessagesCache(conversationId, (prev) =>
             prev.map((m) =>
               m.id === targetId
                 ? {
@@ -156,7 +179,7 @@ export default function ConversationsPage() {
               tipsRich: mappedTR,
             } as Message["notes"];
           }
-          setMessages((prev) =>
+          updateMessagesCache(conversationId, (prev) =>
             prev.map((m) =>
               m.id === targetId
                 ? {
@@ -175,7 +198,7 @@ export default function ConversationsPage() {
           translation?: string;
           segments?: Message["segments"];
         }) => {
-          setMessages((prev) =>
+          updateMessagesCache(conversationId, (prev) =>
             prev.map((m) =>
               m.role === "user" && m.id === update.id
                 ? {
@@ -222,7 +245,7 @@ export default function ConversationsPage() {
               tipsRich: mappedTR,
             } as Message["notes"];
           }
-          setMessages((prev) =>
+          updateMessagesCache(conversationId, (prev) =>
             prev.map((m) =>
               m.id === targetId
                 ? {
@@ -259,7 +282,7 @@ export default function ConversationsPage() {
                 .reverse()
                 .find((m) => m.role === "ai");
               if (latestAi) {
-                setMessages((prev) =>
+                updateMessagesCache(conversationId, (prev) =>
                   prev.map((m) =>
                     m.id === targetId
                       ? {
@@ -288,7 +311,7 @@ export default function ConversationsPage() {
         },
       };
     },
-    [conversationId]
+    [conversationId, updateMessagesCache]
   );
 
   const {
@@ -302,15 +325,11 @@ export default function ConversationsPage() {
       if (!conversationId) return;
       try {
         // Upload audio and get user message (with transcribed hanzi)
-        // Store the user message ID to match with stream updates
-        const { user } = await conversationsApi.sendAudio(conversationId, blob);
-        // Add user message to state with loading flags for translation and segments
-        const userMessageWithLoading: Message = {
-          ...user,
-          _loadingPinyin: true,
-          _loadingTranslation: true,
-        };
-        setMessages((prev) => [...prev, userMessageWithLoading]);
+        // The mutation will add the user message to cache with loading flags
+        const { user } = await sendAudioMutation.mutateAsync({
+          id: conversationId,
+          audio: blob,
+        });
 
         // Create stream callbacks that know about the user message ID
         const aiMsgId = Date.now() + 1;
@@ -329,7 +348,7 @@ export default function ConversationsPage() {
           } else {
             // Fallback: if ID doesn't match, try to update the most recent user message
             // This handles edge cases where server might return a different ID
-            setMessages((prev) => {
+            updateMessagesCache(conversationId, (prev) => {
               // Find the most recent user message that matches our userId
               const userMsgIndex = prev.findIndex(
                 (m) => m.role === "user" && m.id === userId
@@ -374,7 +393,7 @@ export default function ConversationsPage() {
                 .reverse()
                 .find((m) => m.role === "user" && m.id === userId);
               if (latestUser) {
-                setMessages((prev) =>
+                updateMessagesCache(conversationId, (prev) =>
                   prev.map((m) =>
                     m.role === "user" && m.id === userId
                       ? {
@@ -392,7 +411,7 @@ export default function ConversationsPage() {
                 );
               } else {
                 // Even if not found, stop loading to avoid stuck UI
-                setMessages((prev) =>
+                updateMessagesCache(conversationId, (prev) =>
                   prev.map((m) =>
                     m.role === "user" && m.id === userId
                       ? {
@@ -406,7 +425,7 @@ export default function ConversationsPage() {
               }
             } catch {
               // Ensure loading flags are cleared to prevent spinner lock
-              setMessages((prev) =>
+              updateMessagesCache(conversationId, (prev) =>
                 prev.map((m) =>
                   m.role === "user" && m.id === userId
                     ? {
@@ -422,7 +441,7 @@ export default function ConversationsPage() {
         };
 
         // Start streaming - skip sendAudio since we already called it
-        // The user message is already in state, so stream updates will enhance it
+        // The user message is already in cache, so stream updates will enhance it
         await streamAudio(
           {
             conversationId,
@@ -440,41 +459,45 @@ export default function ConversationsPage() {
 
   // Memoized date formatter utility
 
-  // Load conversation previews in parallel
-  const loadConversationPreviews = async (
-    convos: ConversationSummary[]
-  ): Promise<EnrichedConversation[]> => {
-    // Sort by most recent first
-    const sorted = [...convos].sort(
-      (a, b) =>
-        new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
-    );
+  // Load conversation previews in parallel and update enriched state
+  const loadConversationPreviews = useCallback(
+    async (convos: ConversationSummary[]): Promise<void> => {
+      // Sort by most recent first
+      const sorted = [...convos].sort(
+        (a, b) =>
+          new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+      );
 
-    // Fetch previews for first 15 conversations in parallel
-    const previews = await Promise.allSettled(
-      sorted.slice(0, 15).map(async (conv) => {
-        try {
-          const messages = await conversationsApi.listMessages(conv.id);
-          const firstUserMsg = messages.find((m) => m.role === "user");
-          // Use first user message as title, truncate if too long
-          const preview = firstUserMsg?.hanzi
-            ? firstUserMsg.hanzi.length > 60
-              ? firstUserMsg.hanzi.substring(0, 60) + "..."
-              : firstUserMsg.hanzi
-            : "New conversation";
-          return { ...conv, preview };
-        } catch {
-          return { ...conv, preview: undefined };
-        }
-      })
-    );
+      // Fetch previews for first 15 conversations in parallel
+      const previews = await Promise.allSettled(
+        sorted.slice(0, 15).map(async (conv) => {
+          try {
+            const messages = await conversationsApi.listMessages(conv.id);
+            const firstUserMsg = messages.find((m) => m.role === "user");
+            // Use first user message as title, truncate if too long
+            const preview = firstUserMsg?.hanzi
+              ? firstUserMsg.hanzi.length > 60
+                ? firstUserMsg.hanzi.substring(0, 60) + "..."
+                : firstUserMsg.hanzi
+              : "New conversation";
+            return { ...conv, preview };
+          } catch {
+            return { ...conv, preview: undefined };
+          }
+        })
+      );
 
-    return previews.map((result, idx) =>
-      result.status === "fulfilled"
-        ? result.value
-        : { ...sorted[idx], preview: undefined }
-    );
-  };
+      const enriched: EnrichedConversation[] = previews.map((result, idx) =>
+        result.status === "fulfilled"
+          ? result.value
+          : { ...sorted[idx], preview: undefined }
+      );
+
+      // Update enriched conversations state
+      setEnrichedConversations(enriched);
+    },
+    []
+  );
   const apiBase = (
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
   ).replace(/\/api$/, "");
@@ -492,29 +515,24 @@ export default function ConversationsPage() {
   const [showConversationsSidebar, setShowConversationsSidebar] =
     useState(false);
 
-  // Sync conversations list from query to local state (for preview enrichment)
+  // Load previews when conversations list changes
   useEffect(() => {
     if (conversationsList) {
-      setConversations(conversationsList);
+      // Initialize enriched conversations with base data (no previews yet)
+      setEnrichedConversations(
+        conversationsList.map((c) => ({ ...c, preview: undefined }))
+      );
       // Load previews in background
       setLoadingPreviews(true);
       loadConversationPreviews(conversationsList)
-        .then((enriched) => {
-          setConversations(enriched);
+        .then(() => {
           setLoadingPreviews(false);
         })
         .catch(() => {
           setLoadingPreviews(false);
         });
     }
-  }, [conversationsList]);
-
-  // Sync messages from query to local state
-  useEffect(() => {
-    if (messagesData) {
-      setMessages(messagesData);
-    }
-  }, [messagesData]);
+  }, [conversationsList, loadConversationPreviews]);
 
   // Initial load: select conversation or create new one
   useEffect(() => {
@@ -616,92 +634,43 @@ export default function ConversationsPage() {
     }
 
     const wasActive = conversationId === id;
-    const deletedIndex = conversations.findIndex((c) => c.id === id);
-    const deletedItem = conversations[deletedIndex];
+    const sorted = sortConversationsByStartedAt(conversationsList ?? []);
+    const nextId = sorted.find((c) => c.id !== id)?.id ?? null;
 
-    // Optimistic removal
-    const updated = conversations.filter((c) => c.id !== id);
-    setConversations(updated);
-
-    // If deleting active conversation, switch to next most recent or create new
-    if (wasActive) {
-      if (updated.length > 0) {
-        const sorted = [...updated].sort(
-          (a, b) =>
-            new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
-        );
-        const nextId = sorted[0].id;
-        setConversationId(nextId);
-        try {
-          const msgs = await conversationsApi.listMessages(nextId);
-          setMessages(msgs);
-          if (typeof window !== "undefined")
-            localStorage.setItem("active-conversation-id", String(nextId));
-        } catch {
-          toast.error("Failed to load next conversation");
-        }
-      } else {
-        // No conversations left, create new one
-        setConversationId(null);
-        setMessages([]);
-        try {
-          const { id: newId } = await conversationsApi.start();
-          setConversationId(newId);
-          const msgs = await conversationsApi.listMessages(newId);
-          setMessages(msgs);
-          const freshList = await conversationsApi.list();
-          setConversations(freshList);
-          loadConversationPreviews(freshList).then((enriched) => {
-            setConversations(enriched);
-          });
-          if (typeof window !== "undefined")
-            localStorage.setItem("active-conversation-id", String(newId));
-        } catch {
-          toast.error("Failed to create new conversation");
-        }
-      }
-    }
-
-    // Perform actual delete
     setDeleting(true);
-    try {
-      await conversationsApi.delete(id);
-      toast.success("Conversation deleted", {
-        duration: 3000,
-      });
-      setDeleteConfirm({ open: false, conversationId: null });
-      // Focus moves to next conversation automatically via selectConversation
-      // Note: Focus restoration handled by DeleteConfirmationModal
-    } catch {
-      // Rollback on failure
-      const restored = [...conversations];
-      restored.splice(deletedIndex, 0, deletedItem);
-      setConversations(restored);
-
-      if (wasActive) {
-        setConversationId(id);
-        try {
-          const msgs = await conversationsApi.listMessages(id);
-          setMessages(msgs);
-          if (typeof window !== "undefined")
-            localStorage.setItem("active-conversation-id", String(id));
-        } catch {
-          toast.error("Failed to restore conversation");
+    deleteConversationMutation.mutate(id, {
+      onSuccess: async () => {
+        // Handle active conversation switching
+        if (wasActive) {
+          if (nextId) {
+            setConversationId(nextId);
+            if (typeof window !== "undefined")
+              localStorage.setItem("active-conversation-id", String(nextId));
+            await refetchMessages();
+          } else {
+            // No conversations left, create new one
+            await newConversation();
+          }
         }
-      }
-
-      toast.error("Failed to delete conversation");
-      setDeleteConfirm({ open: false, conversationId: null });
-      // Focus the restored item for accessibility after modal closes
-      setTimeout(() => {
-        const restoredButton = document.querySelector(
-          `[data-conversation-id="${id}"] button`
-        ) as HTMLButtonElement | null;
-        restoredButton?.focus();
-      }, 100);
-    } finally {
-      setDeleting(false);
-    }
+        toast.success("Conversation deleted", {
+          duration: 3000,
+        });
+        setDeleteConfirm({ open: false, conversationId: null });
+        setDeleting(false);
+      },
+      onError: () => {
+        toast.error("Failed to delete conversation");
+        setDeleteConfirm({ open: false, conversationId: null });
+        setDeleting(false);
+        // Focus the restored item for accessibility after modal closes
+        setTimeout(() => {
+          const restoredButton = document.querySelector(
+            `[data-conversation-id="${id}"] button`
+          ) as HTMLButtonElement | null;
+          restoredButton?.focus();
+        }, 100);
+      },
+    });
   };
 
   const toggleConversationsSidebar = () => {
@@ -712,28 +681,11 @@ export default function ConversationsPage() {
     if (!conversationId || !input.trim()) return;
     const text = input.trim();
     setInput("");
-    // Optimistic user echo
-    const tempUser: Message = {
-      id: Date.now(),
-      role: "user",
-      hanzi: text,
-      pinyin: "",
-      translation: "",
-      createdAt: new Date().toISOString(),
-      // Add loading flags for progressive SSE events
-      _loadingPinyin: true,
-      _loadingTranslation: true,
-    };
-    setMessages((prev) => [...prev, tempUser]);
     try {
-      const { user } = await sendMessageMutation.mutateAsync({
+      // Mutation handles optimistic user message and replaces with server response
+      await sendMessageMutation.mutateAsync({
         id: conversationId,
         hanzi: text,
-      });
-      // Replace temp user with server user
-      setMessages((prev) => {
-        const withoutTemp = prev.filter((m) => m !== tempUser);
-        return [...withoutTemp, user];
       });
       // Start SSE stream using hook
       const aiMsgId = Date.now() + 1;
@@ -764,7 +716,7 @@ export default function ConversationsPage() {
 
         {/* Sidebar */}
         <ConversationList
-          conversations={conversations}
+          conversations={enrichedConversations}
           activeConversationId={conversationId}
           onSelectConversation={selectConversation}
           onDeleteConversation={(id, triggerElement) => {
