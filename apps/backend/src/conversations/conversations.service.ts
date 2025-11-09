@@ -5,6 +5,9 @@ import { OpenAIService } from '../openai/openai.service';
 import { Observable } from 'rxjs';
 import { SegmentationService } from '../vocabulary/segmentation.service';
 import { RagService } from '../rag/rag.service';
+import { UsageService } from '../billing/usage.service';
+import { BillingPlanService } from '../billing/billing-plan.service';
+import { BILLING_RESOURCES } from '../billing/billing-resources.constants';
 
 @Injectable()
 export class ConversationsService {
@@ -14,11 +17,15 @@ export class ConversationsService {
     private readonly openai: OpenAIService,
     private readonly segmentationService: SegmentationService,
     private readonly rag: RagService,
+    private readonly usageService: UsageService,
+    private readonly billingPlanService: BillingPlanService,
   ) {
     void prisma;
     void openai;
     void segmentationService;
     void rag;
+    void usageService;
+    void billingPlanService;
   }
 
   async startConversation(userId: number) {
@@ -421,6 +428,7 @@ export class ConversationsService {
             finalHanzi,
             conversationId,
             aiMsg.id,
+            userId,
           )
             .then((audioUrl) => {
               subscriber.next({
@@ -570,6 +578,7 @@ export class ConversationsService {
               finalHanziFallback,
               conversationId,
               aiMsg.id,
+              userId,
             )
               .then((audioUrl) => {
                 subscriber.next({
@@ -809,6 +818,7 @@ export class ConversationsService {
     finalHanzi: string,
     conversationId: number,
     messageId: number,
+    userId?: number,
   ): Promise<string> {
     const { audioBuffer, fileExtension } = await (
       this.openai as any
@@ -827,6 +837,31 @@ export class ConversationsService {
       where: { id: messageId },
       data: { audioUrl: publicUrl },
     });
+
+    // Meter TTS usage (estimate seconds: max(2, Math.ceil(hanzi.length / 10)))
+    if (userId) {
+      try {
+        const resource = BILLING_RESOURCES.CONVO_TTS_SECONDS;
+        const limit = await this.billingPlanService.getLimit(userId, resource);
+        if (limit && limit.monthlyCap > 0) {
+          // Estimate TTS seconds: roughly 10 characters per second, minimum 2 seconds
+          const estimatedSeconds = Math.max(
+            2,
+            Math.ceil(finalHanzi.length / 10),
+          );
+          await this.usageService.checkAndConsume({
+            userId,
+            resource,
+            amount: estimatedSeconds,
+            idempotencyKey: `tts:${messageId}`,
+            planCap: limit.monthlyCap,
+          });
+        }
+      } catch (error) {
+        // Log but don't fail TTS generation if metering fails
+        this.logger.warn('Failed to meter TTS usage:', error);
+      }
+    }
 
     return publicUrl;
   }

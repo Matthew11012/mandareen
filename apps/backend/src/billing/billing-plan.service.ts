@@ -36,6 +36,7 @@ export class BillingPlanService {
 
   constructor(private readonly prisma: PrismaService) {
     this.cacheTtlSeconds = Number(process.env.PLAN_CACHE_TTL_SECONDS) || 300; // 5 minutes default
+    void prisma; // Used in methods
   }
 
   /**
@@ -72,8 +73,6 @@ export class BillingPlanService {
     }
 
     // Resolve plan from active subscription or FREE fallback
-    let planId: number | null = null;
-
     // Check for active subscription
     const activeSubscription = await this.prisma.userSubscription.findFirst({
       where: {
@@ -84,19 +83,31 @@ export class BillingPlanService {
         createdAt: 'desc',
       },
       include: {
-        plan: true,
+        plan: {
+          include: {
+            limits: true,
+          },
+        },
       },
     });
 
-    if (activeSubscription) {
-      planId = activeSubscription.planId;
+    let plan: any;
+    let limits: any[];
+
+    if (activeSubscription?.plan) {
+      // Use plan from subscription (already includes limits)
+      plan = activeSubscription.plan;
+      limits = activeSubscription.plan.limits;
       this.logger.debug(
-        `User ${userId} has active subscription to plan ${activeSubscription.plan.code}`,
+        `User ${userId} has active subscription to plan ${plan.code}`,
       );
     } else {
       // Fallback to FREE plan
       const freePlan = await this.prisma.plan.findUnique({
         where: { code: 'FREE' },
+        include: {
+          limits: true,
+        },
       });
 
       if (!freePlan) {
@@ -119,75 +130,11 @@ export class BillingPlanService {
         };
       }
 
-      planId = freePlan.id;
+      plan = freePlan;
+      limits = freePlan.limits;
       this.logger.debug(
         `User ${userId} using FREE plan (no active subscription)`,
       );
-    }
-
-    // Fetch plan with limits
-    const plan = await this.prisma.plan.findUnique({
-      where: { id: planId },
-      include: {
-        limits: true,
-      },
-    });
-
-    if (!plan) {
-      this.logger.error(`Plan ${planId} not found for user ${userId}`);
-      // Return FREE fallback
-      const freePlan = await this.prisma.plan.findUnique({
-        where: { code: 'FREE' },
-        include: {
-          limits: true,
-        },
-      });
-
-      if (!freePlan) {
-        return {
-          plan: {
-            id: 0,
-            code: 'FREE',
-            name: 'Free',
-            description: 'Default free plan',
-            periodUnit: 'monthly',
-            displayPriceCents: 0,
-            currency: 'USD',
-            isActive: true,
-          },
-          limits: [],
-        };
-      }
-
-      const result = {
-        plan: {
-          id: freePlan.id,
-          code: freePlan.code,
-          name: freePlan.name,
-          description: freePlan.description,
-          periodUnit: freePlan.periodUnit,
-          displayPriceCents: freePlan.displayPriceCents,
-          currency: freePlan.currency,
-          isActive: freePlan.isActive,
-        },
-        limits: freePlan.limits.map((l) => ({
-          id: l.id,
-          planId: l.planId,
-          resource: l.resource,
-          monthlyCap: l.monthlyCap,
-          rpm: l.rpm,
-          burst: l.burst,
-          concurrency: l.concurrency,
-        })),
-      };
-
-      // Cache result
-      this.cache.set(userId, {
-        ...result,
-        cachedAt: now,
-      });
-
-      return result;
     }
 
     const result = {
@@ -201,7 +148,7 @@ export class BillingPlanService {
         currency: plan.currency,
         isActive: plan.isActive,
       },
-      limits: plan.limits.map((l) => ({
+      limits: limits.map((l) => ({
         id: l.id,
         planId: l.planId,
         resource: l.resource,
