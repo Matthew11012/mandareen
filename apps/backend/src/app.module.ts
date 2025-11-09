@@ -14,6 +14,7 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { RagModule } from './rag/rag.module';
 import { CurriculumModule } from './curriculum/curriculum.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     RagModule,
     CurriculumModule,
     NotificationsModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
