@@ -12,11 +12,20 @@ import { BadRequestException } from '@nestjs/common';
 import { CurriculumService } from './curriculum.service';
 import { AuthenticatedRequest } from '../types/request.types';
 import { Query } from '@nestjs/common';
+import { BillingPlanService } from '../billing/billing-plan.service';
+import { UsageService } from '../billing/usage.service';
+import { RateLimitService } from '../billing/rate-limit.service';
+import { BILLING_RESOURCES } from '../billing/billing-resources.constants';
 
 @Controller('curriculum')
 @UseGuards(JwtAuthGuard)
 export class CurriculumController {
-  constructor(private readonly curriculum: CurriculumService) {}
+  constructor(
+    private readonly curriculum: CurriculumService,
+    private readonly billingPlanService: BillingPlanService,
+    private readonly usageService: UsageService,
+    private readonly rateLimitService: RateLimitService,
+  ) {}
 
   @Get('units')
   listUnits(
@@ -120,18 +129,50 @@ export class CurriculumController {
   }
 
   @Post('units/:unitId/lessons/:lessonId/generate')
-  generateLesson(
+  async generateLesson(
     @Req() req: AuthenticatedRequest,
     @Param('unitId') unitId: string,
     @Param('lessonId') lessonId: string,
     @Body() body: { force?: boolean; levelBand?: number },
   ) {
+    const userId = req.user.id;
+    const unitIdNum = Number(unitId);
+    const lessonIdNum = Number(lessonId);
+    const levelBand = typeof body?.levelBand === 'number' ? body.levelBand : 0;
+    const resource = BILLING_RESOURCES.CURRICULUM_GENERATED;
+
+    // Resolve limit for curriculum generation
+    const limit = await this.billingPlanService.getLimit(userId, resource);
+    if (limit) {
+      // Rate limit check (RPM)
+      if (limit.rpm && limit.rpm > 0) {
+        await this.rateLimitService.acquire({
+          userId,
+          resource,
+          rpm: limit.rpm,
+          burst: limit.burst ?? undefined,
+        });
+      }
+
+      // Quota check and consume (idempotency key: curri:userId:unitId:lessonId:levelBand)
+      const idempotencyKey = `curri:${userId}:${unitIdNum}:${lessonIdNum}:${levelBand}`;
+      if (limit.monthlyCap > 0) {
+        await this.usageService.checkAndConsume({
+          userId,
+          resource,
+          amount: 1,
+          idempotencyKey,
+          planCap: limit.monthlyCap,
+        });
+      }
+    }
+
     return this.curriculum.generateMissingActivities({
-      userId: req.user.id,
-      unitId: Number(unitId),
-      lessonId: Number(lessonId),
+      userId,
+      unitId: unitIdNum,
+      lessonId: lessonIdNum,
       force: !!body?.force,
-      levelBand: typeof body?.levelBand === 'number' ? body.levelBand : 0,
+      levelBand,
     });
   }
 

@@ -5,12 +5,14 @@ import { AssessmentController } from './assessment.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { OpenAIModule } from '../openai/openai.module';
 import { VocabularyModule } from '../vocabulary/vocabulary.module';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
   imports: [
     PrismaModule,
     OpenAIModule,
     VocabularyModule,
+    BillingModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: { expiresIn: '1d' },

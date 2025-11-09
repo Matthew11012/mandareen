@@ -8,6 +8,7 @@ import { VocabularyModule } from '../vocabulary/vocabulary.module';
 import { JwtModule } from '@nestjs/jwt';
 import { RagModule } from '../rag/rag.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     VocabularyModule,
     RagModule,
     NotificationsModule,
+    BillingModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: { expiresIn: '1d' },

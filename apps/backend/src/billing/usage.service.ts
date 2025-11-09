@@ -9,7 +9,7 @@ interface CheckAndConsumeArgs {
   idempotencyKey?: string;
   now?: Date;
   planCap: number;
-  windowDays: number;
+  windowDays?: number; // Optional, defaults to service's windowDays
 }
 
 interface RecordAnalyticsArgs {
