@@ -22,6 +22,10 @@ model User {
   lessonProgresses     LessonProgress[]
   curriculumBookmark   UserCurriculumBookmark?
   pushSubscriptions    PushSubscription[]
+  billingCustomers     BillingCustomer[]
+  subscriptions        UserSubscription[]
+  usageEvents          UsageEvent[]
+  usageDaily           UsageDaily[]
 }
 
 model Assessment {
@@ -387,4 +391,160 @@ model PushSubscription {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ============================================================================
+// Billing, Plans, and Usage Metering Models
+// ============================================================================
+
+model Plan {
+  id                 Int              @id @default(autoincrement())
+  code               String           @unique // FREE, BASIC, PREMIUM
+  name               String
+  description        String?
+  periodUnit         String           @default("monthly") // flexible for future
+  displayPriceCents  Int
+  currency           String           @default("USD")
+  isActive           Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  limits             PlanLimit[]
+  features           PlanFeature[]
+  prices             PlanPrice[]
+  subscriptions      UserSubscription[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model PlanLimit {
+  id          Int    @id @default(autoincrement())
+  planId      Int
+  resource    String
+  monthlyCap  Int                  // hard ceiling over rolling window
+  rpm         Int?                 // requests per minute (advisory for Phase 2)
+  burst       Int?                 // burst tokens (advisory for Phase 2)
+  concurrency Int?                 // max concurrent ops per user (advisory)
+  plan        Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, resource])
+  @@index([planId, resource])
+}
+
+model PlanFeature {
+  id      Int     @id @default(autoincrement())
+  planId  Int
+  key     String
+  enabled Boolean @default(true)
+  value   Json?
+  plan    Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, key])
+  @@index([planId, key])
+}
+
+model PlanPrice {
+  id                Int     @id @default(autoincrement())
+  planId            Int
+  provider          String  // 'polar', 'stripe', etc.
+  externalPriceId   String
+  billingPeriod     String  @default("monthly")
+  currency          String  @default("USD")
+  unitAmountCents   Int
+  isActive          Boolean @default(true)
+  plan              Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalPriceId])
+  @@index([planId, provider])
+}
+
+model BillingCustomer {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  provider           String
+  externalCustomerId String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalCustomerId])
+  @@unique([provider, userId])
+  @@index([userId])
+  @@index([provider])
+}
+
+model UserSubscription {
+  id                     Int      @id @default(autoincrement())
+  userId                 Int
+  planId                 Int
+  provider               String   // 'polar'
+  externalSubscriptionId String?
+  status                 String   // 'active'|'trialing'|'canceled'|'past_due'...
+  currentPeriodStart     DateTime
+  currentPeriodEnd       DateTime
+  trialEnd               DateTime?
+  cancelAtPeriodEnd      Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                   Plan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
+  @@index([externalSubscriptionId])
+  @@index([provider])
+}
+
+model BillingEvent {
+  id          Int      @id @default(autoincrement())
+  provider    String
+  eventId     String
+  type        String
+  payload     Json
+  receivedAt  DateTime @default(now())
+  processedAt DateTime?
+  status      String   @default("pending") // 'pending'|'processed'|'failed'|'skipped'
+
+  @@unique([provider, eventId])
+  @@index([provider, status])
+  @@index([processedAt])
+}
+
+model UsageEvent {
+  id         BigInt   @id @default(autoincrement())
+  userId     Int
+  resource   String
+  delta      Int      // count or seconds; canonical per resource
+  occurredAt DateTime @default(now())
+  traceId    String?
+  metadata   Json?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, resource, occurredAt])
+  @@index([traceId])
+}
+
+model UsageDaily {
+  id       BigInt   @id @default(autoincrement())
+  userId   Int
+  resource String
+  day      DateTime // UTC midnight
+  used     Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, resource, day])
+  @@index([userId, resource, day])
+}
+
+model ConcurrencyLock {
+  key        String   @id // e.g., user:{id}:convo:stream
+  userId     Int
+  resource   String
+  acquiredAt DateTime @default(now())
+  expiresAt  DateTime
+  metadata   Json?
+
+  @@index([userId, resource])
+  @@index([expiresAt])
 }
