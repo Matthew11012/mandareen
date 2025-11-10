@@ -8,6 +8,8 @@ import { RateLimitService } from './rate-limit.service';
 import { ConcurrencyService } from './concurrency.service';
 import { PolarAdapter } from './polar.adapter';
 import { BillingService } from './billing.service';
+import { BillingWebhookService } from './billing.webhook.service';
+import { BillingWebhookController } from './billing.webhook.controller';
 
 @Module({
   imports: [
@@ -18,6 +20,7 @@ import { BillingService } from './billing.service';
     }),
     ConfigModule,
   ],
+  controllers: [BillingWebhookController],
   providers: [
     BillingPlanService,
     UsageService,
@@ -25,6 +28,7 @@ import { BillingService } from './billing.service';
     ConcurrencyService,
     PolarAdapter,
     BillingService,
+    BillingWebhookService,
   ],
   exports: [
     BillingPlanService,
