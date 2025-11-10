@@ -71,3 +71,56 @@ export class ConcurrencyLimitError extends HttpException {
     );
   }
 }
+
+/**
+ * Error thrown when webhook signature verification fails.
+ * Returns HTTP 400 Bad Request.
+ */
+export class InvalidSignatureError extends HttpException {
+  constructor(message?: string) {
+    super(
+      {
+        code: 'INVALID_SIGNATURE',
+        message: message || 'Invalid webhook signature',
+      },
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+}
+
+/**
+ * Error thrown when checkout creation fails.
+ * Returns HTTP 400/404/500 depending on the error.
+ */
+export class CheckoutError extends HttpException {
+  constructor(
+    public readonly reason: string,
+    statusCode: HttpStatus = HttpStatus.INTERNAL_SERVER_ERROR,
+    message?: string,
+  ) {
+    super(
+      {
+        code: 'CHECKOUT_ERROR',
+        message: message || `Checkout failed: ${reason}`,
+        reason,
+      },
+      statusCode,
+    );
+  }
+}
+
+/**
+ * Error thrown when billing portal is not available or unsupported.
+ * Returns HTTP 404 Not Found.
+ */
+export class PortalUnavailableError extends HttpException {
+  constructor(message?: string) {
+    super(
+      {
+        code: 'PORTAL_UNAVAILABLE',
+        message: message || 'Billing portal is not available',
+      },
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
