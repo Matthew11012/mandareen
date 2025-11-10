@@ -6,7 +6,9 @@ import * as express from 'express';
 import * as path from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true, // Enable raw body for webhook signature verification
+  });
 
   // Enable CORS for frontend communication
   app.enableCors({
@@ -49,6 +51,10 @@ async function bootstrap() {
       },
     }),
   );
+
+  // Note: Raw body preservation for webhook routes is handled via rawBody: true in NestFactory.create
+  // The raw body will be available in controllers via @Req() req and accessing req.rawBody (Buffer)
+  // Webhook controller will handle signature verification using the raw body
 
   // Enable validation
   app.useGlobalPipes(
