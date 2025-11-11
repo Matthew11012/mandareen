@@ -55,8 +55,6 @@ export class BillingWebhookController {
     @Res() res: Response,
     @Headers() headers: Record<string, string>,
   ): Promise<void> {
-    this.logger.log('Received Polar webhook event');
-
     try {
       // Get raw body for signature verification
       const rawBody = req.rawBody;
@@ -73,11 +71,32 @@ export class BillingWebhookController {
       // Extract webhook headers for StandardWebhooks signature verification
       const webhookHeaders = {
         'webhook-signature':
-          headers['webhook-signature'] || headers['x-webhook-signature'],
-        'webhook-id': headers['webhook-id'] || headers['x-webhook-id'],
+          headers['webhook-signature'] ||
+          headers['x-webhook-signature'] ||
+          headers['polar-webhook-signature'] ||
+          headers['Webhook-Signature'],
+        'webhook-id':
+          headers['webhook-id'] ||
+          headers['x-webhook-id'] ||
+          headers['polar-webhook-id'] ||
+          headers['Webhook-Id'],
         'webhook-timestamp':
-          headers['webhook-timestamp'] || headers['x-webhook-timestamp'],
+          headers['webhook-timestamp'] ||
+          headers['x-webhook-timestamp'] ||
+          headers['polar-webhook-timestamp'] ||
+          headers['Webhook-Timestamp'],
       };
+
+      if (
+        !webhookHeaders['webhook-signature'] ||
+        !webhookHeaders['webhook-id'] ||
+        !webhookHeaders['webhook-timestamp']
+      ) {
+        this.logger.error('Missing required webhook headers');
+        throw new InvalidSignatureError(
+          'Missing required webhook headers (webhook-signature, webhook-id, webhook-timestamp)',
+        );
+      }
 
       // Verify signature using StandardWebhooks
       const isValid = this.polarAdapter.verifySignature(
@@ -89,8 +108,6 @@ export class BillingWebhookController {
         this.logger.error('Invalid webhook signature');
         throw new InvalidSignatureError('Invalid webhook signature');
       }
-
-      this.logger.log('Webhook signature verified successfully');
 
       // Parse webhook payload
       const payload = req.body;
@@ -115,10 +132,6 @@ export class BillingWebhookController {
       const eventType =
         payload.event_type || payload.type || payload.event?.type || 'unknown';
 
-      this.logger.log(
-        `Processing webhook event: id=${eventId}, type=${eventType}, provider=${this.provider}`,
-      );
-
       // Persist event with status 'pending' (idempotency check)
       let billingEvent;
       try {
@@ -132,15 +145,9 @@ export class BillingWebhookController {
           },
         });
 
-        this.logger.log(
-          `Persisted webhook event: id=${billingEvent.id}, eventId=${eventId}, type=${eventType}`,
-        );
       } catch (error: any) {
         // Handle unique constraint violation (event already exists)
         if (error.code === 'P2002') {
-          this.logger.log(
-            `Event ${eventId} already exists, fetching existing event (idempotency)`,
-          );
           billingEvent = await this.prisma.billingEvent.findUnique({
             where: {
               provider_eventId: {
@@ -161,9 +168,6 @@ export class BillingWebhookController {
 
           // If event is already processed, return early (idempotency)
           if (billingEvent.status === 'processed') {
-            this.logger.log(
-              `Event ${eventId} already processed, returning success (idempotency)`,
-            );
             res.status(HttpStatus.OK).json({
               received: true,
               eventId,
@@ -174,9 +178,7 @@ export class BillingWebhookController {
 
           // If event is failed, return error (idempotency)
           if (billingEvent.status === 'failed') {
-            this.logger.warn(
-              `Event ${eventId} previously failed, returning error (idempotency)`,
-            );
+            this.logger.warn(`Event ${eventId} previously failed`);
             res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
               received: true,
               eventId,
@@ -184,11 +186,6 @@ export class BillingWebhookController {
             });
             return;
           }
-
-          // Event is pending, proceed with processing
-          this.logger.log(
-            `Event ${eventId} is pending, proceeding with processing`,
-          );
         } else {
           // Other errors
           this.logger.error(
@@ -242,7 +239,6 @@ export class BillingWebhookController {
   private async processEventAsync(eventId: string): Promise<void> {
     try {
       await this.webhookService.process(eventId);
-      this.logger.log(`Event ${eventId} processed successfully`);
     } catch (error: any) {
       this.logger.error(
         `Error processing event ${eventId}: ${error.message}`,

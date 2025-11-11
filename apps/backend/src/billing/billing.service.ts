@@ -81,10 +81,6 @@ export class BillingService {
       );
     }
 
-    this.logger.log(
-      `Resolved plan ${planPrice.plan.code} (ID: ${planPrice.planId}) from product ID: ${externalProductId}`,
-    );
-
     return {
       planId: planPrice.planId,
       planCode: planPrice.plan.code,
@@ -126,18 +122,12 @@ export class BillingService {
     });
 
     if (existingCustomer) {
-      this.logger.log(
-        `Billing customer already exists for user ${userId}: ${existingCustomer.externalCustomerId}`,
-      );
       return {
         externalCustomerId: existingCustomer.externalCustomerId,
       };
     }
 
     // Create customer in Polar with external_id for linking to internal user ID
-    this.logger.log(
-      `Creating billing customer for user ${userId} (${email}) with external_id`,
-    );
     const { externalCustomerId } = await this.polarAdapter.createCustomer({
       email,
       externalId: userId.toString(), // Use external_id for direct linking
@@ -154,10 +144,6 @@ export class BillingService {
         externalCustomerId,
       },
     });
-
-    this.logger.log(
-      `Created billing customer for user ${userId}: ${externalCustomerId} (external_id: ${userId})`,
-    );
 
     return {
       externalCustomerId,
@@ -231,9 +217,6 @@ export class BillingService {
     const planPrice = plan.prices[0];
     // PlanPrice.externalPriceId stores Polar product IDs (not price IDs)
     const productId = planPrice.externalPriceId;
-    this.logger.log(
-      `Creating checkout for user ${userId}, plan: ${planCode}, billingPeriod: ${billingPeriod}, product: ${productId}`,
-    );
 
     // Get user email
     const user = await this.prisma.user.findUnique({
@@ -276,10 +259,6 @@ export class BillingService {
       cancelUrl: cancelUrl || defaultCancelUrl,
     });
 
-    this.logger.log(
-      `Created checkout session for user ${userId}, plan: ${planCode}, billingPeriod: ${billingPeriod}, URL: ${url}`,
-    );
-
     return { url };
   }
 
@@ -312,19 +291,96 @@ export class BillingService {
     }
 
     try {
-      // Create customer session (returns token)
-      const { token } = await this.polarAdapter.createCustomerSession(
-        billingCustomer.externalCustomerId,
-      );
+      // Create customer session (returns token and optionally portal URL)
+      const { token, customerPortalUrl } =
+        await this.polarAdapter.createCustomerSession(
+          billingCustomer.externalCustomerId,
+        );
 
-      // For now, return a token-based URL
-      // In Phase 4, the frontend will handle the Customer Portal API with this token
-      // For backward compatibility, we return a URL-like format
-      const frontendUrl =
-        this.configService.get<string>('FRONTEND_URL') ||
-        'http://localhost:3001';
+      // If API returns customerPortalUrl directly, use it
+      if (customerPortalUrl) {
+        return {
+          url: customerPortalUrl,
+        };
+      }
+
+      // Otherwise, construct portal URL from API base URL
+      // API Base URLs (with or without /v1):
+      // - Production: https://api.polar.sh or https://api.polar.sh/v1
+      // - Sandbox: https://sandbox-api.polar.sh or https://sandbox-api.polar.sh/v1
+      // Portal URLs (for authenticated sessions):
+      // - Production: https://polar.sh/portal?token=...
+      // - Sandbox: https://sandbox.polar.sh/portal?token=...
+      const apiBaseUrl =
+        this.configService.get<string>('POLAR_API_BASE_URL') ||
+        'https://api.polar.sh';
+
+      let portalBaseUrl: string;
+
+      try {
+        // Parse the API base URL to extract the hostname
+        const urlObj = new URL(apiBaseUrl);
+        const hostname = urlObj.hostname;
+
+        // Convert API hostname to portal hostname
+        if (hostname === 'sandbox-api.polar.sh') {
+          // Sandbox: sandbox-api.polar.sh -> sandbox.polar.sh
+          portalBaseUrl = 'https://sandbox.polar.sh';
+        } else if (hostname === 'api.sandbox.polar.sh') {
+          // Legacy sandbox format: api.sandbox.polar.sh -> sandbox.polar.sh
+          portalBaseUrl = 'https://sandbox.polar.sh';
+        } else if (hostname === 'api.polar.sh') {
+          // Production: api.polar.sh -> polar.sh
+          portalBaseUrl = 'https://polar.sh';
+        } else if (hostname.includes('sandbox')) {
+          // Fallback: any sandbox hostname -> sandbox.polar.sh
+          this.logger.warn(
+            `Unexpected sandbox hostname format: ${hostname}, using sandbox.polar.sh`,
+          );
+          portalBaseUrl = 'https://sandbox.polar.sh';
+        } else {
+          // Fallback: assume production
+          this.logger.warn(
+            `Unexpected API hostname format: ${hostname}, using polar.sh`,
+          );
+          portalBaseUrl = 'https://polar.sh';
+        }
+      } catch (urlError) {
+        // If URL parsing fails, try string replacement as fallback
+        this.logger.warn(
+          `Failed to parse API base URL: ${apiBaseUrl}, using string replacement. Error: ${urlError instanceof Error ? urlError.message : String(urlError)}`,
+        );
+
+        if (apiBaseUrl.includes('sandbox-api.polar.sh')) {
+          portalBaseUrl = apiBaseUrl.replace(
+            'sandbox-api.polar.sh',
+            'sandbox.polar.sh',
+          );
+        } else if (apiBaseUrl.includes('api.sandbox.polar.sh')) {
+          portalBaseUrl = apiBaseUrl.replace(
+            'api.sandbox.polar.sh',
+            'sandbox.polar.sh',
+          );
+        } else if (apiBaseUrl.includes('api.polar.sh')) {
+          portalBaseUrl = apiBaseUrl.replace('api.polar.sh', 'polar.sh');
+        } else {
+          // Ultimate fallback
+          portalBaseUrl = apiBaseUrl.includes('sandbox')
+            ? 'https://sandbox.polar.sh'
+            : 'https://polar.sh';
+        }
+
+        // Remove /v1 if present
+        portalBaseUrl = portalBaseUrl.replace(/\/v1\/?$/, '');
+      }
+
+      // Construct portal URL with token
+      // Note: For authenticated sessions, the URL format is /portal?token=...
+      // (The token authenticates the user, so org slug is not needed in the URL)
+      const portalUrl = `${portalBaseUrl}/portal?token=${token}`;
+
       return {
-        url: `${frontendUrl}/billing/portal?token=${token}`,
+        url: portalUrl,
       };
     } catch (error) {
       this.logger.error(

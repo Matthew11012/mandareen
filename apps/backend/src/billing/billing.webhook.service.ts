@@ -31,10 +31,6 @@ export class BillingWebhookService {
       this.configService.get<string>('BILLING_ENFORCE', 'false') === 'true';
     this.logOnly =
       this.configService.get<string>('BILLING_LOG_ONLY', 'false') === 'true';
-
-    this.logger.log(
-      `BillingWebhookService initialized: provider=${this.provider}, enforce=${this.enforce}, logOnly=${this.logOnly}`,
-    );
   }
 
   /**
@@ -59,9 +55,6 @@ export class BillingWebhookService {
     // Idempotency check: skip if already processed or failed
     if (existingEvent) {
       if (existingEvent.status === 'processed') {
-        this.logger.log(
-          `Event ${eventId} already processed, skipping (idempotency)`,
-        );
         return {
           status: existingEvent.status,
           processed: false,
@@ -77,9 +70,6 @@ export class BillingWebhookService {
           processed: false,
         };
       }
-
-      // Event is pending, process it
-      this.logger.log(`Processing pending event ${eventId}`);
     } else {
       this.logger.error(
         `Event ${eventId} not found in database. Event must be persisted before processing.`,
@@ -104,10 +94,6 @@ export class BillingWebhookService {
           processedAt: new Date(),
         },
       });
-
-      this.logger.log(
-        `Event ${eventId} processed successfully: type=${eventType}`,
-      );
 
       return {
         status: 'processed',
@@ -140,8 +126,6 @@ export class BillingWebhookService {
    * @param payload Event payload
    */
   private async handleEvent(eventType: string, payload: any): Promise<void> {
-    this.logger.log(`Handling event: type=${eventType}`);
-
     // Customer events
     if (eventType.startsWith('customer.')) {
       await this.handleCustomerEvent(eventType, payload);
@@ -160,6 +144,12 @@ export class BillingWebhookService {
       return;
     }
 
+    // Checkout events
+    if (eventType.startsWith('checkout.')) {
+      await this.handleCheckoutEvent(eventType);
+      return;
+    }
+
     this.logger.warn(`Unhandled event type: ${eventType}, skipping`);
   }
 
@@ -172,25 +162,29 @@ export class BillingWebhookService {
     eventType: string,
     payload: any,
   ): Promise<void> {
-    this.logger.log(
-      `Processing customer event: type=${eventType}, provider=${this.provider}`,
-    );
+    try {
+      const customerData = this.polarAdapter.extractCustomer(payload);
 
-    const customerData = this.polarAdapter.extractCustomer(payload);
+      switch (eventType) {
+        case 'customer.created':
+        case 'customer.updated':
+        case 'customer.state_changed':
+          await this.onCustomerUpsert(customerData);
+          break;
 
-    switch (eventType) {
-      case 'customer.created':
-      case 'customer.updated':
-      case 'customer.state_changed':
-        await this.onCustomerUpsert(customerData);
-        break;
+        case 'customer.deleted':
+          await this.onCustomerDeleted(customerData.externalCustomerId);
+          break;
 
-      case 'customer.deleted':
-        await this.onCustomerDeleted(customerData.externalCustomerId);
-        break;
-
-      default:
-        this.logger.warn(`Unhandled customer event type: ${eventType}`);
+        default:
+          this.logger.warn(`Unhandled customer event type: ${eventType}`);
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Error processing customer event: ${error.message}`,
+        error.stack,
+      );
+      throw error;
     }
   }
 
@@ -203,24 +197,28 @@ export class BillingWebhookService {
     eventType: string,
     payload: any,
   ): Promise<void> {
-    this.logger.log(
-      `Processing subscription event: type=${eventType}, provider=${this.provider}`,
-    );
+    try {
+      const subscriptionData = this.polarAdapter.extractSubscription(payload);
 
-    const subscriptionData = this.polarAdapter.extractSubscription(payload);
+      switch (eventType) {
+        case 'subscription.created':
+        case 'subscription.updated':
+        case 'subscription.canceled':
+        case 'subscription.active':
+        case 'subscription.revoked':
+        case 'subscription.uncanceled':
+          await this.onSubscriptionChange(eventType, subscriptionData, payload);
+          break;
 
-    switch (eventType) {
-      case 'subscription.created':
-      case 'subscription.updated':
-      case 'subscription.canceled':
-      case 'subscription.active':
-      case 'subscription.revoked':
-      case 'subscription.uncanceled':
-        await this.onSubscriptionChange(eventType, subscriptionData);
-        break;
-
-      default:
-        this.logger.warn(`Unhandled subscription event type: ${eventType}`);
+        default:
+          this.logger.warn(`Unhandled subscription event type: ${eventType}`);
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Error processing subscription event: ${error.message}`,
+        error.stack,
+      );
+      throw error;
     }
   }
 
@@ -233,28 +231,49 @@ export class BillingWebhookService {
     eventType: string,
     payload: any,
   ): Promise<void> {
-    this.logger.log(
-      `Processing order event: type=${eventType}, provider=${this.provider}`,
-    );
-
     // Order events are primarily for logging and reconciliation
     // They don't directly affect subscription status
     // Subscription status is managed via subscription events
+
+    const order = payload.data;
+    if (!order) {
+      this.logger.warn(`Order event ${eventType} has no data payload`);
+      return;
+    }
 
     switch (eventType) {
       case 'order.created':
       case 'order.updated':
       case 'order.paid':
       case 'order.refunded':
-        this.logger.log(
-          `Order event received: type=${eventType}, order_id=${payload.data?.object?.id || payload.order?.id || 'unknown'}`,
-        );
         // No action required for order events at this time
         // They can be used for reconciliation and analytics
         break;
 
       default:
         this.logger.warn(`Unhandled order event type: ${eventType}`);
+    }
+  }
+
+  /**
+   * Handle checkout events.
+   * @param eventType Event type (checkout.created, checkout.updated, checkout.completed, checkout.expired)
+   */
+  private async handleCheckoutEvent(eventType: string): Promise<void> {
+    // Checkout events are primarily for logging and tracking checkout flow
+    // Customer and subscription creation are handled by their respective events
+
+    switch (eventType) {
+      case 'checkout.created':
+      case 'checkout.updated':
+      case 'checkout.completed':
+      case 'checkout.expired':
+        // No action required for checkout events at this time
+        // They can be used for tracking checkout flow and analytics
+        break;
+
+      default:
+        this.logger.warn(`Unhandled checkout event type: ${eventType}`);
     }
   }
 
@@ -270,22 +289,12 @@ export class BillingWebhookService {
     metadata?: Record<string, any>;
   }): Promise<void> {
     if (this.logOnly) {
-      this.logger.log(
-        `[LOG_ONLY] Would upsert customer: ${customerData.externalCustomerId}`,
-      );
       return;
     }
 
     if (!this.enforce) {
-      this.logger.log(
-        `[ENFORCE=false] Skipping customer upsert: ${customerData.externalCustomerId}`,
-      );
       return;
     }
-
-    this.logger.log(
-      `Upserting billing customer: ${customerData.externalCustomerId}, external_id=${customerData.externalId}, email=${customerData.email}`,
-    );
 
     // Try to find user by external_id first (preferred method)
     let userId: number | null = null;
@@ -372,10 +381,6 @@ export class BillingWebhookService {
         ...(userId ? { userId } : {}),
       },
     });
-
-    this.logger.log(
-      `Upserted billing customer: ${customerData.externalCustomerId}${userId ? ` -> userId=${userId}` : ' (no user linked)'}`,
-    );
   }
 
   /**
@@ -383,21 +388,16 @@ export class BillingWebhookService {
    * @param externalCustomerId External customer ID
    */
   private async onCustomerDeleted(externalCustomerId: string): Promise<void> {
-    if (this.logOnly) {
-      this.logger.log(
-        `[LOG_ONLY] Would delete customer: ${externalCustomerId}`,
+    if (!externalCustomerId) {
+      this.logger.error(
+        'Cannot delete customer: externalCustomerId is missing or undefined',
       );
       return;
     }
 
-    if (!this.enforce) {
-      this.logger.log(
-        `[ENFORCE=false] Skipping customer deletion: ${externalCustomerId}`,
-      );
+    if (this.logOnly || !this.enforce) {
       return;
     }
-
-    this.logger.log(`Deleting billing customer: ${externalCustomerId}`);
 
     // Delete BillingCustomer (cascade will handle related subscriptions)
     await this.prisma.billingCustomer.deleteMany({
@@ -406,8 +406,6 @@ export class BillingWebhookService {
         externalCustomerId,
       },
     });
-
-    this.logger.log(`Deleted billing customer: ${externalCustomerId}`);
   }
 
   /**
@@ -415,6 +413,7 @@ export class BillingWebhookService {
    * Resolves plan from product ID, enforces single active subscription, and upserts UserSubscription.
    * @param eventType Event type (for status mapping)
    * @param subscriptionData Subscription data extracted from webhook payload
+   * @param payload Original webhook payload (for extracting customer info if needed)
    */
   private async onSubscriptionChange(
     eventType: string,
@@ -429,24 +428,11 @@ export class BillingWebhookService {
       cancelAtPeriodEnd: boolean;
       trialEnd?: Date;
     },
+    payload?: any,
   ): Promise<void> {
-    if (this.logOnly) {
-      this.logger.log(
-        `[LOG_ONLY] Would process subscription change: ${subscriptionData.externalSubscriptionId}, eventType=${eventType}`,
-      );
+    if (this.logOnly || !this.enforce) {
       return;
     }
-
-    if (!this.enforce) {
-      this.logger.log(
-        `[ENFORCE=false] Skipping subscription change: ${subscriptionData.externalSubscriptionId}`,
-      );
-      return;
-    }
-
-    this.logger.log(
-      `Processing subscription change: ${subscriptionData.externalSubscriptionId}, eventType=${eventType}, status=${subscriptionData.status}`,
-    );
 
     // Resolve plan from product ID (Polar uses product IDs)
     let planId: number;
@@ -497,7 +483,7 @@ export class BillingWebhookService {
     }
 
     // Find billing customer to get userId
-    const billingCustomer = await this.prisma.billingCustomer.findUnique({
+    let billingCustomer = await this.prisma.billingCustomer.findUnique({
       where: {
         provider_externalCustomerId: {
           provider: this.provider,
@@ -506,21 +492,124 @@ export class BillingWebhookService {
       },
     });
 
+    // If billing customer doesn't exist, try to create it from subscription payload
+    if (!billingCustomer && payload) {
+      this.logger.warn(
+        `Billing customer not found: ${subscriptionData.externalCustomerId}. Attempting to create from subscription payload.`,
+      );
+
+      try {
+        // Extract customer info from subscription payload
+        // Polar subscription payload structure: { type: "...", data: { customer_id: "...", customer: {...}, metadata: {...} } }
+        const subscription = payload.data;
+        const customer = subscription?.customer;
+        const metadata = subscription?.metadata || {};
+
+        let userId: number | null = null;
+
+        // Try to find user by customer.external_id first (most reliable)
+        if (customer?.external_id) {
+          try {
+            userId = parseInt(customer.external_id, 10);
+            if (!isNaN(userId)) {
+              const user = await this.prisma.user.findUnique({
+                where: { id: userId },
+              });
+              if (!user) {
+                this.logger.warn(
+                  `User ${userId} not found for external_id ${customer.external_id}`,
+                );
+                userId = null;
+              }
+            }
+          } catch (e) {
+            this.logger.warn(
+              `Invalid external_id format: ${customer.external_id}, error: ${e}`,
+            );
+            userId = null;
+          }
+        }
+
+        // Fallback: try to find user by metadata.userId
+        if (!userId && metadata.userId) {
+          try {
+            userId = parseInt(metadata.userId, 10);
+            if (!isNaN(userId)) {
+              const user = await this.prisma.user.findUnique({
+                where: { id: userId },
+              });
+              if (!user) {
+                this.logger.warn(
+                  `User ${userId} not found for metadata.userId ${metadata.userId}`,
+                );
+                userId = null;
+              }
+            }
+          } catch (e) {
+            this.logger.warn(
+              `Invalid metadata.userId format: ${metadata.userId}, error: ${e}`,
+            );
+            userId = null;
+          }
+        }
+
+        // Fallback: try to find user by email
+        if (!userId && customer?.email) {
+          const user = await this.prisma.user.findFirst({
+            where: { email: customer.email },
+          });
+          if (user) {
+            userId = user.id;
+          } else {
+            this.logger.warn(`User not found for email: ${customer.email}`);
+          }
+        }
+
+        // Create billing customer (even if we can't link to user)
+        billingCustomer = await this.prisma.billingCustomer.upsert({
+          where: {
+            provider_externalCustomerId: {
+              provider: this.provider,
+              externalCustomerId: subscriptionData.externalCustomerId,
+            },
+          },
+          create: {
+            userId: userId || 0, // Use 0 as placeholder if no user found
+            provider: this.provider,
+            externalCustomerId: subscriptionData.externalCustomerId,
+          },
+          update: {
+            // Only update userId if we found a valid user
+            ...(userId ? { userId } : {}),
+          },
+        });
+      } catch (error: any) {
+        this.logger.error(
+          `Failed to create billing customer from subscription payload: ${error.message}`,
+        );
+        // Continue with error - we'll throw below if customer still doesn't exist
+      }
+    }
+
+    // If billing customer still doesn't exist, throw error
     if (!billingCustomer) {
       this.logger.error(
-        `Billing customer not found: ${subscriptionData.externalCustomerId}`,
+        `Billing customer not found: ${subscriptionData.externalCustomerId}. Cannot process subscription without customer record.`,
       );
       throw new NotFoundException(
-        `Billing customer not found: ${subscriptionData.externalCustomerId}`,
+        `Billing customer not found: ${subscriptionData.externalCustomerId}. Subscription events require a customer record.`,
       );
     }
 
+    // Check if customer is linked to a user
     if (!billingCustomer.userId || billingCustomer.userId === 0) {
-      this.logger.error(
-        `Billing customer ${subscriptionData.externalCustomerId} has no linked user`,
+      this.logger.warn(
+        `Billing customer ${subscriptionData.externalCustomerId} has no linked user. Subscription will be created but not associated with any user.`,
       );
+      // For now, we'll skip creating the subscription if no user is linked
+      // In the future, we could create a placeholder or queue it for manual linking
       throw new BadRequestException(
-        `Billing customer ${subscriptionData.externalCustomerId} has no linked user`,
+        `Billing customer ${subscriptionData.externalCustomerId} has no linked user. Cannot create subscription without user association.`,
       );
     }
 
@@ -564,10 +653,6 @@ export class BillingWebhookService {
               updatedAt: new Date(),
             },
           });
-
-          this.logger.log(
-            `Canceled ${otherSubscriptions.length} other active/trialing subscription(s) for user ${userId}`,
-          );
         }
       }
 
@@ -609,10 +694,6 @@ export class BillingWebhookService {
           },
         });
       }
-
-      this.logger.log(
-        `Upserted subscription: ${subscriptionData.externalSubscriptionId} -> userId=${userId}, planId=${planId}, status=${internalStatus}`,
-      );
     });
   }
 
