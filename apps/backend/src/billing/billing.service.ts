@@ -168,6 +168,7 @@ export class BillingService {
    * Create checkout session for a plan.
    * @param userId User ID
    * @param planCode Plan code (e.g., 'BASIC', 'PREMIUM')
+   * @param billingPeriod Optional billing period (defaults to 'monthly')
    * @param successUrl Optional success URL (defaults to frontend URL)
    * @param cancelUrl Optional cancel URL (defaults to frontend URL)
    * @returns Checkout URL
@@ -176,17 +177,27 @@ export class BillingService {
   async createCheckout(
     userId: number,
     planCode: string,
+    billingPeriod: string = 'monthly',
     successUrl?: string,
     cancelUrl?: string,
   ): Promise<{ url: string }> {
-    // Resolve plan
+    // Validate plan code (FREE plan cannot be purchased)
+    if (planCode === 'FREE') {
+      throw new CheckoutError(
+        'Invalid plan',
+        HttpStatus.BAD_REQUEST,
+        'FREE plan cannot be purchased. It is the default plan.',
+      );
+    }
+
+    // Resolve plan with prices for the specified billing period
     const plan = await this.prisma.plan.findUnique({
       where: { code: planCode },
       include: {
         prices: {
           where: {
             provider: this.provider,
-            billingPeriod: 'monthly',
+            billingPeriod: billingPeriod,
             isActive: true,
           },
         },
@@ -213,7 +224,7 @@ export class BillingService {
       throw new CheckoutError(
         'Plan price not found',
         HttpStatus.NOT_FOUND,
-        `No active price found for plan "${planCode}" (provider: ${this.provider})`,
+        `No active price found for plan "${planCode}" with billing period "${billingPeriod}" (provider: ${this.provider})`,
       );
     }
 
@@ -221,7 +232,7 @@ export class BillingService {
     // PlanPrice.externalPriceId stores Polar product IDs (not price IDs)
     const productId = planPrice.externalPriceId;
     this.logger.log(
-      `Creating checkout for user ${userId}, plan: ${planCode}, product: ${productId}`,
+      `Creating checkout for user ${userId}, plan: ${planCode}, billingPeriod: ${billingPeriod}, product: ${productId}`,
     );
 
     // Get user email
@@ -251,19 +262,22 @@ export class BillingService {
     const defaultCancelUrl = `${frontendUrl}/billing/cancel`;
 
     // Create checkout session in Polar using product IDs
+    // Note: Polar supports multiple products in checkout (users can switch between them)
+    // For now, we're creating checkout with a single product for the selected billing period
     const { url } = await this.polarAdapter.createCheckout({
       productIds: [productId], // Polar uses products array (product IDs)
       externalCustomerId: externalCustomerId, // Use external_customer_id (not customer_id)
       metadata: {
         userId: userId.toString(),
         planCode: plan.code,
+        billingPeriod: billingPeriod,
       },
       successUrl: successUrl || defaultSuccessUrl,
       cancelUrl: cancelUrl || defaultCancelUrl,
     });
 
     this.logger.log(
-      `Created checkout session for user ${userId}, plan: ${planCode}, URL: ${url}`,
+      `Created checkout session for user ${userId}, plan: ${planCode}, billingPeriod: ${billingPeriod}, URL: ${url}`,
     );
 
     return { url };
