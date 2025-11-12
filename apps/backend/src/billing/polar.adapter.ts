@@ -264,7 +264,7 @@ export class PolarAdapter {
         }),
       );
 
-      const customerId = response.data.id || response.data.customer_id;
+      const customerId = response.data.id
 
       return {
         externalCustomerId: customerId,
@@ -330,7 +330,7 @@ export class PolarAdapter {
         }),
       );
 
-      const checkoutUrl = response.data.url || response.data.checkout_url;
+      const checkoutUrl = response.data.url;
 
       return {
         url: checkoutUrl,
@@ -372,14 +372,8 @@ export class PolarAdapter {
         ),
       );
 
-      const token =
-        response.data.token ||
-        response.data.session_token ||
-        response.data.customer_session_token;
-      const customerPortalUrl =
-        response.data.customerPortalUrl ||
-        response.data.customer_portal_url ||
-        response.data.url;
+      const token = response.data.token;
+      const customerPortalUrl = response.data.customer_portal_url;
 
       return {
         token: token,
@@ -439,7 +433,11 @@ export class PolarAdapter {
         }),
       );
 
-      return response.data.data || response.data.subscriptions || [];
+      const items = response.data?.items;
+      if (!Array.isArray(items)) {
+        return [];
+      }
+      return items;
     } catch (error: any) {
       this.logger.error(
         'Error listing Polar subscriptions',
@@ -474,7 +472,12 @@ export class PolarAdapter {
         ),
       );
 
-      return response.data;
+      const subscription = response.data;
+      if (!subscription || typeof subscription !== 'object') {
+        throw new Error('Polar subscription response is missing payload');
+      }
+
+      return subscription;
     } catch (error: any) {
       this.logger.error(
         'Error retrieving Polar subscription',
