@@ -25,6 +25,12 @@
     "noEmit": false,
     "lib": ["ES2023"]
   },
-  "include": ["src/**/*"],
+  "include": [
+    "src/**/*",
+    "test/unit/billing/billing-plan.service.spec.ts",
+    "test/unit/billing/concurrency.service.spec.ts",
+    "test/unit/billing/rate-limit.service.spec.ts",
+    "test/unit/billing/usage.service.spec.ts"
+  ],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }
