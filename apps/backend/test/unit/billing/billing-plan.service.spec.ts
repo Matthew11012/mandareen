@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BillingPlanService } from '../../../src/billing/billing-plan.service';
 import { PrismaService } from '../../../src/prisma/prisma.service';
+import { Logger } from '@nestjs/common';
 
 describe('BillingPlanService', () => {
   let service: BillingPlanService;
@@ -14,6 +15,18 @@ describe('BillingPlanService', () => {
       findUnique: jest.fn(),
     },
   };
+
+  beforeAll(() => {
+    jest
+      .spyOn(Logger.prototype as any, 'error')
+      .mockImplementation(() => undefined);
+    jest
+      .spyOn(Logger.prototype as any, 'warn')
+      .mockImplementation(() => undefined);
+    jest
+      .spyOn(Logger.prototype as any, 'log')
+      .mockImplementation(() => undefined);
+  });
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
