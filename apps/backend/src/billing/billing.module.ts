@@ -12,6 +12,7 @@ import { BillingService } from './billing.service';
 import { BillingWebhookService } from './billing.webhook.service';
 import { BillingWebhookController } from './billing.webhook.controller';
 import { BillingController } from './billing.controller';
+import { UsageController } from './usage.controller';
 
 @Module({
   imports: [
@@ -26,7 +27,7 @@ import { BillingController } from './billing.controller';
       signOptions: { expiresIn: '1d' },
     }),
   ],
-  controllers: [BillingWebhookController, BillingController],
+  controllers: [BillingWebhookController, BillingController, UsageController],
   providers: [
     BillingPlanService,
     UsageService,
