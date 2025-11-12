@@ -62,44 +62,50 @@ export class PolarAdapter {
 
     if (!signature || !webhookId || !timestamp) {
       this.logger.error(
-        'Missing required webhook headers: webhook-signature, webhook-id, webhook-timestamp',
+        `Missing required webhook headers: signature=${!!signature}, id=${!!webhookId}, timestamp=${!!timestamp}`,
       );
       return false;
     }
 
     try {
-      // StandardWebhooks requires base64-encoded secret
-      // The secret from Polar is already in the correct format, but we need to ensure it's base64
-      let secret: Buffer;
-      try {
-        // Try to decode as base64 first (Polar provides base64-encoded secrets)
-        secret = Buffer.from(this.webhookSecret, 'base64');
-      } catch {
-        // If not base64, use the raw secret (fallback for compatibility)
-        secret = Buffer.from(this.webhookSecret, 'utf-8');
-      }
+      // Prepare signed payload
+      const bodyString = rawBody.toString('utf-8');
+      const signedPayload = `${webhookId}.${timestamp}.${bodyString}`;
 
-      // StandardWebhooks signature format: signed_payload = webhook_id + "." + timestamp + "." + body
-      const signedPayload = `${webhookId}.${timestamp}.${rawBody.toString('utf-8')}`;
-
-      // Compute HMAC-SHA256
-      const hmac = crypto.createHmac('sha256', secret);
-      hmac.update(signedPayload);
-      const expectedSignature = hmac.digest('base64');
-
-      // Extract signature from header (may be in format "v1,signature" or just "signature")
+      // Extract signature from header
+      const signatureParts = signature.split(',');
       const receivedSignature =
-        signature.split(',')[1] || signature.split(',')[0];
+        signatureParts.length > 1 ? signatureParts[1] : signatureParts[0];
 
-      // Use constant-time comparison to prevent timing attacks
-      const expectedBuffer = Buffer.from(expectedSignature, 'base64');
-      const receivedBuffer = Buffer.from(receivedSignature, 'base64');
+      // Try using the secret directly as UTF-8 (most common for StandardWebhooks)
+      const secretUtf8: Buffer = Buffer.from(this.webhookSecret, 'utf-8');
+      const hmacUtf8 = crypto.createHmac('sha256', secretUtf8);
+      hmacUtf8.update(signedPayload);
+      const expectedSignatureUtf8 = hmacUtf8.digest('base64');
 
-      if (expectedBuffer.length !== receivedBuffer.length) {
-        return false;
+      if (expectedSignatureUtf8 === receivedSignature) {
+        return true;
       }
 
-      return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+      // If UTF-8 doesn't work, try base64-decoded secret
+      try {
+        const secretBase64 = Buffer.from(this.webhookSecret, 'base64');
+        if (secretBase64.length > 0) {
+          const hmacBase64 = crypto.createHmac('sha256', secretBase64);
+          hmacBase64.update(signedPayload);
+          const expectedSignatureBase64 = hmacBase64.digest('base64');
+
+          if (expectedSignatureBase64 === receivedSignature) {
+            return true;
+          }
+        }
+      } catch (e) {
+        this.logger.error(`Failed to try base64-decoded secret: ${e}`);
+      }
+
+      // Signature verification failed
+      this.logger.error('Webhook signature verification failed');
+      return false;
     } catch (error) {
       this.logger.error('Error verifying webhook signature', error);
       return false;
@@ -117,15 +123,30 @@ export class PolarAdapter {
     metadata?: Record<string, string>;
     externalId?: string;
   } {
-    // Polar customer object structure
-    // Adjust based on actual Polar API response structure
-    const customer = payload.data?.object || payload.customer || payload;
+    // Polar webhook payload structure for customer events:
+    // {
+    //   "type": "customer.created",
+    //   "data": {
+    //     "id": "customer_id",
+    //     "email": "email",
+    //     "external_id": "external_id",
+    //     "metadata": {}
+    //   }
+    // }
+    const customer = payload.data;
+
+    if (!customer || !customer.id) {
+      this.logger.error(
+        `Cannot extract customer ID from payload: ${JSON.stringify(payload).substring(0, 200)}`,
+      );
+      throw new Error('Customer ID not found in webhook payload');
+    }
 
     return {
-      externalCustomerId: customer.id || customer.customer_id,
+      externalCustomerId: customer.id,
       email: customer.email,
       metadata: customer.metadata || {},
-      externalId: customer.external_id || customer.externalId,
+      externalId: customer.external_id,
     };
   }
 
@@ -133,7 +154,6 @@ export class PolarAdapter {
    * Extract subscription information from Polar webhook payload.
    * @param payload Polar webhook payload
    * @returns Subscription data with all relevant fields
-   * Note: Polar may use product_id instead of price_id in subscription payloads
    */
   extractSubscription(payload: any): {
     externalSubscriptionId: string;
@@ -146,44 +166,62 @@ export class PolarAdapter {
     cancelAtPeriodEnd: boolean;
     trialEnd?: Date;
   } {
-    // Polar subscription object structure
-    // Adjust based on actual Polar API response structure
-    const subscription =
-      payload.data?.object || payload.subscription || payload;
+    // Polar webhook payload structure for subscription events:
+    // {
+    //   "type": "subscription.active",
+    //   "data": {
+    //     "id": "subscription_id",
+    //     "customer_id": "customer_id",
+    //     "product_id": "product_id",
+    //     "product": { "id": "product_id" },
+    //     "prices": [{ "id": "price_id", ... }],
+    //     "status": "active",
+    //     "current_period_start": "2023-11-07T05:31:56Z",
+    //     "current_period_end": "2023-11-07T05:31:56Z",
+    //     "cancel_at_period_end": true,
+    //     "trial_end": "2023-11-07T05:31:56Z"
+    //   }
+    // }
+    const subscription = payload.data;
+
+    if (!subscription || !subscription.id) {
+      this.logger.error(
+        `Cannot extract subscription ID from payload: ${JSON.stringify(payload).substring(0, 200)}`,
+      );
+      throw new Error('Subscription ID not found in webhook payload');
+    }
+
+    if (!subscription.customer_id) {
+      this.logger.error(
+        `Cannot extract customer ID from subscription payload: ${JSON.stringify(subscription).substring(0, 200)}`,
+      );
+      throw new Error('Customer ID not found in subscription payload');
+    }
+
+    // Product ID: primary field is product_id, fallback to product.id
+    const externalProductId =
+      subscription.product_id || subscription.product?.id;
+
+    // Price ID: get from prices array if available
+    const externalPriceId =
+      subscription.prices && subscription.prices.length > 0
+        ? subscription.prices[0].id
+        : undefined;
 
     return {
-      externalSubscriptionId: subscription.id || subscription.subscription_id,
-      externalCustomerId:
-        subscription.customer_id ||
-        subscription.customer?.id ||
-        payload.customer_id,
-      // Polar may use product_id instead of price_id
-      externalPriceId:
-        subscription.price_id || subscription.price?.id || payload.price_id,
-      externalProductId:
-        subscription.product_id ||
-        subscription.product?.id ||
-        payload.product_id,
+      externalSubscriptionId: subscription.id,
+      externalCustomerId: subscription.customer_id,
+      externalPriceId,
+      externalProductId,
       status: subscription.status || 'active',
       currentPeriodStart: new Date(
-        subscription.current_period_start ||
-          subscription.currentPeriodStart ||
-          Date.now(),
+        subscription.current_period_start || Date.now(),
       ),
-      currentPeriodEnd: new Date(
-        subscription.current_period_end ||
-          subscription.currentPeriodEnd ||
-          Date.now(),
-      ),
-      cancelAtPeriodEnd:
-        subscription.cancel_at_period_end ||
-        subscription.cancelAtPeriodEnd ||
-        false,
+      currentPeriodEnd: new Date(subscription.current_period_end || Date.now()),
+      cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
       trialEnd: subscription.trial_end
         ? new Date(subscription.trial_end)
-        : subscription.trialEnd
-          ? new Date(subscription.trialEnd)
-          : undefined,
+        : undefined,
     };
   }
 
@@ -226,10 +264,7 @@ export class PolarAdapter {
         }),
       );
 
-      const customerId = response.data.id || response.data.customer_id;
-      this.logger.log(
-        `Created Polar customer: ${customerId}${args.externalId ? ` (external_id: ${args.externalId})` : ''}`,
-      );
+      const customerId = response.data.id
 
       return {
         externalCustomerId: customerId,
@@ -295,10 +330,7 @@ export class PolarAdapter {
         }),
       );
 
-      const checkoutUrl = response.data.url || response.data.checkout_url;
-      this.logger.log(
-        `Created Polar checkout session: ${checkoutUrl} (products: ${args.productIds.join(', ')})`,
-      );
+      const checkoutUrl = response.data.url;
 
       return {
         url: checkoutUrl,
@@ -313,12 +345,12 @@ export class PolarAdapter {
 
   /**
    * Create a customer session for Customer Portal API access.
-   * Polar uses customer sessions (tokens) instead of direct portal URLs.
    * @param customerId External customer ID
-   * @returns Customer session token
-   * Note: This returns a token, not a URL. The Customer Portal API must be used with this token.
+   * @returns Customer session token and portal URL (if provided by API)
    */
-  async createCustomerSession(customerId: string): Promise<{ token: string }> {
+  async createCustomerSession(
+    customerId: string,
+  ): Promise<{ token: string; customerPortalUrl?: string }> {
     if (!this.apiKey) {
       throw new Error('POLAR_API_KEY is not set');
     }
@@ -340,13 +372,12 @@ export class PolarAdapter {
         ),
       );
 
-      const token = response.data.token || response.data.session_token;
-      this.logger.log(
-        `Created Polar customer session for customer: ${customerId}`,
-      );
+      const token = response.data.token;
+      const customerPortalUrl = response.data.customer_portal_url;
 
       return {
         token: token,
+        customerPortalUrl: customerPortalUrl,
       };
     } catch (error: any) {
       this.logger.error(
@@ -402,7 +433,11 @@ export class PolarAdapter {
         }),
       );
 
-      return response.data.data || response.data.subscriptions || [];
+      const items = response.data?.items;
+      if (!Array.isArray(items)) {
+        return [];
+      }
+      return items;
     } catch (error: any) {
       this.logger.error(
         'Error listing Polar subscriptions',
@@ -437,7 +472,12 @@ export class PolarAdapter {
         ),
       );
 
-      return response.data;
+      const subscription = response.data;
+      if (!subscription || typeof subscription !== 'object') {
+        throw new Error('Polar subscription response is missing payload');
+      }
+
+      return subscription;
     } catch (error: any) {
       this.logger.error(
         'Error retrieving Polar subscription',

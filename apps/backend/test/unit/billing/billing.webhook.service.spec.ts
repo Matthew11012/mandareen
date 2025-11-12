@@ -4,6 +4,7 @@ import { BillingWebhookService } from '../../../src/billing/billing.webhook.serv
 import { PrismaService } from '../../../src/prisma/prisma.service';
 import { PolarAdapter } from '../../../src/billing/polar.adapter';
 import { BillingService } from '../../../src/billing/billing.service';
+import { Logger } from '@nestjs/common';
 
 describe('BillingWebhookService', () => {
   let service: BillingWebhookService;
@@ -44,6 +45,12 @@ describe('BillingWebhookService', () => {
     resolvePlanFromProduct: jest.fn(),
   };
 
+  beforeAll(() => {
+    jest.spyOn(Logger.prototype as any, 'error').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype as any, 'warn').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype as any, 'log').mockImplementation(() => undefined);
+  });
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -82,9 +89,17 @@ describe('BillingWebhookService', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    (service as any).logOnly = false;
+    (service as any).enforce = true;
   });
 
   describe('process', () => {
+    beforeEach(() => {
+      mockPrisma.$transaction.mockImplementation(async (callback) =>
+        callback(mockPrisma),
+      );
+    });
+
     it('should skip already processed events', async () => {
       mockPrisma.billingEvent.findUnique.mockResolvedValue({
         id: 1,
@@ -99,6 +114,23 @@ describe('BillingWebhookService', () => {
 
       expect(result.processed).toBe(false);
       expect(result.status).toBe('processed');
+      expect(mockPrisma.billingEvent.update).not.toHaveBeenCalled();
+    });
+
+    it('should skip previously failed events', async () => {
+      mockPrisma.billingEvent.findUnique.mockResolvedValue({
+        id: 1,
+        provider: 'polar',
+        eventId: 'event-0',
+        type: 'customer.created',
+        payload: {},
+        status: 'failed',
+      });
+
+      const result = await service.process('event-0');
+
+      expect(result.processed).toBe(false);
+      expect(result.status).toBe('failed');
       expect(mockPrisma.billingEvent.update).not.toHaveBeenCalled();
     });
 
@@ -180,6 +212,91 @@ describe('BillingWebhookService', () => {
           }),
         }),
       );
+    });
+
+    it('should update subscription to canceled on subscription.canceled event', async () => {
+      mockPrisma.billingEvent.findUnique.mockResolvedValue({
+        id: 2,
+        provider: 'polar',
+        eventId: 'event-4',
+        type: 'subscription.canceled',
+        payload: {},
+        status: 'pending',
+      });
+
+      mockPolarAdapter.extractSubscription.mockReturnValue({
+        externalSubscriptionId: 'sub-2',
+        externalCustomerId: 'cust-2',
+        externalProductId: 'prod-2',
+        status: 'canceled',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(),
+        cancelAtPeriodEnd: true,
+      });
+
+      mockBillingService.resolvePlanFromProduct.mockResolvedValue({
+        planId: 2,
+        planCode: 'BASIC',
+      });
+
+      mockPrisma.billingCustomer.findUnique.mockResolvedValue({
+        id: 2,
+        userId: 2,
+        provider: 'polar',
+        externalCustomerId: 'cust-2',
+      });
+
+      mockPrisma.userSubscription.findMany.mockResolvedValue([]);
+      mockPrisma.userSubscription.findFirst.mockResolvedValue({
+        id: 42,
+      });
+      mockPrisma.userSubscription.update.mockResolvedValue({});
+
+      await service.process('event-4');
+
+      expect(mockPrisma.userSubscription.update).toHaveBeenCalledWith({
+        where: { id: 42 },
+        data: expect.objectContaining({
+          status: 'canceled',
+          cancelAtPeriodEnd: true,
+        }),
+      });
+    });
+
+    it('should respect log-only mode for subscription events', async () => {
+      mockPrisma.billingEvent.findUnique.mockResolvedValue({
+        id: 3,
+        provider: 'polar',
+        eventId: 'event-5',
+        type: 'subscription.active',
+        payload: {},
+        status: 'pending',
+      });
+
+      mockPolarAdapter.extractSubscription.mockReturnValue({
+        externalSubscriptionId: 'sub-3',
+        externalCustomerId: 'cust-3',
+        externalProductId: 'prod-3',
+        status: 'active',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(),
+        cancelAtPeriodEnd: false,
+      });
+
+      // Enable log-only mode
+      (service as any).logOnly = true;
+
+      await service.process('event-5');
+
+      expect(mockBillingService.resolvePlanFromProduct).not.toHaveBeenCalled();
+      expect(mockPrisma.userSubscription.create).not.toHaveBeenCalled();
+      expect(mockPrisma.userSubscription.update).not.toHaveBeenCalled();
+      expect(mockPrisma.billingEvent.update).toHaveBeenCalledWith({
+        where: { id: 3 },
+        data: expect.objectContaining({
+          status: 'processed',
+        }),
+      });
     });
   });
 });
