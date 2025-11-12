@@ -11,6 +11,11 @@ import { BillingPeriod } from "@/lib/api/billing";
 import { toast } from "sonner";
 import Link from "next/link";
 import { Check } from "lucide-react";
+import {
+  trackEvent,
+  trackPageView,
+  AnalyticsEvent,
+} from "@/lib/analytics/analytics";
 
 /**
  * Plan configuration matching the database seed data.
@@ -196,27 +201,63 @@ function PricingPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Track page view on mount
+  useEffect(() => {
+    trackPageView("pricing", {
+      isAuthenticated: isAuthenticated || false,
+    });
+    trackEvent(AnalyticsEvent.PRICING_PAGE_VIEWED, {
+      isAuthenticated: isAuthenticated || false,
+    });
+  }, [isAuthenticated]);
+
   // Handle plan selection from query params (e.g., /pricing?plan=BASIC)
   useEffect(() => {
     const planParam = searchParams.get("plan");
     if (planParam && ["FREE", "BASIC", "PREMIUM"].includes(planParam)) {
-      setSelectedPlanCode(planParam as "FREE" | "BASIC" | "PREMIUM");
+      const planCode = planParam as "FREE" | "BASIC" | "PREMIUM";
+      setSelectedPlanCode(planCode);
+      // Track plan viewed when selected via query params
+      trackEvent(AnalyticsEvent.PRICING_PLAN_VIEWED, {
+        planCode,
+        billingPeriod: selectedBillingPeriod,
+        source: "query_param",
+      });
     }
-  }, [searchParams]);
+  }, [searchParams, selectedBillingPeriod]);
 
   // Handle checkout for logged-in users
   const handleCheckout = async (planCode: "FREE" | "BASIC" | "PREMIUM") => {
     if (planCode === "FREE") {
       // FREE plan doesn't require checkout
       toast.info("You're already on the Free plan!");
+      trackEvent(AnalyticsEvent.PRICING_CTA_CLICKED, {
+        planCode: "FREE",
+        action: "free_plan_clicked",
+        billingPeriod: selectedBillingPeriod,
+      });
       return;
     }
 
     try {
       setSelectedPlanCode(planCode);
+
+      // Track checkout started
+      trackEvent(AnalyticsEvent.PRICING_CHECKOUT_STARTED, {
+        planCode,
+        billingPeriod: selectedBillingPeriod,
+      });
+
       const response = await checkoutMutation.mutateAsync({
         planCode,
         billingPeriod: selectedBillingPeriod,
+      });
+
+      // Track checkout success
+      trackEvent(AnalyticsEvent.PRICING_CHECKOUT_SUCCESS, {
+        planCode,
+        billingPeriod: selectedBillingPeriod,
+        checkoutUrl: response.url,
       });
 
       // Redirect to checkout URL
@@ -231,6 +272,13 @@ function PricingPageContent() {
         error instanceof Error
           ? error.message
           : "Failed to start checkout. Please try again.";
+
+      // Track checkout failure
+      trackEvent(AnalyticsEvent.PRICING_CHECKOUT_FAILURE, {
+        planCode,
+        billingPeriod: selectedBillingPeriod,
+        error: errorMessage,
+      });
 
       toast.error(
         <div className="flex flex-col gap-2">
@@ -262,6 +310,14 @@ function PricingPageContent() {
   const handleCtaClick = (planCode: "FREE" | "BASIC" | "PREMIUM") => {
     // If auth is still loading, treat as logged-out (will redirect to signup)
     const isLoggedIn = !authLoading && isAuthenticated;
+
+    // Track CTA clicked
+    trackEvent(AnalyticsEvent.PRICING_CTA_CLICKED, {
+      planCode,
+      billingPeriod: selectedBillingPeriod,
+      isAuthenticated: isLoggedIn,
+      action: isLoggedIn ? "checkout" : "auth_redirect",
+    });
 
     if (planCode === "FREE") {
       // FREE plan: redirect to signup if not logged in, or show message if logged in
@@ -388,7 +444,21 @@ function PricingPageContent() {
                   type="button"
                   role="tab"
                   aria-selected={selectedBillingPeriod === period.value}
-                  onClick={() => setSelectedBillingPeriod(period.value)}
+                  onClick={() => {
+                    const previousPeriod = selectedBillingPeriod;
+                    setSelectedBillingPeriod(period.value);
+                    // Track billing period change
+                    if (previousPeriod !== period.value) {
+                      trackEvent(
+                        AnalyticsEvent.PRICING_BILLING_PERIOD_CHANGED,
+                        {
+                          previousBillingPeriod: previousPeriod,
+                          newBillingPeriod: period.value,
+                          discount: period.discount,
+                        }
+                      );
+                    }
+                  }}
                   className={`px-4 py-2.5 min-h-[44px] rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950 cursor-pointer ${
                     selectedBillingPeriod === period.value
                       ? "bg-white text-black shadow-sm"
@@ -423,6 +493,14 @@ function PricingPageContent() {
                 checkoutMutation.isPending && selectedPlanCode === plan.code
               }
               onCtaClick={() => handleCtaClick(plan.code)}
+              onPlanView={() => {
+                // Track plan viewed when card is in viewport
+                trackEvent(AnalyticsEvent.PRICING_PLAN_VIEWED, {
+                  planCode: plan.code,
+                  billingPeriod: selectedBillingPeriod,
+                  source: "card_view",
+                });
+              }}
               motionProps={prefersReducedMotion ? {} : motionProps}
             />
           ))}
@@ -494,6 +572,7 @@ interface PlanCardProps {
   authLoading: boolean;
   isLoading: boolean;
   onCtaClick: () => void;
+  onPlanView?: () => void;
   motionProps: Record<string, unknown>;
 }
 
@@ -559,6 +638,7 @@ function PlanCard({
   authLoading,
   isLoading,
   onCtaClick,
+  onPlanView,
   motionProps,
 }: PlanCardProps) {
   const cardId = `plan-${plan.code.toLowerCase()}`;
@@ -570,6 +650,38 @@ function PlanCard({
     plan,
     billingPeriod
   );
+
+  // Track plan view when card enters viewport using Intersection Observer
+  useEffect(() => {
+    if (!onPlanView) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
+            onPlanView();
+            // Only track once per mount - disconnect after first view
+            observer.disconnect();
+          }
+        });
+      },
+      { threshold: 0.5 }
+    );
+
+    // Use a ref or querySelector to find the card element
+    // We'll use setTimeout to ensure DOM is ready
+    const timeoutId = setTimeout(() => {
+      const cardElement = document.getElementById(cardId);
+      if (cardElement) {
+        observer.observe(cardElement);
+      }
+    }, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      observer.disconnect();
+    };
+  }, [onPlanView, cardId]);
 
   // Calculate per-month equivalent for display
   const getPeriodLabel = () => {
