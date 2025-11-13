@@ -4,6 +4,10 @@ import { useEffect } from "react";
 
 export default function ServiceWorkerRegister() {
   useEffect(() => {
+    // Explicit opt-in via env flag to avoid stale-caching issues during dev/staging
+    const swEnabled = process.env.NEXT_PUBLIC_ENABLE_SW === "true";
+    if (!swEnabled) return;
+
     // Only attempt to register in production builds and secure contexts
     if (process.env.NODE_ENV !== "production") return;
     if (typeof window === "undefined") return;
@@ -21,14 +25,10 @@ export default function ServiceWorkerRegister() {
             scope: "/",
           });
 
-          // Optional: log registration state to aid debugging
+          // Minimal debug log in production
           if (process.env.NODE_ENV === "production") {
-            // eslint-disable-next-line no-console
-            console.log("Service worker registered:", {
+            console.log("Service worker registered", {
               scope: registration.scope,
-              active: !!registration.active,
-              installing: !!registration.installing,
-              waiting: !!registration.waiting,
             });
           }
 
@@ -36,14 +36,12 @@ export default function ServiceWorkerRegister() {
             const installing = registration.installing;
             if (installing) {
               installing.addEventListener("statechange", () => {
-                // eslint-disable-next-line no-console
                 console.log("Service worker state:", installing.state);
               });
             }
           });
         }
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.warn("Service worker registration failed:", err);
       }
     };

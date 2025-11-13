@@ -93,6 +93,14 @@ export const NAVIGATION_DATA: NavigationData = [
         description: "Manage your account settings",
       },
       {
+        id: "usage",
+        label: "Usage",
+        href: "/account/usage",
+        icon: "Activity",
+        isComingSoon: false,
+        description: "View your usage and limits",
+      },
+      {
         id: "settings",
         label: "Settings",
         href: "/settings",

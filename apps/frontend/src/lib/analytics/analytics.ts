@@ -85,7 +85,7 @@ export function setAnalyticsOptOut(optedOut: boolean): void {
  */
 export function trackEvent(
   eventName: AnalyticsEventName | string,
-  properties?: AnalyticsEventProperties,
+  properties?: AnalyticsEventProperties
 ): void {
   // Don't track if analytics is disabled or user has opted out
   if (!isAnalyticsEnabled()) {
@@ -94,7 +94,6 @@ export function trackEvent(
 
   // In development, log events to console for debugging
   if (process.env.NODE_ENV === "development") {
-    // eslint-disable-next-line no-console
     console.log("[Analytics]", eventName, properties || {});
   }
 
@@ -138,11 +137,10 @@ export function trackEvent(
  */
 export function trackPageView(
   pageName: string,
-  properties?: AnalyticsEventProperties,
+  properties?: AnalyticsEventProperties
 ): void {
   trackEvent("page_view", {
     page: pageName,
     ...properties,
   });
 }
-
