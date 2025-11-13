@@ -101,6 +101,14 @@ export const NAVIGATION_DATA: NavigationData = [
         description: "View your usage and limits",
       },
       {
+        id: "billing",
+        label: "Billing",
+        href: "/account/billing",
+        icon: "CreditCard",
+        isComingSoon: false,
+        description: "Manage your subscription and billing",
+      },
+      {
         id: "settings",
         label: "Settings",
         href: "/settings",

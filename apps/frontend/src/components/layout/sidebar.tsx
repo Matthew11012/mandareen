@@ -17,6 +17,7 @@ import {
   Sparkles,
   GraduationCap,
   Activity,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAVIGATION_DATA } from "@/lib/constants/navigation";
@@ -36,6 +37,7 @@ const ICONS = {
   User,
   Settings,
   Activity,
+  CreditCard,
 } as const;
 
 interface SidebarProps {
@@ -210,7 +212,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
                     (item.id === "curriculum" &&
                       pathname.startsWith("/curriculum/")) ||
                     (item.id === "lessons" && pathname.startsWith("/lessons/")) ||
-                    (item.id === "usage" && pathname.startsWith("/account/usage"))
+                    (item.id === "usage" && pathname.startsWith("/account/usage")) ||
+                    (item.id === "billing" && pathname.startsWith("/account/billing"))
                   }
                   isCollapsed={isCollapsed}
                   badgeCount={item.id === "flashcards" ? dueCount : undefined}
