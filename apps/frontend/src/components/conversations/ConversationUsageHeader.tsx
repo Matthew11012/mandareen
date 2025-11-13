@@ -10,7 +10,7 @@ import { UsageBanner } from "@/components/usage/usage-banner";
 import { cn } from "@/lib/utils";
 import { ChevronDown } from "lucide-react";
 
-const TRACKED_RESOURCES = [
+export const CONVERSATION_USAGE_RESOURCES = [
   "convo_message_text",
   "convo_message_audio",
   "convo_tts_seconds",
@@ -55,7 +55,7 @@ export function ConversationUsageHeader({
   const badges: UsageBadgeData[] = useMemo(() => {
     if (!summary) return [];
 
-    return TRACKED_RESOURCES.flatMap((resource) => {
+    return CONVERSATION_USAGE_RESOURCES.flatMap((resource) => {
       const usage = summary.resources[resource];
       if (!usage || !shouldDisplayResource(resource, usage.cap)) {
         return [];

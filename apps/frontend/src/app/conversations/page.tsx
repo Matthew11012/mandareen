@@ -29,11 +29,16 @@ import { MessageInput } from "@/components/conversations/MessageInput";
 import { NotesModal } from "@/components/conversations/NotesModal";
 import { DeleteConfirmationModal } from "@/components/conversations/DeleteConfirmationModal";
 import { useUsageSummary } from "@/lib/hooks/use-usage";
-import { ConversationUsageHeader } from "@/components/conversations/ConversationUsageHeader";
+import {
+  ConversationUsageHeader,
+  CONVERSATION_USAGE_RESOURCES,
+} from "@/components/conversations/ConversationUsageHeader";
 import {
   ConversationErrorBanner,
   type ConversationErrorState,
 } from "@/components/conversations/ConversationErrorBanner";
+import { ConversationUsageToast } from "@/components/conversations/ConversationUsageToast";
+import { shouldDisplayResource } from "@/lib/constants/usage-resources";
 
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -62,6 +67,10 @@ export default function ConversationsPage() {
     useState<ConversationErrorState | null>(null);
   const errorBannerRef = useRef<HTMLDivElement | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [dismissedUsageReset, setDismissedUsageReset] = useState<string | null>(
+    null
+  );
+  const { data: usageSummary, isLoading: usageLoading } = useUsageSummary(true);
 
   const extractConversationError = useCallback(
     (error: unknown): ConversationErrorState | null => {
@@ -201,6 +210,55 @@ export default function ConversationsPage() {
     return conversationError;
   }, [conversationError, remainingRateSeconds]);
 
+  const conversationUsageAlert = useMemo(() => {
+    if (!usageSummary) return null;
+
+    const tracked = CONVERSATION_USAGE_RESOURCES.map((resource) => {
+      const usage = usageSummary.resources[resource];
+      if (!usage || !shouldDisplayResource(resource, usage.cap)) {
+        return null;
+      }
+      return {
+        resource,
+        pct: usage.pct,
+        resetsAt: usage.resetsAt,
+      };
+    }).filter(Boolean) as Array<{
+      resource: (typeof CONVERSATION_USAGE_RESOURCES)[number];
+      pct: number;
+      resetsAt: string;
+    }>;
+
+    if (tracked.length === 0) return null;
+
+    return tracked.reduce((highest, current) =>
+      current.pct > highest.pct ? current : highest
+    );
+  }, [usageSummary]);
+
+  useEffect(() => {
+    if (!conversationUsageAlert) return;
+    if (
+      dismissedUsageReset &&
+      conversationUsageAlert.resetsAt !== dismissedUsageReset
+    ) {
+      setDismissedUsageReset(null);
+    }
+  }, [conversationUsageAlert, dismissedUsageReset]);
+
+  const usageToastTarget =
+    conversationUsageAlert &&
+    conversationUsageAlert.pct >= 90 &&
+    conversationUsageAlert.resetsAt !== dismissedUsageReset &&
+    effectiveError?.kind !== "quota"
+      ? conversationUsageAlert
+      : null;
+
+  const dismissUsageToast = useCallback(() => {
+    if (!usageToastTarget) return;
+    setDismissedUsageReset(usageToastTarget.resetsAt);
+  }, [usageToastTarget]);
+
   const sendDisabled =
     effectiveError?.kind === "quota" ||
     (effectiveError?.kind === "rate" && effectiveError.retrySeconds > 0);
@@ -229,7 +287,6 @@ export default function ConversationsPage() {
   const deleteConversationMutation = useDeleteConversation();
   const sendAudioMutation = useSendAudio();
   const updateMessagesCache = useUpdateMessagesCache();
-  const { data: usageSummary, isLoading: usageLoading } = useUsageSummary(true);
 
   // Use query data directly
   const messages = messagesData ?? [];
@@ -935,6 +992,7 @@ export default function ConversationsPage() {
                 ? "bottom-16 right-2 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
                 : "bottom-16 right-2 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
             }`}
+            style={{ touchAction: "manipulation" }}
             title={
               showConversationsSidebar
                 ? "Hide conversations"
@@ -973,10 +1031,20 @@ export default function ConversationsPage() {
 
         {/* Main chat column */}
         <div
-          className={`flex-1 h-full flex flex-col gap-2 transition-all duration-300 ease-in-out ${
+          className={`relative flex-1 h-full flex flex-col gap-2 transition-all duration-300 ease-in-out ${
             isMobile && showConversationsSidebar ? "hidden" : ""
           }`}
         >
+          {usageToastTarget && (
+            <div className="pointer-events-none absolute left-0 right-0 bottom-36 z-20 flex justify-center px-4 sm:justify-end sm:px-6">
+              <ConversationUsageToast
+                className="pointer-events-auto"
+                pct={usageToastTarget.pct}
+                resetsAt={usageToastTarget.resetsAt}
+                onDismiss={dismissUsageToast}
+              />
+            </div>
+          )}
           <ConversationUsageHeader
             summary={usageSummary}
             isLoading={usageLoading}

@@ -45,6 +45,7 @@ export function MessageInput({
               ? "bg-[#1b1f26] border-[#2e323a] text-[#55596a] cursor-not-allowed"
               : "bg-[#1b1f26] border-[#2e323a] text-[#a6a6a6] hover:border-[#4040f2] cursor-pointer"
         }`}
+        style={{ touchAction: "manipulation" }}
         title={
           audioDisabled
             ? audioDisabledReason || "Voice input temporarily unavailable"
@@ -95,7 +96,7 @@ export function MessageInput({
           }
         }}
         placeholder="Type your message ..."
-        className="flex-1 min-w-0 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-white outline-none h-11"
+        className="flex-1 min-w-0 bg-[#1a1d23] border border-[#2e323a] rounded-lg px-3 py-2 text-base text-white outline-none h-11"
       />
       <button
         onClick={onSend}
@@ -104,6 +105,7 @@ export function MessageInput({
             ? "bg-[#30334a] text-[#777b94] cursor-not-allowed"
             : "bg-[#4040f2] hover:bg-[#3636d9] cursor-pointer"
         }`}
+        style={{ touchAction: "manipulation" }}
         type="button"
         aria-label="Send message"
         disabled={sendDisabled}
