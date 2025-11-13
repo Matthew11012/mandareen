@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { DashboardLayout } from "@/components/layout";
 import {
   conversationsApi,
@@ -28,6 +28,17 @@ import { MessageView } from "@/components/conversations/MessageView";
 import { MessageInput } from "@/components/conversations/MessageInput";
 import { NotesModal } from "@/components/conversations/NotesModal";
 import { DeleteConfirmationModal } from "@/components/conversations/DeleteConfirmationModal";
+import { useUsageSummary } from "@/lib/hooks/use-usage";
+import {
+  ConversationUsageHeader,
+  CONVERSATION_USAGE_RESOURCES,
+} from "@/components/conversations/ConversationUsageHeader";
+import {
+  ConversationErrorBanner,
+  type ConversationErrorState,
+} from "@/components/conversations/ConversationErrorBanner";
+import { ConversationUsageToast } from "@/components/conversations/ConversationUsageToast";
+import { shouldDisplayResource } from "@/lib/constants/usage-resources";
 
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -52,6 +63,218 @@ export default function ConversationsPage() {
   }>({ open: false, conversationId: null });
   const [deleting, setDeleting] = useState<boolean>(false);
   const deleteTriggerRef = useRef<HTMLElement | null>(null);
+  const [conversationError, setConversationError] =
+    useState<ConversationErrorState | null>(null);
+  const errorBannerRef = useRef<HTMLDivElement | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [dismissedUsageReset, setDismissedUsageReset] = useState<string | null>(
+    null
+  );
+  const { data: usageSummary, isLoading: usageLoading } = useUsageSummary(true);
+
+  const extractConversationError = useCallback(
+    (error: unknown): ConversationErrorState | null => {
+      if (!(error instanceof Error)) return null;
+      const payload = (error as { response?: unknown }).response;
+      if (!payload || typeof payload !== "object" || payload === null) {
+        return null;
+      }
+      const data = payload as Record<string, unknown>;
+      const code = typeof data.code === "string" ? data.code : undefined;
+      if (!code) return null;
+
+      switch (code) {
+        case "QUOTA_EXCEEDED": {
+          const planCap =
+            typeof data.planCap === "number"
+              ? data.planCap
+              : Number(data.planCap ?? NaN);
+          const used =
+            typeof data.used === "number"
+              ? data.used
+              : Number(data.used ?? NaN);
+          const resource =
+            typeof data.resource === "string" ? data.resource : "unknown";
+          return {
+            kind: "quota",
+            message:
+              typeof data.message === "string"
+                ? data.message
+                : error.message ||
+                  "You’ve hit your plan limit for conversations.",
+            resource,
+            planCap: Number.isFinite(planCap) ? planCap : 0,
+            used: Number.isFinite(used) ? used : 0,
+          };
+        }
+        case "RATE_LIMITED": {
+          const retryAfterRaw =
+            typeof data.retryAfter === "number"
+              ? data.retryAfter
+              : Number(data.retryAfter ?? 0);
+          const retryAfter = Number.isFinite(retryAfterRaw)
+            ? Math.max(1, Math.round(retryAfterRaw))
+            : 5;
+          const resource =
+            typeof data.resource === "string" ? data.resource : "unknown";
+          const retryAt = Date.now() + retryAfter * 1000;
+          return {
+            kind: "rate",
+            message:
+              typeof data.message === "string"
+                ? data.message
+                : error.message || "Rate limit exceeded.",
+            resource,
+            retrySeconds: retryAfter,
+            retryAt,
+          };
+        }
+        case "CONCURRENCY_LIMIT": {
+          const limit =
+            typeof data.limit === "number"
+              ? data.limit
+              : Number(data.limit ?? NaN);
+          const retryAfterRaw =
+            typeof data.retryAfter === "number"
+              ? data.retryAfter
+              : Number(data.retryAfter ?? NaN);
+          const retryAt =
+            Number.isFinite(retryAfterRaw) && retryAfterRaw > 0
+              ? Date.now() + Math.round(retryAfterRaw) * 1000
+              : undefined;
+          const resource =
+            typeof data.resource === "string" ? data.resource : "unknown";
+          return {
+            kind: "concurrency",
+            message:
+              typeof data.message === "string"
+                ? data.message
+                : error.message || "Too many active conversations.",
+            resource,
+            limit: Number.isFinite(limit) ? limit : undefined,
+            retrySeconds:
+              Number.isFinite(retryAfterRaw) && retryAfterRaw > 0
+                ? Math.round(retryAfterRaw)
+                : undefined,
+            retryAt,
+          };
+        }
+        default:
+          return null;
+      }
+    },
+    []
+  );
+
+  const handleConversationError = useCallback(
+    (error: unknown): boolean => {
+      const parsed = extractConversationError(error);
+      if (parsed) {
+        setConversationError(parsed);
+        return true;
+      }
+      return false;
+    },
+    [extractConversationError]
+  );
+
+  useEffect(() => {
+    if (!conversationError) return;
+    requestAnimationFrame(() => {
+      errorBannerRef.current?.focus();
+    });
+  }, [conversationError]);
+
+  useEffect(() => {
+    if (conversationError?.kind !== "rate") return;
+    setNow(Date.now());
+    const interval = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [conversationError?.kind]);
+
+  const remainingRateSeconds = useMemo(() => {
+    if (conversationError?.kind !== "rate") return 0;
+    return Math.max(0, Math.ceil((conversationError.retryAt - now) / 1000));
+  }, [conversationError, now]);
+
+  const effectiveError = useMemo(() => {
+    if (!conversationError) return null;
+    if (conversationError.kind === "rate") {
+      return {
+        ...conversationError,
+        retrySeconds: remainingRateSeconds,
+      } satisfies ConversationErrorState;
+    }
+    return conversationError;
+  }, [conversationError, remainingRateSeconds]);
+
+  const conversationUsageAlert = useMemo(() => {
+    if (!usageSummary) return null;
+
+    const tracked = CONVERSATION_USAGE_RESOURCES.map((resource) => {
+      const usage = usageSummary.resources[resource];
+      if (!usage || !shouldDisplayResource(resource, usage.cap)) {
+        return null;
+      }
+      return {
+        resource,
+        pct: usage.pct,
+        resetsAt: usage.resetsAt,
+      };
+    }).filter(Boolean) as Array<{
+      resource: (typeof CONVERSATION_USAGE_RESOURCES)[number];
+      pct: number;
+      resetsAt: string;
+    }>;
+
+    if (tracked.length === 0) return null;
+
+    return tracked.reduce((highest, current) =>
+      current.pct > highest.pct ? current : highest
+    );
+  }, [usageSummary]);
+
+  useEffect(() => {
+    if (!conversationUsageAlert) return;
+    if (
+      dismissedUsageReset &&
+      conversationUsageAlert.resetsAt !== dismissedUsageReset
+    ) {
+      setDismissedUsageReset(null);
+    }
+  }, [conversationUsageAlert, dismissedUsageReset]);
+
+  const usageToastTarget =
+    conversationUsageAlert &&
+    conversationUsageAlert.pct >= 90 &&
+    conversationUsageAlert.resetsAt !== dismissedUsageReset &&
+    effectiveError?.kind !== "quota"
+      ? conversationUsageAlert
+      : null;
+
+  const dismissUsageToast = useCallback(() => {
+    if (!usageToastTarget) return;
+    setDismissedUsageReset(usageToastTarget.resetsAt);
+  }, [usageToastTarget]);
+
+  const sendDisabled =
+    effectiveError?.kind === "quota" ||
+    (effectiveError?.kind === "rate" && effectiveError.retrySeconds > 0);
+
+  const sendDisabledReason =
+    effectiveError?.kind === "quota"
+      ? "You’ve reached the current plan’s conversation limit."
+      : effectiveError?.kind === "rate" && effectiveError.retrySeconds > 0
+        ? `Try again in ${effectiveError.retrySeconds}s`
+        : undefined;
+
+  const audioDisabled = sendDisabled;
+
+  const dismissError = useCallback(() => {
+    setConversationError(null);
+  }, []);
 
   // Hooks
   const { streamText, streamAudio } = useConversationStream();
@@ -451,8 +674,11 @@ export default function ConversationsPage() {
           },
           callbacks
         );
-      } catch {
-        toast.error("Failed to send audio");
+        setConversationError(null);
+      } catch (err) {
+        if (!handleConversationError(err)) {
+          toast.error("Failed to send audio");
+        }
       }
     },
   });
@@ -602,6 +828,7 @@ export default function ConversationsPage() {
 
   const selectConversation = async (id: number) => {
     if (conversationId === id) return;
+    setConversationError(null);
     setConversationId(id);
     if (typeof window !== "undefined")
       localStorage.setItem("active-conversation-id", String(id));
@@ -612,6 +839,7 @@ export default function ConversationsPage() {
   const newConversation = async () => {
     try {
       const { id } = await startConversationMutation.mutateAsync(undefined);
+      setConversationError(null);
       setConversationId(id);
       if (typeof window !== "undefined")
         localStorage.setItem("active-conversation-id", String(id));
@@ -678,6 +906,10 @@ export default function ConversationsPage() {
   };
 
   const sendText = async () => {
+    if (sendDisabled) {
+      errorBannerRef.current?.focus();
+      return;
+    }
     if (!conversationId || !input.trim()) return;
     const text = input.trim();
     setInput("");
@@ -693,8 +925,12 @@ export default function ConversationsPage() {
         { conversationId, text },
         createStreamCallbacks(aiMsgId)
       );
-    } catch {
-      toast.error("Failed to send message");
+      setConversationError(null);
+    } catch (err) {
+      setInput(text);
+      if (!handleConversationError(err)) {
+        toast.error("Failed to send message");
+      }
     }
   };
 
@@ -753,9 +989,10 @@ export default function ConversationsPage() {
             onClick={toggleConversationsSidebar}
             className={`fixed z-30 p-3 rounded-lg transition-all duration-200 cursor-pointer md:hidden ${
               showConversationsSidebar
-                ? "sm:top-22 left-2 sm:left-4 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
-                : "sm:top-22 left-2 sm:left-4 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
+                ? "bottom-16 right-2 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
+                : "bottom-16 right-2 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
             }`}
+            style={{ touchAction: "manipulation" }}
             title={
               showConversationsSidebar
                 ? "Hide conversations"
@@ -794,10 +1031,24 @@ export default function ConversationsPage() {
 
         {/* Main chat column */}
         <div
-          className={`flex-1 h-full flex flex-col gap-2 transition-all duration-300 ease-in-out ${
+          className={`relative flex-1 h-full flex flex-col gap-2 transition-all duration-300 ease-in-out ${
             isMobile && showConversationsSidebar ? "hidden" : ""
           }`}
         >
+          {usageToastTarget && (
+            <div className="pointer-events-none absolute left-0 right-0 bottom-36 z-20 flex justify-center px-4 sm:justify-end sm:px-6">
+              <ConversationUsageToast
+                className="pointer-events-auto"
+                pct={usageToastTarget.pct}
+                resetsAt={usageToastTarget.resetsAt}
+                onDismiss={dismissUsageToast}
+              />
+            </div>
+          )}
+          <ConversationUsageHeader
+            summary={usageSummary}
+            isLoading={usageLoading}
+          />
           <MessageView
             messages={messages}
             aiShowPinyin={aiShowPinyin}
@@ -827,7 +1078,22 @@ export default function ConversationsPage() {
             uploadingAudio={uploadingAudio}
             onStartRecording={startRecording}
             onStopRecording={stopRecording}
+            sendDisabled={sendDisabled}
+            sendDisabledReason={sendDisabledReason}
+            audioDisabled={audioDisabled}
+            audioDisabledReason={sendDisabledReason}
           />
+          {effectiveError && (
+            <div className="mt-3">
+              <ConversationErrorBanner
+                ref={errorBannerRef}
+                error={effectiveError}
+                onDismiss={
+                  effectiveError.kind === "rate" ? undefined : dismissError
+                }
+              />
+            </div>
+          )}
         </div>
       </div>
       <NotesModal
