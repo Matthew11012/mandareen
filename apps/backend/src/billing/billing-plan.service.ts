@@ -122,9 +122,7 @@ export class BillingPlanService {
           currentPeriodEnd: activeSubscription.currentPeriodEnd || null,
         };
       }
-      this.logger.debug(
-        `User ${userId} has active subscription to plan ${plan.code}`,
-      );
+     
     } else {
       // Fallback to FREE plan
       const freePlan = await this.prisma.plan.findUnique({
@@ -156,9 +154,7 @@ export class BillingPlanService {
 
       plan = freePlan;
       limits = freePlan.limits;
-      this.logger.debug(
-        `User ${userId} using FREE plan (no active subscription)`,
-      );
+      
     }
 
     const result = {
