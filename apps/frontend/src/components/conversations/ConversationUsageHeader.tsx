@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { UsageSummary } from "@/lib/api/usage";
 import {
   transformResourceUsage,
@@ -86,8 +86,15 @@ export function ConversationUsageHeader({
   }, [badges]);
 
   const forceExpanded = maxPct >= 90;
-  const [userExpanded, setUserExpanded] = useState(false);
-  const isExpanded = forceExpanded || userExpanded;
+  const [displayMode, setDisplayMode] = useState<"chip" | "expanded">("chip");
+
+  useEffect(() => {
+    if (forceExpanded) {
+      setDisplayMode("expanded");
+    }
+  }, [forceExpanded]);
+
+  const isExpanded = displayMode === "expanded";
 
   const summaryLine = badges
     .map(
@@ -100,14 +107,11 @@ export function ConversationUsageHeader({
     return (
       <section
         aria-label="Conversation usage loading"
-        className={cn(
-          "rounded-xl border border-[#2e323a] bg-[#1b1f26] p-3 sm:p-4",
-          className
-        )}
+        className={cn("min-h-[32px]", className)}
       >
-        <div className="flex items-center gap-3">
-          <div className="h-9 flex-1 rounded-lg bg-[#2e323a] animate-pulse" />
-          <div className="hidden sm:block h-9 w-9 rounded-full bg-[#2e323a] animate-pulse" />
+        <div className="inline-flex items-center gap-2 rounded-full border border-[#2e323a] bg-[#1b1f26]/80 px-3 py-1.5">
+          <div className="h-3 w-16 rounded-full bg-[#2e323a] animate-pulse" />
+          <div className="hidden sm:block h-3 w-32 rounded-full bg-[#2e323a] animate-pulse" />
         </div>
       </section>
     );
@@ -134,43 +138,35 @@ export function ConversationUsageHeader({
       aria-labelledby="conversation-usage-heading"
       className={cn(className)}
     >
-      <div className="rounded-xl border border-[#2e323a] bg-[#1b1f26] p-3 sm:p-4">
+      <div className="space-y-3">
         <button
           type="button"
           onClick={() => {
             if (forceExpanded) return;
-            setUserExpanded((prev) => !prev);
+            setDisplayMode((mode) => (mode === "chip" ? "expanded" : "chip"));
           }}
           aria-expanded={isExpanded}
           aria-controls="conversation-usage-details"
+          aria-disabled={forceExpanded}
           className={cn(
-            "flex w-full items-center gap-3 rounded-lg text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1b1f26]",
-            forceExpanded ? "cursor-default" : "cursor-pointer"
+            "inline-flex items-center gap-2 rounded-full border border-[#2e323a] bg-[#1b1f26]/80 px-3 py-1.5 text-xs font-inter text-[#d1d5db] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4040f2] cursor-pointer",
+            forceExpanded
+              ? "cursor-not-allowed border-amber-500/40 bg-amber-500/10 text-amber-200"
+              : "hover:border-[#3c4250] hover:bg-[#1f242c]"
           )}
         >
-          <div className="flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2
-                id="conversation-usage-heading"
-                className="text-sm font-inter font-semibold text-white"
-              >
-                Conversation usage
-              </h2>
-              {headerDescription && (
-                <span className="text-xs font-inter text-[#a6a6a6]">
-                  {headerDescription}
-                </span>
-              )}
-            </div>
-            {summaryLine && (
-              <p className="mt-1 text-xs font-inter text-[#a6a6a6] line-clamp-2">
-                {summaryLine}
-              </p>
-            )}
-          </div>
+          <span className="font-semibold text-white">Usage</span>
+          {headerDescription && (
+            <span className="text-xs text-[#a6a6a6]">{headerDescription}</span>
+          )}
+          {summaryLine && (
+            <span className="hidden sm:inline text-xs text-[#8f9bb3]">
+              {summaryLine}
+            </span>
+          )}
           <ChevronDown
             className={cn(
-              "h-4 w-4 text-[#a6a6a6] transition-transform duration-200",
+              "h-3.5 w-3.5 text-[#a6a6a6] transition-transform duration-200",
               isExpanded ? "rotate-180" : "rotate-0"
             )}
             aria-hidden="true"
@@ -180,7 +176,7 @@ export function ConversationUsageHeader({
         {isExpanded && (
           <div
             id="conversation-usage-details"
-            className="mt-3 space-y-3"
+            className="space-y-3 rounded-xl border border-[#2e323a] bg-[#1b1f26] p-3 sm:p-4"
             aria-live="polite"
           >
             {maxPct >= 90 && (
