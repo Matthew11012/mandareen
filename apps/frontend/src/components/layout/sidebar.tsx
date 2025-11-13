@@ -16,6 +16,8 @@ import {
   Settings,
   Sparkles,
   GraduationCap,
+  Activity,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAVIGATION_DATA } from "@/lib/constants/navigation";
@@ -34,6 +36,8 @@ const ICONS = {
   TrendingUp,
   User,
   Settings,
+  Activity,
+  CreditCard,
 } as const;
 
 interface SidebarProps {
@@ -56,18 +60,7 @@ const NavItem: React.FC<NavItemProps> = ({
   const IconComponent = ICONS[item.icon as keyof typeof ICONS];
 
   const content = (
-    <div
-      className={cn(
-        "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
-        "hover:bg-[#2e323a] cursor-pointer",
-        {
-          "bg-[#4040f2] hover:bg-[#3636d9] shadow-lg shadow-blue-500/20":
-            isActive,
-          "opacity-60 cursor-not-allowed": item.isComingSoon,
-          "justify-center px-2": isCollapsed,
-        }
-      )}
-    >
+    <>
       {/* Icon */}
       <div className={cn("flex-shrink-0", isCollapsed ? "w-5 h-5" : "w-5 h-5")}>
         {IconComponent && (
@@ -108,22 +101,33 @@ const NavItem: React.FC<NavItemProps> = ({
 
       {/* Tooltip for collapsed state */}
       {isCollapsed && (
-        <div className="absolute left-full ml-2 px-2 py-1 bg-[#2e323a] text-white text-sm rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+        <div className="absolute left-full ml-2 px-2 py-1 bg-[#2e323a] text-white text-sm rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50 top-0">
           {item.label}
           {item.isComingSoon && (
             <span className="ml-2 text-[#999999]">• Coming Soon</span>
           )}
         </div>
       )}
-    </div>
+    </>
+  );
+
+  const wrapperClassName = cn(
+    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
+    "hover:bg-[#2e323a] cursor-pointer",
+    {
+      "bg-[#4040f2] hover:bg-[#3636d9] shadow-lg shadow-blue-500/20":
+        isActive,
+      "opacity-60 cursor-not-allowed": item.isComingSoon,
+      "justify-center px-2": isCollapsed,
+    }
   );
 
   if (item.isComingSoon) {
-    return content;
+    return <div className={wrapperClassName}>{content}</div>;
   }
 
   return (
-    <Link href={item.href} className="block">
+    <Link href={item.href} className={wrapperClassName}>
       {content}
     </Link>
   );
@@ -151,7 +155,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
   return (
     <aside
       className={cn(
-        "flex flex-col h-screen bg-[#1a1d23] border-r border-[#2e323a] transition-all duration-300 ease-in-out relative overflow-x-hidden",
+        "flex flex-col h-full bg-[#1a1d23] border-r border-[#2e323a] transition-all duration-300 ease-in-out relative overflow-hidden",
         isCollapsed ? "w-16" : "w-64"
       )}
     >
@@ -207,7 +211,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
                     pathname === item.href ||
                     (item.id === "curriculum" &&
                       pathname.startsWith("/curriculum/")) ||
-                    (item.id === "lessons" && pathname.startsWith("/lessons/"))
+                    (item.id === "lessons" && pathname.startsWith("/lessons/")) ||
+                    (item.id === "usage" && pathname.startsWith("/account/usage")) ||
+                    (item.id === "billing" && pathname.startsWith("/account/billing"))
                   }
                   isCollapsed={isCollapsed}
                   badgeCount={item.id === "flashcards" ? dueCount : undefined}
