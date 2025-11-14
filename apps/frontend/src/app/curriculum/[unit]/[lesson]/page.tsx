@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import {
   getLesson,
   generateLesson,
@@ -25,12 +25,18 @@ import { useRef } from "react";
 import * as React from "react";
 import { toast } from "sonner";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
+import { useUsageSummary } from "@/lib/hooks/use-usage";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  LessonQuotaBanner,
+  type LessonQuotaError,
+} from "@/components/curriculum/lesson-quota-banner";
 
 type TokenLike = {
   text?: string;
@@ -104,11 +110,7 @@ type LessonView = Omit<CurriculumLesson, "activities"> & {
 
 type Params = { unit: string; lesson: string };
 
-export default function LessonRunnerPage({
-  params,
-}: {
-  params: Promise<Params>;
-}) {
+function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
   const { unit, lesson } = React.use(params);
   const unitId = Number(unit);
   const lessonId = Number(lesson);
@@ -117,6 +119,25 @@ export default function LessonRunnerPage({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState<boolean>(false);
+  const [quotaError, setQuotaError] = useState<LessonQuotaError | null>(null);
+  const errorBannerRef = useRef<HTMLDivElement>(null);
+
+  // Fetch usage summary to check curriculum_generated quota
+  const { data: usageSummary, isLoading: usageLoading } =
+    useUsageSummary(!authLoading);
+
+  // Check if curriculum generation is at quota limit
+  const curriculumUsage = usageSummary?.resources["curriculum_generated"];
+  const isQuotaExceeded = Boolean(
+    curriculumUsage && curriculumUsage.pct >= 100
+  );
+  const resetsAt = curriculumUsage?.resetsAt
+    ? new Date(curriculumUsage.resetsAt)
+    : null;
+
+  const daysUntilReset = resetsAt
+    ? Math.ceil((resetsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null;
   const [navigation, setNavigation] = useState<{
     previous: {
       unitId: number;
@@ -186,6 +207,20 @@ export default function LessonRunnerPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unitId, lessonId]);
 
+  // Focus error banner when quota error appears
+  useEffect(() => {
+    if (quotaError && errorBannerRef.current) {
+      errorBannerRef.current.focus();
+    }
+  }, [quotaError]);
+
+  // Clear quota error when usage changes (e.g., after successful generation)
+  useEffect(() => {
+    if (curriculumUsage && curriculumUsage.pct < 100 && quotaError) {
+      setQuotaError(null);
+    }
+  }, [curriculumUsage, quotaError]);
+
   const activities = useMemo<ActivityUnion[]>(
     () =>
       Array.isArray(lessonData?.activities)
@@ -198,26 +233,105 @@ export default function LessonRunnerPage({
   const hasQuiz = activities.some((a) => a.type === "QUIZ");
 
   async function onGenerate() {
+    // Guard: prevent generation if quota exceeded
+    if (isQuotaExceeded) {
+      return;
+    }
+
     setGenerating(true);
     setError(null);
+    setQuotaError(null);
     try {
       await generateLesson(unitId, lessonId, { levelBand: 1, force: false });
       await load();
       toast.success("Lesson generated successfully!");
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Generation failed";
-      // Check if it's a timeout/abort error
-      if (msg.includes("aborted") || msg.includes("timeout")) {
-        setError(
-          "Lesson generation is taking longer than expected. Please refresh the page in a moment to see if the content was generated."
-        );
+      // Handle quota/rate limit errors
+      const errorResponse =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: unknown }).response
+          : null;
+      if (
+        errorResponse &&
+        typeof errorResponse === "object" &&
+        errorResponse !== null
+      ) {
+        const data = errorResponse as Record<string, unknown>;
+        const code = typeof data.code === "string" ? data.code : undefined;
+        const message =
+          typeof data.message === "string" ? data.message : undefined;
+        const retryAfter =
+          typeof data.retryAfter === "number" ? data.retryAfter : undefined;
+        const resource =
+          typeof data.resource === "string" ? data.resource : undefined;
+        const planCap =
+          typeof data.planCap === "number" ? data.planCap : undefined;
+        const used = typeof data.used === "number" ? data.used : undefined;
+
+        if (code === "QUOTA_EXCEEDED") {
+          setQuotaError({
+            type: "quota_exceeded",
+            message:
+              message ||
+              "You've reached your curriculum generation limit for this period.",
+            resource,
+            planCap,
+            used,
+          });
+          errorBannerRef.current?.focus();
+        } else if (code === "RATE_LIMITED") {
+          setQuotaError({
+            type: "rate_limited",
+            message:
+              message ||
+              "Please slow down. You're generating curriculum too quickly.",
+            resource,
+            retryAfter: retryAfter ? Date.now() + retryAfter * 1000 : undefined,
+          });
+          errorBannerRef.current?.focus();
+        } else {
+          // Generic error or timeout
+          const msg = e instanceof Error ? e.message : "Generation failed";
+          if (msg.includes("aborted") || msg.includes("timeout")) {
+            setError(
+              "Lesson generation is taking longer than expected. Please refresh the page in a moment to see if the content was generated."
+            );
+          } else {
+            setError(msg);
+          }
+        }
       } else {
-        setError(msg);
+        // Non-structured error
+        const msg = e instanceof Error ? e.message : "Generation failed";
+        if (msg.includes("aborted") || msg.includes("timeout")) {
+          setError(
+            "Lesson generation is taking longer than expected. Please refresh the page in a moment to see if the content was generated."
+          );
+        } else {
+          setError(msg);
+        }
       }
     } finally {
       setGenerating(false);
     }
   }
+
+  // Calculate tooltip message for disabled button
+  const getTooltipMessage = (): string => {
+    if (!isQuotaExceeded) {
+      return "";
+    }
+    if (daysUntilReset === null || daysUntilReset === undefined) {
+      return "Monthly cap reached.";
+    }
+    if (daysUntilReset === 0) {
+      return "Monthly cap reached. Resets today.";
+    } else if (daysUntilReset === 1) {
+      return "Monthly cap reached. Resets in 1 day.";
+    } else {
+      return `Monthly cap reached. Resets in ${daysUntilReset} days.`;
+    }
+  };
 
   if (authLoading) {
     return (
@@ -263,7 +377,18 @@ export default function LessonRunnerPage({
           <hr className="my-2" />
         </header>
 
-        {error && (
+        {/* Quota Error Banner */}
+        <LessonQuotaBanner
+          ref={errorBannerRef}
+          error={quotaError}
+          generating={generating}
+          isQuotaExceeded={isQuotaExceeded}
+          onRetry={onGenerate}
+          onDismiss={() => setQuotaError(null)}
+        />
+
+        {/* Generic Error Banner */}
+        {error && !quotaError && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-inter text-red-200">
             {error}
           </div>
@@ -285,23 +410,41 @@ export default function LessonRunnerPage({
             <p className="text-white/80 font-inter text-sm sm:text-base">
               No content yet. Generate the lesson activities.
             </p>
-            <button
-              onClick={onGenerate}
-              disabled={generating}
-              className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 cursor-pointer text-sm sm:text-base"
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="h-5 w-5 sm:h-4 sm:w-4 animate-spin flex-shrink-0" />
-                  <span className="hidden sm:inline">
-                    Generating lesson (this may take 1-2 minutes)…
-                  </span>
-                  <span className="sm:hidden">Generating…</span>
-                </>
-              ) : (
-                "Generate lesson"
-              )}
-            </button>
+            <div className="mt-3">
+              {(() => {
+                const tooltipMessage = getTooltipMessage();
+                const button = (
+                  <button
+                    onClick={onGenerate}
+                    disabled={generating || isQuotaExceeded || usageLoading}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm sm:text-base min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d]"
+                  >
+                    {generating ? (
+                      <>
+                        <Loader2 className="h-5 w-5 sm:h-4 sm:w-4 animate-spin flex-shrink-0" />
+                        <span className="hidden sm:inline">
+                          Generating lesson (this may take 1-2 minutes)…
+                        </span>
+                        <span className="sm:hidden">Generating…</span>
+                      </>
+                    ) : (
+                      "Generate lesson"
+                    )}
+                  </button>
+                );
+
+                // Wrap with tooltip if quota exceeded
+                if (isQuotaExceeded && tooltipMessage) {
+                  return (
+                    <Tooltip content={tooltipMessage} position="top" delay={0}>
+                      {button}
+                    </Tooltip>
+                  );
+                }
+
+                return button;
+              })()}
+            </div>
           </div>
         )}
 
@@ -1836,5 +1979,25 @@ function QuizView({
         </div>
       )}
     </div>
+  );
+}
+
+export default function LessonRunnerPage({
+  params,
+}: {
+  params: Promise<Params>;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <DashboardLayout title="Curriculum" subtitle="Loading lesson…">
+          <div className="flex min-h-[60vh] items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-white/70" />
+          </div>
+        </DashboardLayout>
+      }
+    >
+      <LessonRunnerPageContent params={params} />
+    </Suspense>
   );
 }

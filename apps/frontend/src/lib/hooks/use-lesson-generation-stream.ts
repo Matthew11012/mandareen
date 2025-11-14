@@ -32,7 +32,7 @@ export function useLessonGenerationStream() {
         type: "story" | "dialogue";
         topic?: string;
       }) => Promise<void> | void;
-      onError: () => void;
+      onError: (err?: unknown) => void;
       markAllComplete: () => void;
     }) => {
       const { params, onComplete, onError, markAllComplete } = opts;
