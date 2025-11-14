@@ -86,6 +86,8 @@ export const useAssessmentStore = create<AssessmentState>()(
               ? error.message
               : "Failed to start assessment";
           set({ error: errorMessage, isLoading: false });
+          // Re-throw to allow callers to handle the error with full error object
+          throw error;
         }
       },
 
