@@ -4,10 +4,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
+import { useAuth } from "@/lib/hooks/use-auth";
 
 export function HeroSection() {
   const [videoOk, setVideoOk] = useState(true);
   const prefersReducedMotion = useReducedMotion();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const ease = [0.2, 0.8, 0.2, 1] as const;
 
   return (
@@ -50,7 +52,7 @@ export function HeroSection() {
                   animate: { y: 0, opacity: 1 },
                   transition: { duration: 0.8, ease },
                 })}
-            className="font-inter font-extrabold text-4xl md:text-6xl leading-tight tracking-tight"
+            className="font-inter font-extrabold text-4xl md:text-6xl leading-tight tracking-tight text-white"
           >
             Find your voice in Mandarin
           </motion.h1>
@@ -75,20 +77,43 @@ export function HeroSection() {
                   animate: { y: 0, opacity: 1 },
                   transition: { duration: 1, ease, delay: 0.1 },
                 })}
-            className="mt-8 flex items-center gap-3"
+            className="mt-8 flex items-center gap-3 flex-wrap"
           >
-            <Link
-              href="/signup"
-              className="px-5 py-3 rounded-full bg-white text-black hover:bg-white/90 font-inter border border-white/10"
-            >
-              Sign up
-            </Link>
-            <Link
-              href="/assessment"
-              className="text-[var(--color-text-secondary)] hover:text-white font-inter"
-            >
-              Take placement test
-            </Link>
+            {!authLoading && isAuthenticated ? (
+              <>
+                <Link
+                  href="/pricing"
+                  className="px-5 py-3 rounded-full bg-white text-black hover:bg-white/90 font-inter font-medium border border-white/10 transition-all duration-200 min-h-[44px] inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                  aria-label="View pricing plans"
+                >
+                  View plans
+                </Link>
+                <Link
+                  href="/dashboard"
+                  className="px-5 py-3 rounded-full border border-white/10 text-white hover:bg-white/10 font-inter font-medium transition-all duration-200 min-h-[44px] inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                  aria-label="Go to dashboard"
+                >
+                  Go to dashboard
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/signup"
+                  className="px-5 py-3 rounded-full bg-white text-black hover:bg-white/90 font-inter font-medium border border-white/10 transition-all duration-200 min-h-[44px] inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                  aria-label="Sign up for free"
+                >
+                  Sign up
+                </Link>
+                <Link
+                  href="/assessment"
+                  className="px-5 py-3 rounded-full border border-white/10 text-[var(--color-text-secondary)] hover:text-white hover:bg-white/10 font-inter font-medium transition-all duration-200 min-h-[44px] inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                  aria-label="Take placement test"
+                >
+                  Take placement test
+                </Link>
+              </>
+            )}
           </motion.div>
         </div>
       </div>

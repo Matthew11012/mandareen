@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, EyeOff, Check, X } from "lucide-react";
@@ -11,19 +12,90 @@ import { z } from "zod";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { GoogleButton } from "@/components/ui/google-button";
-import { useAuth, useRedirectAuthenticated } from "@/lib/hooks/use-auth";
+import { useAuthStore } from "@/lib/stores/auth-store";
 import { registerSchema, type RegisterData, authApi } from "@/lib/api/auth";
 import { validatePassword } from "@/lib/utils";
+import { useCheckoutMutation } from "@/lib/hooks/use-billing";
+import { BillingPeriod } from "@/lib/api/billing";
 
 export default function SignupPage() {
-  const { isLoading: authChecking } = useRedirectAuthenticated();
-  const { register: registerUser, isLoading, clearError } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const authStore = useAuthStore();
+  const {
+    isAuthenticated: authStoreIsAuthenticated,
+    isLoading: authStoreIsLoading,
+    register: registerUser,
+    clearError,
+  } = authStore;
+  const checkoutMutation = useCheckoutMutation();
 
+  const [isRegistering, setIsRegistering] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
+  const isProcessingCheckoutRef = useRef(false);
 
-  // Build refined schema to avoid any cast and ensure proper typing
+  const redirectUrl = searchParams.get("redirect");
+
+  const planInfo = redirectUrl
+    ? (() => {
+        try {
+          const urlParts = redirectUrl.split("?");
+          if (urlParts.length > 1) {
+            const params = new URLSearchParams(urlParts[1]);
+            const plan = params.get("plan");
+            const billingPeriod = params.get("billingPeriod");
+
+            if (plan && ["BASIC", "PREMIUM"].includes(plan)) {
+              return {
+                planCode: plan as "BASIC" | "PREMIUM",
+                billingPeriod:
+                  (billingPeriod as BillingPeriod) || BillingPeriod.MONTHLY,
+              };
+            }
+          }
+        } catch (error) {
+          console.error("Failed to parse redirect URL:", error);
+        }
+        return null;
+      })()
+    : null;
+
+  useEffect(() => {
+    const initialize = (
+      authStore as unknown as { initialize?: () => Promise<void> }
+    ).initialize;
+    if (initialize) {
+      void initialize();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (redirectUrl) {
+      return;
+    }
+
+    if (
+      !authStoreIsLoading &&
+      authStoreIsAuthenticated &&
+      !isRegistering &&
+      !isProcessingCheckout &&
+      !isProcessingCheckoutRef.current
+    ) {
+      router.push("/dashboard");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    authStoreIsLoading,
+    authStoreIsAuthenticated,
+    isRegistering,
+    isProcessingCheckout,
+    redirectUrl,
+  ]);
+
   const formSchema = registerSchema
     .extend({
       confirmPassword: z.string().min(1, "Please confirm your password"),
@@ -49,12 +121,66 @@ export default function SignupPage() {
     ? validatePassword(password)
     : { isValid: false, errors: [] };
 
+  const handleCheckoutAfterSignup = async (
+    planCode: "BASIC" | "PREMIUM",
+    billingPeriod: BillingPeriod
+  ) => {
+    try {
+      const response = await checkoutMutation.mutateAsync({
+        planCode,
+        billingPeriod,
+      });
+
+      if (response.url) {
+        window.location.href = response.url;
+      } else {
+        throw new Error("No checkout URL returned");
+      }
+    } catch (error) {
+      console.error("Checkout error after signup:", error);
+      setIsProcessingCheckout(false);
+      isProcessingCheckoutRef.current = false;
+      router.push(`/pricing?plan=${planCode}&billingPeriod=${billingPeriod}`);
+    }
+  };
+
   const onSubmit = async (data: RegisterData) => {
     try {
       clearError();
+
+      setIsRegistering(true);
+
+      if (planInfo) {
+        setIsProcessingCheckout(true);
+        isProcessingCheckoutRef.current = true;
+      }
+
       await registerUser(data);
+
+      if (!planInfo) {
+        setIsRegistering(false);
+      }
+
       toast.success("Account created. Welcome to Mandareen!");
+
+      if (planInfo) {
+        await handleCheckoutAfterSignup(
+          planInfo.planCode,
+          planInfo.billingPeriod
+        );
+      } else if (redirectUrl) {
+        setIsRegistering(false);
+        router.push(redirectUrl);
+      } else {
+        setIsRegistering(false);
+        setIsProcessingCheckout(false);
+        isProcessingCheckoutRef.current = false;
+        router.push("/dashboard");
+      }
     } catch {
+      setIsRegistering(false);
+      setIsProcessingCheckout(false);
+      isProcessingCheckoutRef.current = false;
       toast.error("Registration failed. Please try again.");
     }
   };
@@ -63,6 +189,11 @@ export default function SignupPage() {
     try {
       setGoogleLoading(true);
       clearError();
+
+      if (redirectUrl) {
+        sessionStorage.setItem("signup_redirect_url", redirectUrl);
+      }
+
       const googleAuthUrl = authApi.getGoogleAuthUrl();
       window.location.href = googleAuthUrl;
     } catch {
@@ -71,10 +202,34 @@ export default function SignupPage() {
     }
   };
 
-  if (authChecking) {
+  if (authStoreIsLoading || isRegistering || isProcessingCheckout) {
     return (
       <div className="min-h-screen bg-[#222831] flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
+        <div className="text-center space-y-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent mx-auto" />
+          {isProcessingCheckout ? (
+            <>
+              <p className="text-white font-inter font-semibold text-lg">
+                Preparing your checkout...
+              </p>
+              <p className="text-[#a6a6a6] font-inter text-sm max-w-md mx-auto px-4">
+                Please wait while we create your checkout session. You&apos;ll
+                be redirected to complete your purchase in a moment.
+              </p>
+            </>
+          ) : isRegistering ? (
+            <>
+              <p className="text-white font-inter font-semibold text-lg">
+                Creating your account...
+              </p>
+              <p className="text-[#a6a6a6] font-inter text-sm max-w-md mx-auto px-4">
+                Please wait while we set up your account.
+              </p>
+            </>
+          ) : (
+            <p className="text-white font-inter text-sm">Loading...</p>
+          )}
+        </div>
       </div>
     );
   }
@@ -222,9 +377,9 @@ export default function SignupPage() {
               type="submit"
               variant="primary"
               size="full"
-              loading={isLoading}
+              loading={isRegistering}
               disabled={
-                isLoading || googleLoading || !passwordValidation.isValid
+                isRegistering || googleLoading || !passwordValidation.isValid
               }
               className="bg-[#4040f2] hover:bg-[#3636d9] text-white shadow-[0_8px_20px_rgba(64,64,242,0.35)] hover:shadow-[0_10px_24px_rgba(64,64,242,0.45)] transition-all min-h-[44px]"
               aria-label="Create account"
@@ -252,7 +407,7 @@ export default function SignupPage() {
               type="button"
               onClick={handleGoogleSignup}
               loading={googleLoading}
-              disabled={isLoading || googleLoading}
+              disabled={isRegistering || googleLoading}
               className="min-h-[44px] w-full"
             >
               Sign up with Google

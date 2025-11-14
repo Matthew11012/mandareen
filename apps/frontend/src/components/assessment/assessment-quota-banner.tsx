@@ -34,6 +34,10 @@ export const AssessmentQuotaBanner = React.forwardRef<
     typeof error.planCap === "number" &&
     typeof error.used === "number";
 
+  // Don't show dismiss button when quota is actually exceeded
+  // Only show it for rate limit or other temporary errors
+  const showDismissButton = !isQuotaExceeded && error.type !== "quota_exceeded";
+
   return (
     <div
       ref={ref}
@@ -95,13 +99,15 @@ export const AssessmentQuotaBanner = React.forwardRef<
             </div>
           )}
         </div>
-        <button
-          onClick={onDismiss}
-          className="text-amber-200/60 hover:text-amber-200 transition-colors p-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d] min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer"
-          aria-label="Dismiss error"
-        >
-          <XCircle className="w-4 h-4" aria-hidden="true" />
-        </button>
+        {showDismissButton && (
+          <button
+            onClick={onDismiss}
+            className="text-amber-200/60 hover:text-amber-200 transition-colors p-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d] min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer"
+            aria-label="Dismiss error"
+          >
+            <XCircle className="w-4 h-4" aria-hidden="true" />
+          </button>
+        )}
       </div>
     </div>
   );

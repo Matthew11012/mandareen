@@ -72,11 +72,10 @@
   box-sizing: border-box;
 }
 
-/* Lock page-level scroll — only app main should scroll */
+/* Base body styles */
 html,
 body {
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
 }
 
 body {
