@@ -326,16 +326,38 @@ export default function AssessmentPage() {
           </div>
         </div>
 
-        {/* Quota Error Banner */}
-        {quotaError && (
+        {/* Quota Banner - Show when quota exceeded or when there's an error */}
+        {(isQuotaExceeded || quotaError) && (
           <div className="max-w-4xl mx-auto">
             <AssessmentQuotaBanner
               ref={errorBannerRef}
-              error={quotaError}
+              error={
+                quotaError ||
+                (isQuotaExceeded
+                  ? {
+                      type: "quota_exceeded" as const,
+                      message:
+                        "You've reached your assessment limit for this period.",
+                      resource: "assessment_taken",
+                      planCap: assessmentUsage?.cap,
+                      used: assessmentUsage?.used,
+                    }
+                  : null)
+              }
               starting={assessmentLoading}
               isQuotaExceeded={isQuotaExceeded}
               onRetry={handleStartAssessment}
-              onDismiss={() => setQuotaError(null)}
+              onDismiss={() => {
+                // Only allow dismissal for rate limit or generic errors
+                // Don't dismiss when quota is actually exceeded
+                if (
+                  quotaError &&
+                  quotaError.type !== "quota_exceeded" &&
+                  !isQuotaExceeded
+                ) {
+                  setQuotaError(null);
+                }
+              }}
             />
           </div>
         )}
