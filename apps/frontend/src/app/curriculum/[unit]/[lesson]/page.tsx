@@ -20,8 +20,6 @@ import {
   XCircle,
   Trophy,
   Target,
-  AlertCircle,
-  RefreshCw,
 } from "lucide-react";
 import { useRef } from "react";
 import * as React from "react";
@@ -35,6 +33,10 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  LessonQuotaBanner,
+  type LessonQuotaError,
+} from "@/components/curriculum/lesson-quota-banner";
 
 type TokenLike = {
   text?: string;
@@ -117,14 +119,7 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState<boolean>(false);
-  const [quotaError, setQuotaError] = useState<{
-    type: "quota_exceeded" | "rate_limited" | "generic";
-    message: string;
-    resource?: string;
-    planCap?: number;
-    used?: number;
-    retryAfter?: number;
-  } | null>(null);
+  const [quotaError, setQuotaError] = useState<LessonQuotaError | null>(null);
   const errorBannerRef = useRef<HTMLDivElement>(null);
 
   // Fetch usage summary to check curriculum_generated quota
@@ -383,79 +378,14 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
         </header>
 
         {/* Quota Error Banner */}
-        {quotaError && (
-          <div
-            ref={errorBannerRef}
-            className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-inter"
-            role="alert"
-            aria-live="polite"
-            aria-atomic="true"
-            tabIndex={-1}
-          >
-            <div className="flex items-start gap-3">
-              <AlertCircle
-                className="w-5 h-5 text-amber-400 flex-shrink-0"
-                aria-hidden="true"
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-amber-200 font-semibold mb-2">
-                  {quotaError.message}
-                </p>
-                {quotaError.type === "quota_exceeded" && (
-                  <div className="space-y-2">
-                    {quotaError.planCap !== undefined &&
-                      quotaError.used !== undefined && (
-                        <p className="text-amber-200/80 text-xs">
-                          Used: {quotaError.used} / {quotaError.planCap}
-                        </p>
-                      )}
-                    <div className="flex flex-row gap-2">
-                      <Link
-                        href="/pricing"
-                        className="inline-flex items-center gap-2 text-xs font-medium text-amber-200 hover:text-amber-100 underline underline-offset-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d] rounded-md py-1 min-h-[44px] sm:min-h-0"
-                      >
-                        Upgrade plan
-                      </Link>
-                      <button
-                        onClick={onGenerate}
-                        disabled={generating || isQuotaExceeded}
-                        className="inline-flex items-end gap-2 text-xs font-medium text-amber-200 hover:text-amber-100 underline underline-offset-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d] rounded-md px-2 py-1 min-h-[44px] sm:min-h-0 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                      >
-                        Try again
-                        <RefreshCw
-                          className={`w-3 h-3 ${generating ? "animate-spin" : ""}`}
-                          aria-hidden="true"
-                        />
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {quotaError.type === "rate_limited" && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={onGenerate}
-                      disabled={generating}
-                      className="inline-flex items-end gap-2 text-xs font-medium text-amber-200 hover:text-amber-100 underline underline-offset-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d] rounded-md px-2 py-1 min-h-[44px] sm:min-h-0 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      Retry
-                      <RefreshCw
-                        className={`w-3 h-3 ${generating ? "animate-spin" : ""}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => setQuotaError(null)}
-                className="text-amber-200/60 hover:text-amber-200 transition-colors p-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d] min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer"
-                aria-label="Dismiss error"
-              >
-                <XCircle className="w-4 h-4" aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-        )}
+        <LessonQuotaBanner
+          ref={errorBannerRef}
+          error={quotaError}
+          generating={generating}
+          isQuotaExceeded={isQuotaExceeded}
+          onRetry={onGenerate}
+          onDismiss={() => setQuotaError(null)}
+        />
 
         {/* Generic Error Banner */}
         {error && !quotaError && (
