@@ -813,9 +813,9 @@ function PlanCard({
                 <Check className="h-4 w-4 text-green-400 flex-shrink-0" />
                 <span>{limit.label}</span>
               </span>
-              <span className="font-semibold text-white">
+              <span className="font-semibold text-white tabular-nums">
                 {typeof limit.value === "number"
-                  ? limit.value.toLocaleString()
+                  ? limit.value.toLocaleString("en-US")
                   : limit.value}
               </span>
             </li>
