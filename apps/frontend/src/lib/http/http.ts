@@ -82,10 +82,12 @@ async function buildRequestInit(
 
 async function normalizeError(res: Response): Promise<Error> {
   let message = `Request failed (${res.status})`;
+  let errorData: unknown = null;
   try {
     const ct = res.headers.get("content-type") || "";
     if (ct.includes("application/json")) {
-      const data = await res.json();
+      errorData = await res.json();
+      const data = errorData as { message?: string; error?: string; code?: string };
       message = data?.message || data?.error || message;
     } else {
       const text = await res.text();
@@ -95,9 +97,11 @@ async function normalizeError(res: Response): Promise<Error> {
     // ignore parse errors
   }
   const err = new Error(message);
-  // Attach status for callers that need it
+  // Attach status and error data for callers that need it
   // @ts-expect-error augment
   err.status = res.status;
+  // @ts-expect-error augment
+  if (errorData) err.response = errorData;
   return err;
 }
 

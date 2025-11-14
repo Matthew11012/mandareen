@@ -90,7 +90,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   };
 
   return (
-    <div className="flex h-screen bg-[#222831] overflow-hidden">
+    <div className="flex h-[100dvh] bg-[#222831] overflow-hidden">
       {/* Mobile Overlay */}
       {isMobile && showMobileMenu && (
         <div
@@ -113,7 +113,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 "fixed inset-y-0 left-0",
                 showMobileMenu ? "translate-x-0" : "-translate-x-full"
               )
-            : "relative"
+            : "relative h-full"
         )}
         style={{
           width: isMobile ? undefined : sidebarCollapsed ? "4rem" : "16rem",
@@ -146,7 +146,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 h-full">
         {/* Top Header Bar */}
         <header className="bg-[#1a1d23] border-b border-[#2e323a] px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">

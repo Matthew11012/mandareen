@@ -6,6 +6,8 @@ import { toast } from "sonner";
 
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { authApi } from "@/lib/api/auth";
+import { useCheckoutMutation } from "@/lib/hooks/use-billing";
+import { BillingPeriod } from "@/lib/api/billing";
 
 /**
  * Google OAuth Callback Handler
@@ -18,15 +20,63 @@ import { authApi } from "@/lib/api/auth";
  * Features:
  * - Extracts JWT token from URL parameters
  * - Stores token and updates auth state
- * - Redirects to dashboard on success
+ * - Checks sessionStorage for redirect URL with plan info
+ * - Triggers checkout if plan info exists, otherwise redirects to dashboard
  * - Handles error cases gracefully
  */
 function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isProcessing, setIsProcessing] = useState(true);
+  const checkoutMutation = useCheckoutMutation();
 
   useAuthStore();
+
+  // Parse redirect URL to extract plan info
+  const parseRedirectUrl = (url: string | null) => {
+    if (!url) return null;
+
+    try {
+      const urlObj = new URL(url, window.location.origin);
+      const plan = urlObj.searchParams.get("plan");
+      const billingPeriod = urlObj.searchParams.get("billingPeriod");
+
+      if (plan && ["BASIC", "PREMIUM"].includes(plan)) {
+        return {
+          planCode: plan as "BASIC" | "PREMIUM",
+          billingPeriod:
+            (billingPeriod as BillingPeriod) || BillingPeriod.MONTHLY,
+        };
+      }
+    } catch (error) {
+      console.error("Failed to parse redirect URL:", error);
+    }
+
+    return null;
+  };
+
+  // Handle checkout after successful OAuth
+  const handleCheckoutAfterOAuth = async (
+    planCode: "BASIC" | "PREMIUM",
+    billingPeriod: BillingPeriod,
+  ) => {
+    try {
+      const response = await checkoutMutation.mutateAsync({
+        planCode,
+        billingPeriod,
+      });
+
+      if (response.url) {
+        window.location.href = response.url;
+      } else {
+        throw new Error("No checkout URL returned");
+      }
+    } catch (error) {
+      console.error("Checkout error after OAuth:", error);
+      // Redirect to pricing page with plan selected as fallback
+      router.push(`/pricing?plan=${planCode}&billingPeriod=${billingPeriod}`);
+    }
+  };
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -43,6 +93,26 @@ function AuthCallbackContent() {
         });
 
         toast.success("Successfully signed in with Google!");
+
+        // Check sessionStorage for redirect URL with plan info
+        const storedRedirectUrl = sessionStorage.getItem("signup_redirect_url");
+        if (storedRedirectUrl) {
+          // Remove from sessionStorage after reading
+          sessionStorage.removeItem("signup_redirect_url");
+
+          const planInfo = parseRedirectUrl(storedRedirectUrl);
+          if (planInfo) {
+            // Automatically trigger checkout for the selected plan
+            await handleCheckoutAfterOAuth(planInfo.planCode, planInfo.billingPeriod);
+            return;
+          } else {
+            // Redirect to the stored URL if no plan info
+            router.replace(storedRedirectUrl);
+            return;
+          }
+        }
+
+        // Default: redirect to dashboard
         router.replace("/dashboard");
       } catch (error) {
         console.error("OAuth callback error:", error);
@@ -54,6 +124,7 @@ function AuthCallbackContent() {
     };
 
     handleCallback();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, router]);
 
   return (

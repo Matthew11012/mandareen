@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, EyeOff } from "lucide-react";
@@ -11,14 +12,48 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { GoogleButton } from "@/components/ui/google-button";
 import { useAuth, useRedirectAuthenticated } from "@/lib/hooks/use-auth";
+import { useAuthStore } from "@/lib/stores/auth-store";
 import { loginSchema, type LoginData, authApi } from "@/lib/api/auth";
+import { useCheckoutMutation } from "@/lib/hooks/use-billing";
+import { BillingPeriod } from "@/lib/api/billing";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { isLoading: authChecking } = useRedirectAuthenticated();
   const { login, isLoading, clearError } = useAuth();
+  const authStore = useAuthStore();
+  const { isAuthenticated: authStoreIsAuthenticated, isLoading: authStoreIsLoading } = authStore;
+  const checkoutMutation = useCheckoutMutation();
+
+  // Get redirect URL from query params
+  const redirectUrl = searchParams.get("redirect");
+
+  // Parse redirect URL to check if it contains plan info
+  const planInfo = redirectUrl
+    ? (() => {
+        try {
+          const urlObj = new URL(redirectUrl, window.location.origin);
+          const plan = urlObj.searchParams.get("plan");
+          const billingPeriod = urlObj.searchParams.get("billingPeriod");
+
+          if (plan && ["BASIC", "PREMIUM"].includes(plan)) {
+            return {
+              planCode: plan as "BASIC" | "PREMIUM",
+              billingPeriod:
+                (billingPeriod as BillingPeriod) || BillingPeriod.MONTHLY,
+            };
+          }
+        } catch (error) {
+          console.error("Failed to parse redirect URL:", error);
+        }
+        return null;
+      })()
+    : null;
 
   const [showPassword, setShowPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
 
   const {
     register,
@@ -29,11 +64,48 @@ export default function LoginPage() {
     defaultValues: { email: "", password: "" },
   });
 
+  // Handle checkout after successful login
+  const handleCheckoutAfterLogin = async (
+    planCode: "BASIC" | "PREMIUM",
+    billingPeriod: BillingPeriod,
+  ) => {
+    setIsProcessingCheckout(true);
+    try {
+      const response = await checkoutMutation.mutateAsync({
+        planCode,
+        billingPeriod,
+      });
+
+      if (response.url) {
+        window.location.href = response.url;
+      } else {
+        throw new Error("No checkout URL returned");
+      }
+    } catch (error) {
+      console.error("Checkout error after login:", error);
+      setIsProcessingCheckout(false);
+      // Redirect to pricing page with plan selected as fallback
+      router.push(`/pricing?plan=${planCode}&billingPeriod=${billingPeriod}`);
+    }
+  };
+
   const onSubmit = async (data: LoginData) => {
     try {
       clearError();
       await login(data);
       toast.success("Welcome back!");
+
+      // Check if redirect URL contains plan info for automatic checkout
+      if (planInfo) {
+        // Automatically trigger checkout for the selected plan
+        await handleCheckoutAfterLogin(planInfo.planCode, planInfo.billingPeriod);
+      } else if (redirectUrl) {
+        // Redirect to the specified URL if no plan info
+        router.push(redirectUrl);
+      } else {
+        // Default: redirect to dashboard
+        router.push("/dashboard");
+      }
     } catch {
       toast.error("Login failed. Please check your credentials.");
     }
@@ -43,6 +115,12 @@ export default function LoginPage() {
     try {
       setGoogleLoading(true);
       clearError();
+
+      // Store redirect URL in sessionStorage so it persists through OAuth flow
+      if (redirectUrl) {
+        sessionStorage.setItem("login_redirect_url", redirectUrl);
+      }
+
       const googleAuthUrl = authApi.getGoogleAuthUrl();
       window.location.href = googleAuthUrl;
     } catch {
@@ -51,10 +129,18 @@ export default function LoginPage() {
     }
   };
 
-  if (authChecking) {
+  // Show loading state while checking auth or processing checkout
+  if (authChecking || isProcessingCheckout) {
     return (
       <div className="min-h-screen bg-[#222831] flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
+        <div className="text-center space-y-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent mx-auto" />
+          {isProcessingCheckout && (
+            <p className="text-white font-inter text-sm">
+              Preparing your checkout...
+            </p>
+          )}
+        </div>
       </div>
     );
   }

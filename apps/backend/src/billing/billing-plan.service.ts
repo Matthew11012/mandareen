@@ -21,6 +21,10 @@ interface CachedPlan {
     burst: number | null;
     concurrency: number | null;
   }>;
+  subscriptionPeriod?: {
+    currentPeriodStart: Date;
+    currentPeriodEnd: Date | null;
+  };
   cachedAt: number; // timestamp
 }
 
@@ -64,12 +68,20 @@ export class BillingPlanService {
       burst: number | null;
       concurrency: number | null;
     }>;
+    subscriptionPeriod?: {
+      currentPeriodStart: Date;
+      currentPeriodEnd: Date | null;
+    };
   }> {
     // Check cache
     const cached = this.cache.get(userId);
     const now = Date.now();
     if (cached && now - cached.cachedAt < this.cacheTtlSeconds * 1000) {
-      return { plan: cached.plan, limits: cached.limits };
+      return {
+        plan: cached.plan,
+        limits: cached.limits,
+        subscriptionPeriod: cached.subscriptionPeriod,
+      };
     }
 
     // Resolve plan from active subscription or FREE fallback
@@ -93,14 +105,24 @@ export class BillingPlanService {
 
     let plan: any;
     let limits: any[];
+    let subscriptionPeriod:
+      | {
+          currentPeriodStart: Date;
+          currentPeriodEnd: Date | null;
+        }
+      | undefined;
 
     if (activeSubscription?.plan) {
       // Use plan from subscription (already includes limits)
       plan = activeSubscription.plan;
       limits = activeSubscription.plan.limits;
-      this.logger.debug(
-        `User ${userId} has active subscription to plan ${plan.code}`,
-      );
+      if (activeSubscription.currentPeriodStart) {
+        subscriptionPeriod = {
+          currentPeriodStart: activeSubscription.currentPeriodStart,
+          currentPeriodEnd: activeSubscription.currentPeriodEnd || null,
+        };
+      }
+     
     } else {
       // Fallback to FREE plan
       const freePlan = await this.prisma.plan.findUnique({
@@ -132,9 +154,7 @@ export class BillingPlanService {
 
       plan = freePlan;
       limits = freePlan.limits;
-      this.logger.debug(
-        `User ${userId} using FREE plan (no active subscription)`,
-      );
+      
     }
 
     const result = {
@@ -157,6 +177,7 @@ export class BillingPlanService {
         burst: l.burst,
         concurrency: l.concurrency,
       })),
+      subscriptionPeriod,
     };
 
     // Cache result

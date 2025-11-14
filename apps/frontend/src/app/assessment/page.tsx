@@ -1,11 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { DashboardLayout } from "@/components/layout";
 import { AssessmentFlow, AssessmentResults } from "@/components/assessment";
 import { useAssessmentStore } from "@/lib/stores/assessment-store";
 import { useAssessmentGenerationStore } from "@/lib/stores/assessment-generation-store";
+import { useUsageSummary } from "@/lib/hooks/use-usage";
+import {
+  AssessmentQuotaBanner,
+  type AssessmentQuotaError,
+} from "@/components/assessment/assessment-quota-banner";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Target, Clock, CheckCircle, ArrowRight } from "lucide-react";
 
 type AssessmentPhase = "intro" | "assessment" | "results";
@@ -16,11 +22,31 @@ type AssessmentPhase = "intro" | "assessment" | "results";
  * Placement test page where users can assess their Mandarin proficiency level.
  */
 export default function AssessmentPage() {
-  const { isLoading } = useRequireAuth();
-  const { session, resetAssessment, checkSessionExpiry } = useAssessmentStore();
+  const { isLoading: authLoading } = useRequireAuth();
+  const {
+    session,
+    resetAssessment,
+    checkSessionExpiry,
+    startAssessment,
+    isLoading: assessmentLoading,
+  } = useAssessmentStore();
   const [currentPhase, setCurrentPhase] = useState<AssessmentPhase>("intro");
   const [placementResult, setPlacementResult] = useState<number | null>(null);
+  const [quotaError, setQuotaError] = useState<AssessmentQuotaError | null>(
+    null
+  );
+  const errorBannerRef = useRef<HTMLDivElement>(null);
   const genStore = useAssessmentGenerationStore();
+
+  // Fetch usage summary to check assessment_taken quota
+  const { data: usageSummary, isLoading: usageLoading } =
+    useUsageSummary(!authLoading);
+
+  // Check if assessment generation is at quota limit
+  const assessmentUsage = usageSummary?.resources["assessment_taken"];
+  const isQuotaExceeded = Boolean(
+    assessmentUsage && assessmentUsage.pct >= 100
+  );
 
   // Check for existing session on mount
   useEffect(() => {
@@ -34,17 +60,116 @@ export default function AssessmentPage() {
     }
   }, [session, genStore.inProgress, checkSessionExpiry, currentPhase]);
 
-  if (isLoading) {
+  // Focus error banner when quota error appears
+  useEffect(() => {
+    if (quotaError && errorBannerRef.current) {
+      errorBannerRef.current.focus();
+    }
+  }, [quotaError]);
+
+  // Clear quota error when usage changes (e.g., after successful generation)
+  useEffect(() => {
+    if (assessmentUsage && assessmentUsage.pct < 100 && quotaError) {
+      setQuotaError(null);
+    }
+  }, [assessmentUsage, quotaError]);
+
+  // Format reset date for tooltip (must be called before any early returns)
+  const resetDateText = useMemo(() => {
+    if (!assessmentUsage || !assessmentUsage.resetsAt) {
+      return "Usage resets at the end of your billing period";
+    }
+    const resetDate = new Date(assessmentUsage.resetsAt);
+    return `Usage resets on ${resetDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })}`;
+  }, [assessmentUsage]);
+
+  const handleStartAssessment = async () => {
+    // Guard: prevent starting if quota exceeded
+    if (isQuotaExceeded) {
+      return;
+    }
+
+    setQuotaError(null);
+    try {
+      await startAssessment();
+      setCurrentPhase("assessment");
+    } catch (e: unknown) {
+      // Handle quota/rate limit errors
+      const errorResponse =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: unknown }).response
+          : null;
+      if (
+        errorResponse &&
+        typeof errorResponse === "object" &&
+        errorResponse !== null
+      ) {
+        const data = errorResponse as Record<string, unknown>;
+        const code = typeof data.code === "string" ? data.code : undefined;
+        const message =
+          typeof data.message === "string" ? data.message : undefined;
+        const retryAfter =
+          typeof data.retryAfter === "number" ? data.retryAfter : undefined;
+        const resource =
+          typeof data.resource === "string" ? data.resource : undefined;
+        const planCap =
+          typeof data.planCap === "number" ? data.planCap : undefined;
+        const used = typeof data.used === "number" ? data.used : undefined;
+
+        if (code === "QUOTA_EXCEEDED") {
+          setQuotaError({
+            type: "quota_exceeded",
+            message:
+              message ||
+              "You've reached your assessment limit for this period.",
+            resource,
+            planCap,
+            used,
+          });
+          errorBannerRef.current?.focus();
+        } else if (code === "RATE_LIMITED") {
+          setQuotaError({
+            type: "rate_limited",
+            message:
+              message ||
+              "Please slow down. You're starting assessments too quickly.",
+            resource,
+            retryAfter: retryAfter ? Date.now() + retryAfter * 1000 : undefined,
+          });
+          errorBannerRef.current?.focus();
+        } else {
+          setQuotaError({
+            type: "generic",
+            message:
+              message ||
+              "An unexpected error occurred while starting the assessment.",
+          });
+          errorBannerRef.current?.focus();
+        }
+      } else {
+        setQuotaError({
+          type: "generic",
+          message:
+            e instanceof Error
+              ? e.message
+              : "An unexpected error occurred while starting the assessment.",
+        });
+        errorBannerRef.current?.focus();
+      }
+    }
+  };
+
+  if (authLoading || usageLoading) {
     return (
       <div className="min-h-screen bg-[#222831] flex items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
       </div>
     );
   }
-
-  const handleStartAssessment = () => {
-    setCurrentPhase("assessment");
-  };
 
   const handleAssessmentComplete = (levelPlaced: number) => {
     setPlacementResult(levelPlaced);
@@ -201,17 +326,79 @@ export default function AssessmentPage() {
           </div>
         </div>
 
+        {/* Quota Banner - Show when quota exceeded or when there's an error */}
+        {(isQuotaExceeded || quotaError) && (
+          <div className="max-w-4xl mx-auto">
+            <AssessmentQuotaBanner
+              ref={errorBannerRef}
+              error={
+                quotaError ||
+                (isQuotaExceeded
+                  ? {
+                      type: "quota_exceeded" as const,
+                      message:
+                        "You've reached your assessment limit for this period.",
+                      resource: "assessment_taken",
+                      planCap: assessmentUsage?.cap,
+                      used: assessmentUsage?.used,
+                    }
+                  : null)
+              }
+              starting={assessmentLoading}
+              isQuotaExceeded={isQuotaExceeded}
+              onRetry={handleStartAssessment}
+              onDismiss={() => {
+                // Only allow dismissal for rate limit or generic errors
+                // Don't dismiss when quota is actually exceeded
+                if (
+                  quotaError &&
+                  quotaError.type !== "quota_exceeded" &&
+                  !isQuotaExceeded
+                ) {
+                  setQuotaError(null);
+                }
+              }}
+            />
+          </div>
+        )}
+
         {/* Start Assessment */}
         <div className="text-center">
-          <button
-            onClick={handleStartAssessment}
-            className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-[#4040f2] to-[#6366f1] hover:from-[#3636d9] hover:to-[#5855f0] text-white font-inter font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-blue-500/20 cursor-pointer"
-          >
-            Start Placement Test
-            <ArrowRight className="w-5 h-5" />
-          </button>
+          {isQuotaExceeded ? (
+            <Tooltip content={resetDateText}>
+              <button
+                disabled
+                className="inline-flex items-center gap-2 px-8 py-4 bg-[#404040] text-[#a6a6a6] font-inter font-semibold rounded-xl transition-all duration-200 cursor-not-allowed opacity-60 min-h-[44px]"
+                aria-label={`Start Placement Test (disabled: ${resetDateText})`}
+              >
+                Start Placement Test
+                <ArrowRight className="w-5 h-5" />
+              </button>
+            </Tooltip>
+          ) : (
+            <button
+              onClick={handleStartAssessment}
+              disabled={assessmentLoading}
+              className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-[#4040f2] to-[#6366f1] hover:from-[#3636d9] hover:to-[#5855f0] text-white font-inter font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-blue-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+              aria-label="Start Placement Test"
+            >
+              {assessmentLoading ? (
+                <>
+                  Starting...
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                </>
+              ) : (
+                <>
+                  Start Placement Test
+                  <ArrowRight className="w-5 h-5" />
+                </>
+              )}
+            </button>
+          )}
           <p className="text-[#a6a6a6] text-sm font-inter mt-3">
-            You can retake this test anytime to track your progress
+            {isQuotaExceeded
+              ? `You've reached your assessment limit. ${resetDateText}.`
+              : "You can retake this test anytime to track your progress"}
           </p>
         </div>
 

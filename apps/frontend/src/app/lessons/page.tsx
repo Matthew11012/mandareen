@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  Suspense,
+} from "react";
 import { DashboardLayout } from "@/components/layout";
 import { useAuth, useRequireAuth } from "@/lib/hooks/use-auth";
 import { lessonsApi, type LessonListItem } from "@/lib/api/lessons";
@@ -9,11 +16,16 @@ import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { useRouter } from "next/navigation";
 import { useLessonsGenerationStore } from "@/lib/stores/lessons-generation-store";
 import { useLessonGenerationStream } from "@/lib/hooks/use-lesson-generation-stream";
+import { useLessonGenerationGuard } from "@/lib/hooks/use-lesson-generation-guard";
 import { LayoutGroup } from "framer-motion";
 import { notifyLessonReady } from "@/lib/notifications/notify-lesson-ready";
 import { ProgressBanner } from "@/components/lessons/ProgressBanner";
 import { LessonCard } from "@/components/lessons/LessonCard";
 import { Carousel } from "@/components/lessons/Carousel";
+import {
+  LessonGenerationErrorBanner,
+  type LessonGenerationErrorState,
+} from "@/components/lessons/LessonGenerationErrorBanner";
 import { MultiSelect } from "@/components/ui/multi-select";
 import {
   Select,
@@ -31,7 +43,7 @@ const LS_KEYS = {
   tags: "mandareen.lessons.tags.v1",
 } as const;
 
-export default function LessonsPage() {
+function LessonsPageContent() {
   const { isLoading: authLoading } = useRequireAuth();
   const { user } = useAuth();
   const router = useRouter();
@@ -372,8 +384,24 @@ export default function LessonsPage() {
     "persist_lesson",
   ];
 
+  // Guard hook: checks usage limits and generation state
+  const generationGuard = useLessonGenerationGuard(!authLoading);
+
+  // Error state for SSE errors (quota, rate limit, etc.)
+  const [generationError, setGenerationError] =
+    useState<LessonGenerationErrorState | null>(null);
+  const errorBannerRef = useRef<HTMLDivElement>(null);
+
   // Track notified lesson IDs to prevent duplicates
   const notifiedLessonIdsRef = useRef<Set<number>>(new Set());
+
+  // Sync generation state on mount: if inProgress, set generating and progressOpen
+  useEffect(() => {
+    if (genStore.inProgress && !generating) {
+      setGenerating(true);
+      setProgressOpen(true);
+    }
+  }, [genStore.inProgress, generating]);
 
   const handleLessonReady = useCallback(
     async (meta: {
@@ -426,7 +454,13 @@ export default function LessonsPage() {
   );
 
   const handleGenerate = async () => {
+    // Guard check: prevent generation if not allowed
+    if (!generationGuard.canGenerate) {
+      return;
+    }
+
     setError(null);
+    setGenerationError(null);
     setGenerating(true);
     setProgressOpen(true);
     const requestTopic = topic.trim() || undefined;
@@ -450,6 +484,7 @@ export default function LessonsPage() {
           await load();
           setProgressOpen(false);
           setGenerating(false);
+          setGenerationError(null);
           genStore.setLessonId(null);
           genStore.finish();
           if (typeof id === "number") {
@@ -460,7 +495,74 @@ export default function LessonsPage() {
             });
           }
         },
-        onError: async () => {
+        onError: async (err?: unknown) => {
+          // Handle SSE errors (quota, rate limit, etc.)
+          const errorResponse =
+            err && typeof err === "object" && "response" in err
+              ? (err as { response?: unknown }).response
+              : null;
+          if (
+            errorResponse &&
+            typeof errorResponse === "object" &&
+            errorResponse !== null
+          ) {
+            const data = errorResponse as Record<string, unknown>;
+            const code = typeof data.code === "string" ? data.code : undefined;
+            const message =
+              typeof data.message === "string" ? data.message : undefined;
+            const retryAfter =
+              typeof data.retryAfter === "number" ? data.retryAfter : undefined;
+            const resource =
+              typeof data.resource === "string" ? data.resource : undefined;
+            const planCap =
+              typeof data.planCap === "number" ? data.planCap : undefined;
+            const used = typeof data.used === "number" ? data.used : undefined;
+            const limit =
+              typeof data.limit === "number" ? data.limit : undefined;
+
+            if (code === "QUOTA_EXCEEDED") {
+              setGenerationError({
+                type: "quota_exceeded",
+                message:
+                  message ||
+                  "You've reached your custom lesson generation limit.",
+                resource,
+                planCap,
+                used,
+              });
+              errorBannerRef.current?.focus();
+            } else if (code === "RATE_LIMITED") {
+              setGenerationError({
+                type: "rate_limited",
+                message:
+                  message ||
+                  "Please slow down. You're generating lessons too quickly.",
+                resource,
+                retryAfter: retryAfter
+                  ? Date.now() + retryAfter * 1000
+                  : undefined,
+              });
+              errorBannerRef.current?.focus();
+            } else if (code === "CONCURRENCY_LIMIT") {
+              setGenerationError({
+                type: "concurrency_limit",
+                message:
+                  message || "Only one lesson can be generated at a time.",
+                resource,
+                limit,
+                retryAfter: retryAfter
+                  ? Date.now() + retryAfter * 1000
+                  : undefined,
+              });
+              errorBannerRef.current?.focus();
+            } else {
+              setGenerationError({
+                type: "generic",
+                message: message || "Generation failed",
+              });
+              errorBannerRef.current?.focus();
+            }
+          }
           try {
             await load();
             const startedAt = genStore.startedAt || Date.now();
@@ -489,7 +591,9 @@ export default function LessonsPage() {
               return;
             }
           } catch {}
-          setError("Failed to generate lesson");
+          if (!generationError) {
+            setError("Failed to generate lesson");
+          }
           setGenerating(false);
           setProgressOpen(false);
           genStore.finish();
@@ -504,8 +608,65 @@ export default function LessonsPage() {
           ].forEach((k) => genStore.markCompleted(k));
         },
       });
-    } catch {
-      setError("Failed to generate lesson");
+    } catch (err) {
+      // Handle non-SSE errors (network, etc.)
+      const errorResponse =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: unknown }).response
+          : null;
+      if (
+        errorResponse &&
+        typeof errorResponse === "object" &&
+        errorResponse !== null
+      ) {
+        const data = errorResponse as Record<string, unknown>;
+        const code = typeof data.code === "string" ? data.code : undefined;
+        const message =
+          typeof data.message === "string" ? data.message : undefined;
+        const retryAfter =
+          typeof data.retryAfter === "number" ? data.retryAfter : undefined;
+        const resource =
+          typeof data.resource === "string" ? data.resource : undefined;
+        const planCap =
+          typeof data.planCap === "number" ? data.planCap : undefined;
+        const used = typeof data.used === "number" ? data.used : undefined;
+        const limit = typeof data.limit === "number" ? data.limit : undefined;
+
+        if (code === "QUOTA_EXCEEDED") {
+          setGenerationError({
+            type: "quota_exceeded",
+            message:
+              message || "You've reached your custom lesson generation limit.",
+            resource,
+            planCap,
+            used,
+          });
+          errorBannerRef.current?.focus();
+        } else if (code === "RATE_LIMITED") {
+          setGenerationError({
+            type: "rate_limited",
+            message:
+              message ||
+              "Please slow down. You're generating lessons too quickly.",
+            resource,
+            retryAfter: retryAfter ? Date.now() + retryAfter * 1000 : undefined,
+          });
+          errorBannerRef.current?.focus();
+        } else if (code === "CONCURRENCY_LIMIT") {
+          setGenerationError({
+            type: "concurrency_limit",
+            message: message || "Only one lesson can be generated at a time.",
+            resource,
+            limit,
+            retryAfter: retryAfter ? Date.now() + retryAfter * 1000 : undefined,
+          });
+          errorBannerRef.current?.focus();
+        } else {
+          setError(message || "Failed to generate lesson");
+        }
+      } else {
+        setError("Failed to generate lesson");
+      }
       setGenerating(false);
       setProgressOpen(false);
       genStore.finish();
@@ -513,7 +674,13 @@ export default function LessonsPage() {
   };
 
   const handleGenerateDialogue = async () => {
+    // Guard check: prevent generation if not allowed
+    if (!generationGuard.canGenerate) {
+      return;
+    }
+
     setError(null);
+    setGenerationError(null);
     setGenerating(true);
     setProgressOpen(true);
     const requestTopic = topic.trim() || undefined;
@@ -537,6 +704,7 @@ export default function LessonsPage() {
           await load();
           setProgressOpen(false);
           setGenerating(false);
+          setGenerationError(null);
           genStore.setLessonId(null);
           genStore.finish();
           if (typeof id === "number") {
@@ -547,7 +715,74 @@ export default function LessonsPage() {
             });
           }
         },
-        onError: async () => {
+        onError: async (err?: unknown) => {
+          // Handle SSE errors (quota, rate limit, etc.)
+          const errorResponse =
+            err && typeof err === "object" && "response" in err
+              ? (err as { response?: unknown }).response
+              : null;
+          if (
+            errorResponse &&
+            typeof errorResponse === "object" &&
+            errorResponse !== null
+          ) {
+            const data = errorResponse as Record<string, unknown>;
+            const code = typeof data.code === "string" ? data.code : undefined;
+            const message =
+              typeof data.message === "string" ? data.message : undefined;
+            const retryAfter =
+              typeof data.retryAfter === "number" ? data.retryAfter : undefined;
+            const resource =
+              typeof data.resource === "string" ? data.resource : undefined;
+            const planCap =
+              typeof data.planCap === "number" ? data.planCap : undefined;
+            const used = typeof data.used === "number" ? data.used : undefined;
+            const limit =
+              typeof data.limit === "number" ? data.limit : undefined;
+
+            if (code === "QUOTA_EXCEEDED") {
+              setGenerationError({
+                type: "quota_exceeded",
+                message:
+                  message ||
+                  "You've reached your custom lesson generation limit.",
+                resource,
+                planCap,
+                used,
+              });
+              errorBannerRef.current?.focus();
+            } else if (code === "RATE_LIMITED") {
+              setGenerationError({
+                type: "rate_limited",
+                message:
+                  message ||
+                  "Please slow down. You're generating lessons too quickly.",
+                resource,
+                retryAfter: retryAfter
+                  ? Date.now() + retryAfter * 1000
+                  : undefined,
+              });
+              errorBannerRef.current?.focus();
+            } else if (code === "CONCURRENCY_LIMIT") {
+              setGenerationError({
+                type: "concurrency_limit",
+                message:
+                  message || "Only one lesson can be generated at a time.",
+                resource,
+                limit,
+                retryAfter: retryAfter
+                  ? Date.now() + retryAfter * 1000
+                  : undefined,
+              });
+              errorBannerRef.current?.focus();
+            } else {
+              setGenerationError({
+                type: "generic",
+                message: message || "Generation failed",
+              });
+              errorBannerRef.current?.focus();
+            }
+          }
           try {
             await load();
             const startedAt = genStore.startedAt || Date.now();
@@ -900,13 +1135,27 @@ export default function LessonsPage() {
               </div>
             </fieldset>
           </div>
+          {/* Error Banner */}
+          {generationError && (
+            <LessonGenerationErrorBanner
+              ref={errorBannerRef}
+              error={generationError}
+              onDismiss={() => setGenerationError(null)}
+              className="mb-3"
+            />
+          )}
           <div className="pt-2">
             <button
               onClick={onGenerate}
-              disabled={generating}
+              disabled={
+                generating ||
+                !generationGuard.canGenerate ||
+                generationGuard.isLoading
+              }
               className="w-full sm:w-auto px-3 py-2 sm:px-4 bg-orange-500/70 text-white rounded-lg hover:bg-orange-600/70 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#2e323a] min-h-[44px]"
               type="button"
               aria-label={`Generate ${outputMode}`}
+              title={generationGuard.disabledReason || undefined}
             >
               <div className="flex items-center gap-2 justify-center">
                 {generating ? (
@@ -1810,5 +2059,21 @@ export default function LessonsPage() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+export default function LessonsPage() {
+  return (
+    <Suspense
+      fallback={
+        <DashboardLayout title="Lessons" subtitle="Loading...">
+          <div className="flex min-h-[60vh] items-center justify-center">
+            <div className="h-8 w-8 rounded-full border-2 border-white border-t-transparent motion-safe:animate-spin" />
+          </div>
+        </DashboardLayout>
+      }
+    >
+      <LessonsPageContent />
+    </Suspense>
   );
 }

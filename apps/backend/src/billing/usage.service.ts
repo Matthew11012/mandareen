@@ -27,11 +27,13 @@ interface RecordAnalyticsArgs {
  */
 @Injectable()
 export class UsageService {
+  private readonly prisma: PrismaService;
   private readonly logger = new Logger(UsageService.name);
   private readonly windowDays: number;
   private readonly enforceUsage: boolean;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(prisma: PrismaService) {
+    this.prisma = prisma;
     this.windowDays = Number(process.env.USAGE_WINDOW_DAYS) || 30;
     this.enforceUsage = process.env.USAGE_ENFORCE === 'true';
   }
@@ -286,5 +288,196 @@ export class UsageService {
         });
       }
     });
+  }
+
+  /**
+   * Get usage summary for all resources in a user's plan.
+   * Efficiently aggregates UsageDaily records in a single query.
+   *
+   * Performance characteristics:
+   * - Single database query using groupBy aggregation
+   * - Leverages UsageDaily pre-aggregated data (not raw events)
+   * - Scales well: O(1) query regardless of event volume
+   *
+   * @param userId User ID
+   * @param windowDays Rolling window size (defaults to service windowDays)
+   * @returns Map of resource -> used amount for the rolling window
+   */
+  async getUsageSummaryByResource(
+    userId: number,
+    options?: {
+      start?: Date;
+      end?: Date;
+      windowDays?: number;
+    },
+  ): Promise<Map<string, number>> {
+    const windowDays = options?.windowDays ?? this.windowDays;
+
+    let windowStart: Date;
+    if (options?.start) {
+      windowStart = new Date(options.start);
+    } else {
+      windowStart = new Date();
+      windowStart.setUTCDate(windowStart.getUTCDate() - windowDays);
+    }
+    windowStart.setUTCHours(0, 0, 0, 0);
+
+    let windowEnd: Date | undefined;
+    if (options?.end) {
+      windowEnd = new Date(options.end);
+      windowEnd.setUTCHours(0, 0, 0, 0);
+    }
+
+    const dayFilter: {
+      gte: Date;
+      lt?: Date;
+    } = {
+      gte: windowStart,
+    };
+    if (windowEnd && windowEnd.getTime() > windowStart.getTime()) {
+      dayFilter.lt = windowEnd;
+    }
+
+    // Single efficient query: group by resource and sum usage
+    // This is much faster than N queries (one per resource)
+    const results = await this.prisma.usageDaily.groupBy({
+      by: ['resource'],
+      where: {
+        userId,
+        day: dayFilter,
+      },
+      _sum: {
+        used: true,
+      },
+    });
+
+    // Convert to Map for O(1) lookup
+    const usageMap = new Map<string, number>();
+    for (const result of results) {
+      usageMap.set(result.resource, result._sum.used || 0);
+    }
+
+    return usageMap;
+  }
+
+  /**
+   * Calculate reset timestamps for all resources in a single efficient query.
+   * The window resets when the oldest entry falls outside the window.
+   *
+   * Performance: Single query instead of N queries (one per resource).
+   *
+   * @param userId User ID
+   * @param resources Array of resource names to calculate resets for
+   * @param windowDays Rolling window size
+   * @returns Map of resource -> ISO 8601 reset timestamp
+   */
+  async getWindowResetsAt(
+    userId: number,
+    resources: string[],
+    options?: {
+      start?: Date;
+      end?: Date;
+      windowDays?: number;
+    },
+  ): Promise<Map<string, string>> {
+    const windowDays = options?.windowDays ?? this.windowDays;
+
+    if (resources.length === 0) {
+      return new Map<string, string>();
+    }
+
+    let windowStart: Date;
+    if (options?.start) {
+      windowStart = new Date(options.start);
+    } else {
+      windowStart = new Date();
+      windowStart.setUTCDate(windowStart.getUTCDate() - windowDays);
+    }
+    windowStart.setUTCHours(0, 0, 0, 0);
+
+    if (options?.end) {
+      const windowEnd = new Date(options.end);
+      windowEnd.setUTCHours(0, 0, 0, 0);
+      const iso = windowEnd.toISOString();
+      const resetMap = new Map<string, string>();
+      for (const resource of resources) {
+        resetMap.set(resource, iso);
+      }
+      return resetMap;
+    }
+
+    // Single query: get all UsageDaily records for user in window
+    // Then find min(day) per resource in memory
+    const records = await this.prisma.usageDaily.findMany({
+      where: {
+        userId,
+        resource: {
+          in: resources,
+        },
+        day: {
+          gte: windowStart,
+        },
+      },
+      select: {
+        resource: true,
+        day: true,
+      },
+      orderBy: {
+        day: 'asc',
+      },
+    });
+
+    // Group by resource and find minimum day for each
+    const minDayByResource = new Map<string, Date>();
+    for (const record of records) {
+      const existing = minDayByResource.get(record.resource);
+      if (!existing || record.day < existing) {
+        minDayByResource.set(record.resource, record.day);
+      }
+    }
+
+    // Calculate reset timestamps
+    const resetMap = new Map<string, string>();
+    const defaultReset = new Date(windowStart);
+    defaultReset.setUTCDate(defaultReset.getUTCDate() + windowDays);
+    defaultReset.setUTCHours(0, 0, 0, 0);
+
+    for (const resource of resources) {
+      const minDay = minDayByResource.get(resource);
+      if (!minDay) {
+        // No usage yet, window resets at (windowStart + windowDays)
+        resetMap.set(resource, defaultReset.toISOString());
+      } else {
+        // Window resets when oldest entry falls outside: minDay + windowDays
+        const resetAt = new Date(minDay);
+        resetAt.setUTCDate(resetAt.getUTCDate() + windowDays);
+        resetAt.setUTCHours(0, 0, 0, 0);
+        resetMap.set(resource, resetAt.toISOString());
+      }
+    }
+
+    return resetMap;
+  }
+
+  /**
+   * Calculate the reset timestamp for a single resource (legacy method for compatibility).
+   * Prefer getWindowResetsAt for batch operations.
+   *
+   * @param userId User ID
+   * @param resource Resource name
+   * @param windowDays Rolling window size
+   * @returns ISO 8601 timestamp when the window resets
+   */
+  async getWindowResetAt(
+    userId: number,
+    resource: string,
+    options?: {
+      start?: Date;
+      end?: Date;
+      windowDays?: number;
+    },
+  ): Promise<string> {
+    const resetMap = await this.getWindowResetsAt(userId, [resource], options);
+    return resetMap.get(resource) || new Date().toISOString();
   }
 }
