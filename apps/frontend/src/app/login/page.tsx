@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -12,18 +12,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { GoogleButton } from "@/components/ui/google-button";
 import { useAuth, useRedirectAuthenticated } from "@/lib/hooks/use-auth";
-import { useAuthStore } from "@/lib/stores/auth-store";
 import { loginSchema, type LoginData, authApi } from "@/lib/api/auth";
 import { useCheckoutMutation } from "@/lib/hooks/use-billing";
 import { BillingPeriod } from "@/lib/api/billing";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLoading: authChecking } = useRedirectAuthenticated();
   const { login, isLoading, clearError } = useAuth();
-  const authStore = useAuthStore();
-  const { isAuthenticated: authStoreIsAuthenticated, isLoading: authStoreIsLoading } = authStore;
   const checkoutMutation = useCheckoutMutation();
 
   // Get redirect URL from query params
@@ -67,7 +64,7 @@ export default function LoginPage() {
   // Handle checkout after successful login
   const handleCheckoutAfterLogin = async (
     planCode: "BASIC" | "PREMIUM",
-    billingPeriod: BillingPeriod,
+    billingPeriod: BillingPeriod
   ) => {
     setIsProcessingCheckout(true);
     try {
@@ -98,7 +95,10 @@ export default function LoginPage() {
       // Check if redirect URL contains plan info for automatic checkout
       if (planInfo) {
         // Automatically trigger checkout for the selected plan
-        await handleCheckoutAfterLogin(planInfo.planCode, planInfo.billingPeriod);
+        await handleCheckoutAfterLogin(
+          planInfo.planCode,
+          planInfo.billingPeriod
+        );
       } else if (redirectUrl) {
         // Redirect to the specified URL if no plan info
         router.push(redirectUrl);
@@ -238,5 +238,22 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#222831] flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent mx-auto" />
+            <p className="text-white font-inter text-sm">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
   );
 }
