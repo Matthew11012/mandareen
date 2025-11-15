@@ -116,7 +116,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             : "relative h-full"
         )}
         style={{
-          width: isMobile ? undefined : sidebarCollapsed ? "4rem" : "16rem",
+          width: isMobile ? undefined : sidebarCollapsed ? "4rem" : "12rem",
         }}
       >
         <Sidebar isCollapsed={isMobile ? false : sidebarCollapsed} />
@@ -148,7 +148,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 h-full">
         {/* Top Header Bar */}
-        <header className="bg-[#1a1d23] border-b border-[#2e323a] px-4 py-3 flex items-center justify-between">
+        <header className="bg-[#1a1d23] border-b border-[#2e323a] px-4 py-3 min-h-[75px] flex items-center justify-between">
           <div className="flex items-center gap-4">
             {/* Mobile Menu Button */}
             {isMobile && (
