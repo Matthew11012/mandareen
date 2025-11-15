@@ -292,16 +292,21 @@ export function Tooltip({
     };
   }, [isVisible, position, content]);
 
+  // In React 19, ref is a regular prop, not a special property
+  const existingRef = childProps.ref as React.Ref<HTMLElement> | undefined;
+
   const childWithProps = React.cloneElement(children, {
     ...additionalProps,
     ref: (node: HTMLElement | null) => {
       triggerRef.current = node;
-      // Handle ref forwarding if child has ref
-      const childRef = (children as { ref?: React.Ref<HTMLElement> }).ref;
-      if (typeof childRef === "function") {
-        childRef(node);
-      } else if (childRef && "current" in childRef) {
-        (childRef as React.MutableRefObject<HTMLElement | null>).current = node;
+      // Handle ref forwarding if child has ref (React 19: ref is a regular prop)
+      if (existingRef) {
+        if (typeof existingRef === "function") {
+          existingRef(node);
+        } else if (existingRef && "current" in existingRef) {
+          (existingRef as React.MutableRefObject<HTMLElement | null>).current =
+            node;
+        }
       }
     },
   } as React.HTMLAttributes<HTMLElement>);

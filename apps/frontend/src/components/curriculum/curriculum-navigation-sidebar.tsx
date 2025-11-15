@@ -226,6 +226,103 @@ function LoadingSkeleton() {
   );
 }
 
+// Conditional tooltip component that only shows when text is truncated
+interface ConditionalTooltipProps {
+  content: string;
+  position?: "top" | "bottom" | "left" | "right";
+  delay?: number;
+  className?: string;
+  children: React.ReactElement;
+}
+
+function ConditionalTooltip({
+  content,
+  position = "top",
+  delay = 300,
+  className,
+  children,
+}: ConditionalTooltipProps) {
+  const containerRef = useRef<HTMLElement | null>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+
+  // Check if text is truncated by finding the truncate element
+  const checkTruncation = useCallback(() => {
+    if (containerRef.current) {
+      // Find the element with truncate class within the container
+      const truncateElement = containerRef.current.querySelector(
+        ".truncate"
+      ) as HTMLElement | null;
+      if (truncateElement) {
+        const isTextTruncated =
+          truncateElement.scrollWidth > truncateElement.clientWidth ||
+          truncateElement.scrollHeight > truncateElement.clientHeight;
+        setIsTruncated(isTextTruncated);
+      }
+    }
+  }, []);
+
+  // Check truncation after render
+  useEffect(() => {
+    // Use multiple strategies to ensure we catch the element after it's rendered
+    const check = () => {
+      if (containerRef.current) {
+        checkTruncation();
+      }
+    };
+
+    requestAnimationFrame(() => {
+      check();
+      setTimeout(check, 0);
+      setTimeout(check, 50);
+      setTimeout(check, 100);
+    });
+  }, [checkTruncation, content]);
+
+  // Re-check on resize
+  useEffect(() => {
+    window.addEventListener("resize", checkTruncation);
+    return () => {
+      window.removeEventListener("resize", checkTruncation);
+    };
+  }, [checkTruncation]);
+
+  // Use a wrapper div with ref to check truncation
+  // This avoids React 19 ref prop issues with cloneElement
+  const wrappedContent = (
+    <div
+      ref={(node: HTMLDivElement | null) => {
+        containerRef.current = node;
+        if (node) {
+          // Check truncation when ref is set
+          requestAnimationFrame(() => {
+            checkTruncation();
+          });
+          setTimeout(checkTruncation, 0);
+        }
+      }}
+      style={{ display: "contents" }}
+    >
+      {children}
+    </div>
+  );
+
+  // Always return wrapped content to check truncation, but only wrap in Tooltip if truncated
+  if (!isTruncated) {
+    return wrappedContent;
+  }
+
+  return (
+    <Tooltip
+      content={content}
+      position={position}
+      delay={delay}
+      className={className}
+    >
+      {wrappedContent}
+    </Tooltip>
+  );
+}
+
 // Lesson item component
 interface LessonItemProps {
   lesson: CurriculumLesson;
@@ -247,7 +344,7 @@ function LessonItem({
 
   return (
     <li>
-      <Tooltip
+      <ConditionalTooltip
         content={lesson.title}
         position="top"
         delay={300}
@@ -275,7 +372,7 @@ function LessonItem({
           <span className="flex-1 text-xs truncate block">{lesson.title}</span>
           {isCurrent && <span className="sr-only">Current lesson</span>}
         </Link>
-      </Tooltip>
+      </ConditionalTooltip>
     </li>
   );
 }
@@ -289,6 +386,7 @@ interface UnitSectionProps {
   onToggle: () => void;
   onLoadLessons: () => void;
   onLessonNavigate?: () => void;
+  isInitialAutoExpand?: boolean;
 }
 
 function UnitSection({
@@ -299,11 +397,15 @@ function UnitSection({
   onToggle,
   onLoadLessons,
   onLessonNavigate,
+  isInitialAutoExpand = false,
 }: UnitSectionProps) {
   const hasLessons = Array.isArray(unit.lessons) && unit.lessons.length > 0;
   const isLoading = unit.isLoading ?? false;
   const error = unit.error;
   const prefersReducedMotion = useReducedMotionSafe();
+  const hasAnimatedRef = useRef(false);
+  const hasBeenManuallyToggledRef = useRef(false);
+  const isFirstRenderRef = useRef(true);
 
   // Load lessons when expanded
   useEffect(() => {
@@ -311,6 +413,41 @@ function UnitSection({
       onLoadLessons();
     }
   }, [isExpanded, hasLessons, isLoading, error, onLoadLessons]);
+
+  // Track if unit has been manually toggled (user interaction)
+  useEffect(() => {
+    if (!isInitialAutoExpand && isExpanded) {
+      // User manually expanded a unit that wasn't auto-expanded
+      hasBeenManuallyToggledRef.current = true;
+    }
+  }, [isExpanded, isInitialAutoExpand]);
+
+  // Track manual toggle for initially auto-expanded units
+  // When user collapses an auto-expanded unit, mark it as manually toggled
+  useEffect(() => {
+    if (
+      isInitialAutoExpand &&
+      !isExpanded &&
+      isFirstRenderRef.current === false
+    ) {
+      // User manually collapsed an initially auto-expanded unit
+      hasBeenManuallyToggledRef.current = true;
+    }
+  }, [isExpanded, isInitialAutoExpand]);
+
+  // Mark first render as complete after initial mount
+  useEffect(() => {
+    if (isFirstRenderRef.current) {
+      isFirstRenderRef.current = false;
+    }
+  }, []);
+
+  // For initial auto-expand, mark as animated once content is loaded to prevent re-animation
+  useEffect(() => {
+    if (isInitialAutoExpand && isExpanded && hasLessons && !isLoading) {
+      hasAnimatedRef.current = true;
+    }
+  }, [isInitialAutoExpand, isExpanded, hasLessons, isLoading]);
 
   const progress =
     unit.totalLessons > 0
@@ -331,7 +468,7 @@ function UnitSection({
         isCurrent && "bg-[#4040f2]/10"
       )}
     >
-      <Tooltip
+      <ConditionalTooltip
         content={unit.title}
         position="top"
         delay={300}
@@ -377,13 +514,20 @@ function UnitSection({
             </div>
           </div>
         </button>
-      </Tooltip>
+      </ConditionalTooltip>
 
       <AnimatePresence initial={false}>
         {isExpanded && (
           <motion.div
+            layout={false}
             initial={
-              prefersReducedMotion ? { opacity: 0 } : { height: 0, opacity: 0 }
+              isInitialAutoExpand &&
+              !hasBeenManuallyToggledRef.current &&
+              !hasAnimatedRef.current
+                ? false
+                : prefersReducedMotion
+                  ? { opacity: 0 }
+                  : { height: 0, opacity: 0 }
             }
             animate={
               prefersReducedMotion
@@ -394,18 +538,22 @@ function UnitSection({
               prefersReducedMotion ? { opacity: 0 } : { height: 0, opacity: 0 }
             }
             transition={
-              prefersReducedMotion
-                ? { duration: 0.15 }
-                : {
-                    height: {
-                      duration: 0.3,
-                      ease: [0.4, 0, 0.2, 1],
-                    },
-                    opacity: {
-                      duration: 0.2,
-                      ease: [0.4, 0, 0.2, 1],
-                    },
-                  }
+              isInitialAutoExpand &&
+              !hasBeenManuallyToggledRef.current &&
+              !hasAnimatedRef.current
+                ? { duration: 0 }
+                : prefersReducedMotion
+                  ? { duration: 0.15 }
+                  : {
+                      height: {
+                        duration: 0.3,
+                        ease: [0.4, 0, 0.2, 1],
+                      },
+                      opacity: {
+                        duration: 0.2,
+                        ease: [0.4, 0, 0.2, 1],
+                      },
+                    }
             }
             style={{ overflow: "hidden" }}
             className="pb-2"
@@ -470,6 +618,8 @@ export function CurriculumNavigationSidebar({
   const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);
   const prefersReducedMotion = useReducedMotionSafe();
+  const initialAutoExpandedUnitsRef = useRef<Set<number>>(new Set());
+  const previousUnitIdRef = useRef<number | null>(null);
 
   // Detect mobile
   useEffect(() => {
@@ -484,11 +634,26 @@ export function CurriculumNavigationSidebar({
   // On desktop, sidebar is always visible (ignore URL state)
   const shouldShowSidebar = isMobile ? isOpen : true;
 
-  // Auto-expand and prefetch current unit
+  // Auto-expand and prefetch current unit (only when currentUnitId changes)
   useEffect(() => {
     if (currentUnitId && units.length > 0) {
-      setExpandedUnits((prev) => new Set(prev).add(currentUnitId));
-      // Prefetch lessons for current unit to improve UX
+      const isUnitIdChange = previousUnitIdRef.current !== currentUnitId;
+
+      if (isUnitIdChange) {
+        // Only auto-expand when the unit ID actually changes
+        setExpandedUnits((prev) => {
+          const next = new Set(prev);
+          if (!next.has(currentUnitId)) {
+            // Track this as an initial auto-expand
+            initialAutoExpandedUnitsRef.current.add(currentUnitId);
+          }
+          next.add(currentUnitId);
+          return next;
+        });
+        previousUnitIdRef.current = currentUnitId;
+      }
+
+      // Prefetch lessons for current unit to improve UX (only if not already loaded)
       const currentUnit = unitsWithLessons.get(currentUnitId);
       if (!currentUnit?.lessons && !currentUnit?.isLoading) {
         // Prefetch in background without blocking
@@ -660,6 +825,8 @@ export function CurriculumNavigationSidebar({
                           unitsWithLessons.get(unit.id) || unit;
                         const isExpanded = expandedUnits.has(unit.id);
                         const isCurrent = unit.id === currentUnitId;
+                        const isInitialAutoExpand =
+                          initialAutoExpandedUnitsRef.current.has(unit.id);
 
                         return (
                           <UnitSection
@@ -671,6 +838,7 @@ export function CurriculumNavigationSidebar({
                             onToggle={() => toggleUnit(unit.id)}
                             onLoadLessons={() => loadUnitLessons(unit.id)}
                             onLessonNavigate={handleLessonNavigate}
+                            isInitialAutoExpand={isInitialAutoExpand}
                           />
                         );
                       })}
@@ -724,6 +892,8 @@ export function CurriculumNavigationSidebar({
                   const unitWithLessons = unitsWithLessons.get(unit.id) || unit;
                   const isExpanded = expandedUnits.has(unit.id);
                   const isCurrent = unit.id === currentUnitId;
+                  const isInitialAutoExpand =
+                    initialAutoExpandedUnitsRef.current.has(unit.id);
 
                   return (
                     <UnitSection
@@ -735,6 +905,7 @@ export function CurriculumNavigationSidebar({
                       onToggle={() => toggleUnit(unit.id)}
                       onLoadLessons={() => loadUnitLessons(unit.id)}
                       onLessonNavigate={handleLessonNavigate}
+                      isInitialAutoExpand={isInitialAutoExpand}
                     />
                   );
                 })}
