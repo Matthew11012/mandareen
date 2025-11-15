@@ -24,6 +24,7 @@ import {
 import { useRef } from "react";
 import * as React from "react";
 import { toast } from "sonner";
+import { AnimatePresence, motion } from "framer-motion";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { useUsageSummary } from "@/lib/hooks/use-usage";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -892,7 +893,7 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
           </button>
         </div>
         <p
-          className="text-white text-base sm:text-lg leading-7 sm:leading-8"
+          className="text-white text-base sm:text-lg leading-8"
           aria-label="Micro passage"
         >
           {tokens.length > 0 ? (
@@ -944,7 +945,7 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
                   )
                 ) : null}
                 <span
-                  className={`px-[1px] rounded text-sm sm:text-lg ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
+                  className={`px-[1px] rounded text-md sm:text-lg ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
                 >
                   {t.text ?? t.zh ?? ""}
                 </span>
@@ -959,6 +960,7 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
             {content.microPassage.translation}
           </div>
         )}
+        {/* Desktop popup */}
         {popup.open && (
           <div
             ref={popupRef}
@@ -972,7 +974,7 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
                 ? "none"
                 : "translate(-50%, calc(-100% - 8px))",
             }}
-            className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+            className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="font-bold text-white text-lg truncate">
@@ -1048,6 +1050,108 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
             </div>
           </div>
         )}
+
+        {/* Mobile top sheet popup */}
+        <AnimatePresence>
+          {popup.open && (
+            <motion.div
+              initial={{ y: "-100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "-100%" }}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 30,
+                duration: 0.3,
+              }}
+              className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+            >
+              <div className="max-w-sm mx-auto">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="font-bold text-white text-lg truncate">
+                    {popup.word}
+                  </div>
+                  {typeof popup.hskLevel === "number" && (
+                    <span
+                      className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                        popup.hskLevel
+                      )}`}
+                    >
+                      HSK {popup.hskLevel}
+                    </span>
+                  )}
+                </div>
+                {popup.pinyin && (
+                  <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                    {popup.pinyin}
+                  </div>
+                )}
+                {Array.isArray(popup.definitions) &&
+                popup.definitions.length > 0 ? (
+                  <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                    {popup.definitions.map((d, i) => (
+                      <div key={i}>• {d}</div>
+                    ))}
+                  </div>
+                ) : popup.definition ? (
+                  <div className="text-xs text-[#a6a6a6] mb-3">
+                    {popup.definition}
+                  </div>
+                ) : null}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setPopup((p) => ({ ...p, open: false }));
+                    }}
+                    className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const ctx = {
+                          hanzi: popup.word,
+                          pinyin: popup.pinyin,
+                          translation:
+                            popup.definition ||
+                            (Array.isArray(popup.definitions) &&
+                            popup.definitions.length > 0
+                              ? popup.definitions[0]
+                              : undefined),
+                        };
+                        const { post } = await import("@/lib/http/http");
+                        await post("flashcards", {
+                          hanzi: popup.word,
+                          sentenceHanzi: ctx.hanzi,
+                          sentencePinyin: ctx.pinyin,
+                          sentenceTranslation: ctx.translation,
+                          vocabPinyin: popup.pinyin,
+                          vocabDefinition:
+                            Array.isArray(popup.definitions) &&
+                            popup.definitions.length > 0
+                              ? popup.definitions[0]
+                              : popup.definition,
+                        });
+                        toast.success("Added to flashcards");
+                      } catch {
+                        toast.error("Failed to add to flashcards");
+                      } finally {
+                        setPopup((p) => ({ ...p, open: false }));
+                      }
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="text-sm font-inter">
+                      Add to Flashcards
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -1139,7 +1243,7 @@ function ReadView({ content }: { content: ReadContent }) {
   const tokens = Array.isArray(content?.segments) ? content.segments : [];
   return (
     <div className="space-y-2 sm:space-y-3" ref={contentRef}>
-      <div className="rounded-xl border border-[#404040] bg-[#2e323a] p-3 sm:p-4 relative">
+      <div className="rounded-xl sm:border border-[#404040] sm:bg-[#2e323a] sm:p-4 relative mb-4">
         <div className="flex items-center justify-end mb-2">
           <button
             onClick={() => setShowPinyin((v) => !v)}
@@ -1156,7 +1260,7 @@ function ReadView({ content }: { content: ReadContent }) {
           </button>
         </div>
         <p
-          className="text-white text-base sm:text-lg leading-7 sm:leading-8"
+          className="text-white text-lg leading-8"
           aria-label="Micro passage"
         >
           {tokens.length > 0 ? (
@@ -1207,7 +1311,7 @@ function ReadView({ content }: { content: ReadContent }) {
                   )
                 ) : null}
                 <span
-                  className={`px-[1px] rounded text-sm sm:text-lg ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
+                  className={`px-[1px] rounded text-md sm:text-lg ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
                 >
                   {t.text ?? t.zh ?? ""}
                 </span>
@@ -1222,6 +1326,7 @@ function ReadView({ content }: { content: ReadContent }) {
             {content.passage.translation}
           </div>
         )}
+        {/* Desktop popup */}
         {popup.open && (
           <div
             ref={popupRef}
@@ -1235,7 +1340,7 @@ function ReadView({ content }: { content: ReadContent }) {
                 ? "none"
                 : "translate(-50%, calc(-100% - 8px))",
             }}
-            className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+            className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="font-bold text-white text-lg truncate">
@@ -1311,6 +1416,108 @@ function ReadView({ content }: { content: ReadContent }) {
             </div>
           </div>
         )}
+
+        {/* Mobile top sheet popup */}
+        <AnimatePresence>
+          {popup.open && (
+            <motion.div
+              initial={{ y: "-100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "-100%" }}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 30,
+                duration: 0.3,
+              }}
+              className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+            >
+              <div className="max-w-sm mx-auto">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="font-bold text-white text-lg truncate">
+                    {popup.word}
+                  </div>
+                  {typeof popup.hskLevel === "number" && (
+                    <span
+                      className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                        popup.hskLevel
+                      )}`}
+                    >
+                      HSK {popup.hskLevel}
+                    </span>
+                  )}
+                </div>
+                {popup.pinyin && (
+                  <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                    {popup.pinyin}
+                  </div>
+                )}
+                {Array.isArray(popup.definitions) &&
+                popup.definitions.length > 0 ? (
+                  <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                    {popup.definitions.map((d, i) => (
+                      <div key={i}>• {d}</div>
+                    ))}
+                  </div>
+                ) : popup.definition ? (
+                  <div className="text-xs text-[#a6a6a6] mb-3">
+                    {popup.definition}
+                  </div>
+                ) : null}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setPopup((p) => ({ ...p, open: false }));
+                    }}
+                    className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const ctx = {
+                          hanzi: popup.word,
+                          pinyin: popup.pinyin,
+                          translation:
+                            popup.definition ||
+                            (Array.isArray(popup.definitions) &&
+                            popup.definitions.length > 0
+                              ? popup.definitions[0]
+                              : undefined),
+                        };
+                        const { post } = await import("@/lib/http/http");
+                        await post("flashcards", {
+                          hanzi: popup.word,
+                          sentenceHanzi: ctx.hanzi,
+                          sentencePinyin: ctx.pinyin,
+                          sentenceTranslation: ctx.translation,
+                          vocabPinyin: popup.pinyin,
+                          vocabDefinition:
+                            Array.isArray(popup.definitions) &&
+                            popup.definitions.length > 0
+                              ? popup.definitions[0]
+                              : popup.definition,
+                        });
+                        toast.success("Added to flashcards");
+                      } catch {
+                        toast.error("Failed to add to flashcards");
+                      } finally {
+                        setPopup((p) => ({ ...p, open: false }));
+                      }
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="text-sm font-inter">
+                      Add to Flashcards
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
       {Array.isArray(content?.questions) && content.questions.length > 0 && (
         <ComprehensionView questions={content.questions} />
@@ -1603,7 +1810,7 @@ function QuestionText({
         ))}
       </div>
 
-      {/* Popup */}
+      {/* Desktop popup */}
       {popup.open && (
         <div
           ref={popupRef}
@@ -1615,7 +1822,7 @@ function QuestionText({
             visibility: popupPos ? "visible" : "hidden",
             transform: popupPos ? "none" : "translate(-50%, calc(-100% - 8px))",
           }}
-          className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+          className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
         >
           <div className="flex items-center justify-between gap-3">
             <div className="font-bold text-white text-lg truncate">
@@ -1690,6 +1897,106 @@ function QuestionText({
           </div>
         </div>
       )}
+
+      {/* Mobile top sheet popup */}
+      <AnimatePresence>
+        {popup.open && (
+          <motion.div
+            initial={{ y: "-100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "-100%" }}
+            transition={{
+              type: "spring",
+              stiffness: 300,
+              damping: 30,
+              duration: 0.3,
+            }}
+            className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+          >
+            <div className="max-w-sm mx-auto">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="font-bold text-white text-lg truncate">
+                  {popup.word}
+                </div>
+                {typeof popup.hskLevel === "number" && (
+                  <span
+                    className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                      popup.hskLevel
+                    )}`}
+                  >
+                    HSK {popup.hskLevel}
+                  </span>
+                )}
+              </div>
+              {popup.pinyin && (
+                <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                  {popup.pinyin}
+                </div>
+              )}
+              {Array.isArray(popup.definitions) &&
+              popup.definitions.length > 0 ? (
+                <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                  {popup.definitions.map((d, i) => (
+                    <div key={i}>• {d}</div>
+                  ))}
+                </div>
+              ) : popup.definition ? (
+                <div className="text-xs text-[#a6a6a6] mb-3">
+                  {popup.definition}
+                </div>
+              ) : null}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setPopup((p) => ({ ...p, open: false }));
+                  }}
+                  className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const ctx = {
+                        hanzi: popup.word,
+                        pinyin: popup.pinyin,
+                        translation:
+                          popup.definition ||
+                          (Array.isArray(popup.definitions) &&
+                          popup.definitions.length > 0
+                            ? popup.definitions[0]
+                            : undefined),
+                      };
+                      const { post } = await import("@/lib/http/http");
+                      await post("flashcards", {
+                        hanzi: popup.word,
+                        sentenceHanzi: ctx.hanzi,
+                        sentencePinyin: ctx.pinyin,
+                        sentenceTranslation: ctx.translation,
+                        vocabPinyin: popup.pinyin,
+                        vocabDefinition:
+                          Array.isArray(popup.definitions) &&
+                          popup.definitions.length > 0
+                            ? popup.definitions[0]
+                            : popup.definition,
+                      });
+                      toast.success("Added to flashcards");
+                    } catch {
+                      toast.error("Failed to add to flashcards");
+                    } finally {
+                      setPopup((p) => ({ ...p, open: false }));
+                    }
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm font-inter">Add to Flashcards</span>
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1883,7 +2190,7 @@ function QuizView({
                                   <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-green-400" />
                                 )}
                               </div>
-                              <span className="flex-1 text-sm sm:text-base">
+                              <span className="flex-1 text-base">
                                 {opt}
                               </span>
                               {showState && correctChoice && (

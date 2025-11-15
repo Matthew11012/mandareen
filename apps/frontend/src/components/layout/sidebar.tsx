@@ -76,7 +76,7 @@ const NavItem: React.FC<NavItemProps> = ({
       {/* Label and Coming Soon Badge */}
       <div
         className={cn(
-          "flex items-center gap-2 min-w-0 transition-all duration-300 overflow-hidden",
+          "flex items-center justify-between gap-2 min-w-0 transition-all duration-300 overflow-hidden",
           isCollapsed
             ? "opacity-0 w-0 min-w-0 max-w-0 flex-shrink-[999] pointer-events-none"
             : "opacity-100 flex-1"
