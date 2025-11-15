@@ -108,14 +108,6 @@ export const NAVIGATION_DATA: NavigationData = [
         isComingSoon: false,
         description: "Manage your subscription and billing",
       },
-      {
-        id: "settings",
-        label: "Settings",
-        href: "/settings",
-        icon: "Settings",
-        isComingSoon: true,
-        description: "Customize your learning experience",
-      },
     ],
   },
 ];
