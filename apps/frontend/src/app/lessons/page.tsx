@@ -395,13 +395,36 @@ function LessonsPageContent() {
   // Track notified lesson IDs to prevent duplicates
   const notifiedLessonIdsRef = useRef<Set<number>>(new Set());
 
-  // Sync generation state on mount: if inProgress, set generating and progressOpen
+  // Sync generation state on mount and detect stale state
   useEffect(() => {
+    const startedAt = genStore.startedAt;
+    const now = Date.now();
+
+    if (genStore.inProgress && !genStore.attached) {
+      genStore.reset();
+      setGenerating(false);
+      setProgressOpen(false);
+      return;
+    }
+
+    const isStale =
+      genStore.inProgress &&
+      (!startedAt ||
+        now - startedAt > 10 * 60 * 1000 ||
+        startedAt > now + 60_000);
+
+    if (isStale) {
+      genStore.reset();
+      setGenerating(false);
+      setProgressOpen(false);
+      return;
+    }
+
     if (genStore.inProgress && !generating) {
       setGenerating(true);
       setProgressOpen(true);
     }
-  }, [genStore.inProgress, generating]);
+  }, [genStore, generating]);
 
   const handleLessonReady = useCallback(
     async (meta: {
@@ -436,18 +459,18 @@ function LessonsPageContent() {
         }
       }
 
+      genStore.setLastCompletedLesson({
+        id: meta.id,
+        title: resolvedTitle,
+        topic: effectiveTopic,
+      });
+
       notifyLessonReady({
         id: meta.id,
         title: resolvedTitle,
         topic: effectiveTopic ?? undefined,
         type: meta.type,
         onOpen: () => router.push(`/lessons/${meta.id}`),
-      });
-
-      genStore.setLastCompletedLesson({
-        id: meta.id,
-        title: resolvedTitle,
-        topic: effectiveTopic,
       });
     },
     [genStore, router]
