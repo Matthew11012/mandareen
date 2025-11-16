@@ -66,6 +66,7 @@ export default function ConversationsPage() {
   const [conversationError, setConversationError] =
     useState<ConversationErrorState | null>(null);
   const errorBannerRef = useRef<HTMLDivElement | null>(null);
+  const creatingConversationRef = useRef<boolean>(false);
   const [now, setNow] = useState(Date.now());
   const [dismissedUsageReset, setDismissedUsageReset] = useState<string | null>(
     null
@@ -540,9 +541,11 @@ export default function ConversationsPage() {
   const {
     start: startRecording,
     stop: stopRecording,
+    cancel: cancelRecording,
     recording,
     recPrompt,
     uploadingAudio,
+    stream: audioStream,
   } = useAudioRecorder({
     onData: async (blob) => {
       if (!conversationId) return;
@@ -763,12 +766,17 @@ export default function ConversationsPage() {
   // Initial load: select conversation or create new one
   useEffect(() => {
     if (!conversationsList) return;
+
     const saved =
       typeof window !== "undefined"
         ? localStorage.getItem("active-conversation-id")
         : null;
     const savedId = saved ? Number(saved) : null;
+
     if (conversationsList.length > 0) {
+      // Reset creation flag when conversations exist
+      creatingConversationRef.current = false;
+
       const sorted = sortConversationsByStartedAt(conversationsList);
       const targetId = conversationsList.some((c) => c.id === savedId)
         ? (savedId as number)
@@ -779,21 +787,31 @@ export default function ConversationsPage() {
           localStorage.setItem("active-conversation-id", String(targetId));
       }
     } else {
-      // No conversations, create new one
+      // No conversations, create new one - but only if not already creating
+      if (
+        creatingConversationRef.current ||
+        startConversationMutation.isPending
+      ) {
+        return;
+      }
+
+      creatingConversationRef.current = true;
       startConversationMutation.mutate(undefined, {
         onSuccess: async ({ id }) => {
           setConversationId(id);
           if (typeof window !== "undefined")
             localStorage.setItem("active-conversation-id", String(id));
           await refetchConversations();
+          creatingConversationRef.current = false;
         },
         onError: () => {
           toast.error("Failed to start conversation");
+          creatingConversationRef.current = false;
         },
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationsList, startConversationMutation, refetchConversations]);
+  }, [conversationsList, conversationId]);
 
   // Audio toggle handler
   const handleToggleAudio = useCallback(
@@ -1078,6 +1096,8 @@ export default function ConversationsPage() {
             uploadingAudio={uploadingAudio}
             onStartRecording={startRecording}
             onStopRecording={stopRecording}
+            onCancelRecording={cancelRecording}
+            audioStream={audioStream}
             sendDisabled={sendDisabled}
             sendDisabledReason={sendDisabledReason}
             audioDisabled={audioDisabled}
