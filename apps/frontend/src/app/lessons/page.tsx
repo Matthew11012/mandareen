@@ -373,6 +373,10 @@ function LessonsPageContent() {
   const { start: startStream, attach: attachStream } =
     useLessonGenerationStream();
   const genStore = useLessonsGenerationStore();
+  const generationInProgress = genStore.inProgress;
+  const generationParams = genStore.params;
+  const generationStartedAt = genStore.startedAt;
+  const generationAttached = genStore.attached;
   const [progressOpen, setProgressOpen] = useState(false);
   const progressStep = genStore.progressStep as string | null;
   const completedSteps = genStore.completedSteps as Record<string, boolean>;
@@ -439,6 +443,7 @@ function LessonsPageContent() {
       id: number;
       type: "story" | "dialogue";
       topic?: string;
+      title?: string | null;
     }) => {
       if (!meta.id) return;
 
@@ -456,7 +461,10 @@ function LessonsPageContent() {
         genStore.lastCompletedLessonTopic ??
         null;
 
-      let resolvedTitle: string | null = genStore.lastCompletedLessonTitle;
+      let resolvedTitle: string | null =
+        typeof meta.title === "string"
+          ? meta.title
+          : genStore.lastCompletedLessonTitle;
 
       if (!resolvedTitle || genStore.lastCompletedLessonId !== meta.id) {
         try {
@@ -511,18 +519,22 @@ function LessonsPageContent() {
           type: "story",
           timeframe,
         },
-        onComplete: async ({ id, topic: completedTopic }) => {
+        onComplete: async ({
+          id,
+          topic: completedTopic,
+          title: completedTitle,
+        }) => {
           await load();
           setProgressOpen(false);
           setGenerating(false);
           setGenerationError(null);
-          genStore.setLessonId(null);
           genStore.finish();
           if (typeof id === "number") {
             await handleLessonReady({
               id,
               type: "story",
               topic: completedTopic ?? requestTopic,
+              title: completedTitle ?? undefined,
             });
           }
         },
@@ -612,7 +624,6 @@ function LessonsPageContent() {
               const recentId = recentMine[0].id;
               setProgressOpen(false);
               setGenerating(false);
-              genStore.setLessonId(null);
               genStore.finish();
               await handleLessonReady({
                 id: recentId,
@@ -731,18 +742,22 @@ function LessonsPageContent() {
           type: "dialogue",
           timeframe,
         },
-        onComplete: async ({ id, topic: completedTopic }) => {
+        onComplete: async ({
+          id,
+          topic: completedTopic,
+          title: completedTitle,
+        }) => {
           await load();
           setProgressOpen(false);
           setGenerating(false);
           setGenerationError(null);
-          genStore.setLessonId(null);
           genStore.finish();
           if (typeof id === "number") {
             await handleLessonReady({
               id,
               type: "dialogue",
               topic: completedTopic ?? requestTopic,
+              title: completedTitle ?? undefined,
             });
           }
         },
@@ -832,7 +847,6 @@ function LessonsPageContent() {
               const recentId = recentMine[0].id;
               setProgressOpen(false);
               setGenerating(false);
-              genStore.setLessonId(null);
               genStore.finish();
               await handleLessonReady({
                 id: recentId,
@@ -866,64 +880,83 @@ function LessonsPageContent() {
 
   // Reattach on mount if generation is underway: avoid starting a new SSE; poll for completion
   useEffect(() => {
+    if (
+      !generationInProgress ||
+      generationAttached ||
+      !generationParams ||
+      !generationStartedAt
+    ) {
+      return;
+    }
+
+    let cancelled = false;
     let interval: ReturnType<typeof setInterval> | null = null;
-    const reattach = async () => {
-      if (!genStore.inProgress) return;
-      const params = genStore.params;
-      const startedAt = genStore.startedAt || 0;
-      if (!params || Date.now() - startedAt > 10 * 60 * 1000) {
-        genStore.reset();
-        setProgressOpen(false);
+
+    // Reset stale generations that exceeded 10 minutes
+    if (Date.now() - generationStartedAt > 10 * 60 * 1000) {
+      genStore.reset();
+      setProgressOpen(false);
+      return;
+    }
+
+    setProgressOpen(true);
+
+    const poll = async () => {
+      if (cancelled) {
         return;
       }
-      setProgressOpen(true);
-      const poll = async () => {
-        if (!genStore.inProgress) {
-          if (interval) clearInterval(interval);
-          return;
-        }
-        try {
-          const createdAfter = startedAt - 60_000;
-          const type = params.readTimeMinutes === 10 ? "story" : "dialogue";
-          const mineData = await lessonsApi.listMine();
-          const candidates = mineData
-            .filter((i) => i.lessonType === type)
-            .filter((i) => new Date(i.createdAt).getTime() >= createdAfter)
-            .sort(
-              (a, b) =>
-                new Date(b.createdAt).getTime() -
-                new Date(a.createdAt).getTime()
-            );
+      try {
+        const createdAfter = generationStartedAt - 60_000;
+        const type =
+          generationParams.type ??
+          (generationParams.readTimeMinutes === 10 ? "story" : "dialogue");
+        const mineData = await lessonsApi.listMine();
+        const candidates = mineData
+          .filter((i) => i.lessonType === type)
+          .filter((i) => new Date(i.createdAt).getTime() >= createdAfter)
+          .sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
           if (candidates.length > 0) {
-            const id = candidates[0].id;
-            // Skip if we've already notified for this lesson
-            if (!notifiedLessonIdsRef.current.has(id)) {
-              genStore.setLessonId(null);
-              genStore.finish();
-              setProgressOpen(false);
-              if (interval) {
-                clearInterval(interval);
-                interval = null;
-              }
-              setGenerating(false);
-              await load();
-              await handleLessonReady({
-                id,
-                type,
-                topic: params.topic ?? undefined,
-              });
+          const id = candidates[0].id;
+          if (!notifiedLessonIdsRef.current.has(id)) {
+            genStore.finish();
+            setProgressOpen(false);
+            if (interval) {
+              clearInterval(interval);
+              interval = null;
             }
+            setGenerating(false);
+            await load();
+            await handleLessonReady({
+              id,
+              type,
+              topic: generationParams.topic ?? undefined,
+            });
           }
-        } catch {}
-      };
-      await poll();
-      interval = setInterval(poll, 5000);
+        }
+      } catch {}
     };
-    reattach();
+
+    void poll();
+    interval = setInterval(poll, 5000);
+
     return () => {
-      if (interval) clearInterval(interval);
+      cancelled = true;
+      if (interval) {
+        clearInterval(interval);
+      }
     };
-  }, [genStore, handleLessonReady, load]);
+  }, [
+    generationInProgress,
+    generationParams,
+    generationStartedAt,
+    generationAttached,
+    genStore,
+    handleLessonReady,
+    load,
+  ]);
 
   // rAF-throttled scroll handlers to reduce layout work
   const myStoriesRaf = useRef<number | null>(null);

@@ -1054,9 +1054,11 @@ export default function LessonViewerPage() {
     if (!Array.isArray(segments) || segments.length === 0) {
       return (
         <>
-          <div className="text-[#c9d1d9]">{fallbackZh}</div>
+          <div className="text-[color:var(--text-subtle)]">{fallbackZh}</div>
           {showPinyin && (
-            <div className="text-[#9aa6ff] text-xs">{fallbackEn}</div>
+            <div className="text-[color:var(--text-accent)] text-xs">
+              {fallbackEn}
+            </div>
           )}
         </>
       );
@@ -1072,7 +1074,7 @@ export default function LessonViewerPage() {
             >
               {showPinyin ? (
                 isWord && seg.pinyin ? (
-                  <span className="text-[10px] text-[#9aa6ff] leading-none mb-[2px]">
+                  <span className="text-[10px] text-[color:var(--text-accent)] leading-none mb-[2px]">
                     {seg.pinyin}
                   </span>
                 ) : (
@@ -1082,7 +1084,7 @@ export default function LessonViewerPage() {
                 )
               ) : null}
               <span
-                className={`px-[1px] rounded ${isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
+                className={`px-[1px] rounded ${isWord ? "hover:bg-[color:var(--border-strong)] cursor-pointer" : ""}`}
                 title={seg.definition || ""}
                 onClick={(e: ReactMouseEvent<HTMLSpanElement>) => {
                   if (!isWord) return;
@@ -1134,7 +1136,7 @@ export default function LessonViewerPage() {
                     selectedWords[
                       `notes-${notesContext.section}-${notesContext.noteIndex}-${notesContext.field}${notesContext.exampleIndex !== undefined ? `-${notesContext.exampleIndex}` : ""}-${idx}-${seg.text}`
                     ]
-                      ? "bg-[#4040f2]/80 rounded"
+                      ? "bg-[var(--color-accent-blue)]/80 rounded"
                       : undefined
                   }`}
                 >
@@ -1157,7 +1159,7 @@ export default function LessonViewerPage() {
     >
       <div className="p-2 sm:p-6 sm:pt-0 pt-0 space-y-6">
         <motion.div
-          className="flex flex-wrap items-center justify-between gap-2 sticky top-0 z-20 -mx-6 px-6 py-2 bg-[#222831]/80 backdrop-blur border-b border-[#30333a]"
+          className="flex flex-wrap items-center justify-between gap-2 sticky top-0 z-20 -mx-6 px-6 py-2 bg-[color:var(--surface-main-80)] backdrop-blur border-b border-[color:var(--border-header)]"
           role="toolbar"
           aria-label="Lesson controls"
           initial={{ y: 0 }}
@@ -1172,11 +1174,11 @@ export default function LessonViewerPage() {
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto min-w-0">
             <button
               onClick={() => router.push("/lessons")}
-              className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831]"
+              className="px-3 py-2 bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-lg hover:border-[color:var(--color-accent-blue)] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent-blue)] focus-visible:ring-offset-[var(--surface-main)]"
               type="button"
               aria-label="Back to lessons"
             >
-              <div className="flex items-center gap-2 text-[#a6a6a6]">
+              <div className="flex items-center gap-2 text-[color:var(--text-secondary-strong)]">
                 <ArrowLeft className="w-4 h-4" aria-hidden="true" />
                 <span className="font-inter text-sm">Exit</span>
               </div>
@@ -1204,12 +1206,12 @@ export default function LessonViewerPage() {
                 // Reset content changing flag after a short delay
                 setTimeout(() => setIsContentChanging(false), 150);
               }}
-              className="px-3 py-2 bg-orange-500/20 border border-orange-500/40 rounded-lg hover:border-orange-500 text-orange-300 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#222831]"
+              className="px-3 py-2 bg-orange-500/20 border border-orange-500/40 rounded-lg hover:border-orange-500 text-orange-300 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[var(--surface-main)]"
               type="button"
               aria-pressed={showPinyin}
               aria-label={showPinyin ? "Hide all pinyin" : "Show all pinyin"}
             >
-              <div className="flex items-center gap-2 text-[#a6a6a6]">
+              <div className="flex items-center gap-2 text-[color:var(--text-secondary-strong)]">
                 {showPinyin ? (
                   <EyeOff className="w-4 h-4" aria-hidden="true" />
                 ) : (
@@ -1243,7 +1245,7 @@ export default function LessonViewerPage() {
                 // Reset content changing flag after a short delay
                 setTimeout(() => setIsContentChanging(false), 150);
               }}
-              className="px-3 py-2 bg-purple-600/20 border border-purple-600/40 rounded-lg hover:border-purple-600 text-purple-300 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-purple-400 focus-visible:ring-offset-[#222831]"
+              className="px-3 py-2 bg-purple-600/20 border border-purple-600/40 rounded-lg hover:border-purple-600 text-purple-300 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-purple-400 focus-visible:ring-offset-[var(--surface-main)]"
               type="button"
               aria-pressed={showTranslation}
               aria-label={
@@ -1252,7 +1254,7 @@ export default function LessonViewerPage() {
                   : "Show all translations"
               }
             >
-              <div className="flex items-center gap-2 text-[#a6a6a6]">
+              <div className="flex items-center gap-2 text-[color:var(--text-secondary-strong)]">
                 {showTranslation ? (
                   <EyeOff className="w-4 h-4" aria-hidden="true" />
                 ) : (
@@ -1295,7 +1297,7 @@ export default function LessonViewerPage() {
                   setMultiSelect(true);
                 }
               }}
-              className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831] min-w-0"
+              className="px-3 py-2 bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-lg hover:border-[color:var(--color-accent-blue)] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent-blue)] focus-visible:ring-offset-[var(--surface-main)] min-w-0"
               type="button"
               aria-pressed={multiSelect}
               aria-label={
@@ -1304,7 +1306,7 @@ export default function LessonViewerPage() {
                   : "Select words to add to flashcards"
               }
             >
-              <div className="flex items-center gap-2 text-[#a6a6a6] min-w-0 shrink">
+              <div className="flex items-center gap-2 text-[color:var(--text-secondary-strong)] min-w-0 shrink">
                 {multiSelect ? (
                   <CheckSquare
                     className="w-4 h-4 shrink-0"
@@ -1331,7 +1333,7 @@ export default function LessonViewerPage() {
               <button
                 onClick={() => void addSelectedToFlashcards()}
                 disabled={Object.keys(selectedWords).length === 0}
-                className="px-3 py-2 bg-[#4040f2] text-white text-sm rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831]"
+                className="px-3 py-2 bg-[var(--color-accent-blue)] text-white text-sm rounded-lg hover:bg-[var(--accent-blue-strong)] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent-blue)] focus-visible:ring-offset-[var(--surface-main)]"
                 type="button"
                 aria-label="Add selected words to flashcards"
               >
@@ -1341,13 +1343,13 @@ export default function LessonViewerPage() {
             <button
               onClick={() => void lessonQuery.refetch()}
               disabled={loading}
-              className="p-2 hover:bg-[#404040] rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831]"
+              className="p-2 hover:bg-[color:var(--border-strong)] rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent-blue)] focus-visible:ring-offset-[var(--surface-main)]"
               title="Refresh"
               type="button"
               aria-label="Refresh lesson"
             >
               <RefreshCw
-                className={`w-4 h-4 text-[#a6a6a6] ${loading ? "motion-safe:animate-spin" : ""}`}
+                className={`w-4 h-4 text-[color:var(--text-secondary-strong)] ${loading ? "motion-safe:animate-spin" : ""}`}
                 aria-hidden="true"
               />
             </button>
@@ -1369,19 +1371,19 @@ export default function LessonViewerPage() {
           dialogue?.titlePinyin ||
           dialogue?.titleTranslation ||
           data?.title) && (
-          <div className="bg-[#2e323a] rounded-lg p-4 border border-[#404040]">
+          <div className="bg-[var(--surface-card)] rounded-lg p-4 border border-[color:var(--border-strong)]">
             {data?.title ? (
               <div className="sm:flex sm:justify-center sm:text-center text-white font-inter text-xl mb-1">
                 {data.title}
               </div>
             ) : null}
             {story?.titlePinyin || dialogue?.titlePinyin ? (
-              <div className="sm:flex sm:justify-center sm:text-center text-[#9aa6ff] font-inter text-sm mb-1">
+              <div className="sm:flex sm:justify-center sm:text-center text-[color:var(--text-accent)] font-inter text-sm mb-1">
                 {story?.titlePinyin || dialogue?.titlePinyin}
               </div>
             ) : null}
             {story?.titleTranslation || dialogue?.titleTranslation ? (
-              <div className="sm:flex sm:justify-center sm:text-center text-[#a6a6a6] font-inter text-sm">
+              <div className="sm:flex sm:justify-center sm:text-center text-[color:var(--text-secondary-strong)] font-inter text-sm">
                 {story?.titleTranslation || dialogue?.titleTranslation}
               </div>
             ) : null}
@@ -1391,20 +1393,20 @@ export default function LessonViewerPage() {
         {loading ? (
           <div className="space-y-6">
             {/* Title block skeleton */}
-            <div className="bg-[#2e323a] rounded-lg p-4 border border-[#404040] sm:flex sm:flex-col sm:items-center">
-              <div className="h-6 w-48 bg-[#3a3f48]  rounded motion-safe:animate-pulse mb-2" />
-              <div className="h-4 w-40 bg-[#3a3f48] rounded motion-safe:animate-pulse mb-2" />
-              <div className="h-4 w-64 bg-[#3a3f48] rounded motion-safe:animate-pulse" />
+            <div className="bg-[var(--surface-card)] rounded-lg p-4 border border-[color:var(--border-strong)] sm:flex sm:flex-col sm:items-center">
+              <div className="h-6 w-48 bg-[color:var(--border-overlay)]  rounded motion-safe:animate-pulse mb-2" />
+              <div className="h-4 w-40 bg-[color:var(--border-overlay)] rounded motion-safe:animate-pulse mb-2" />
+              <div className="h-4 w-64 bg-[color:var(--border-overlay)] rounded motion-safe:animate-pulse" />
             </div>
 
             {/* Content skeleton */}
-            <div className="sm:bg-[#2e323a] sm:rounded-xl sm:p-6 sm:border sm:border-[#404040] relative">
+            <div className="sm:bg-[var(--surface-card)] sm:rounded-xl sm:p-6 sm:border sm:border-[color:var(--border-strong)] relative">
               <div className="space-y-4">
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="space-y-2">
-                    <div className="h-5 w-full bg-[#3a3f48] rounded motion-safe:animate-pulse" />
-                    <div className="h-5 w-[92%] bg-[#3a3f48] rounded motion-safe:animate-pulse" />
-                    <div className="h-5 w-[88%] bg-[#3a3f48] rounded motion-safe:animate-pulse" />
+                    <div className="h-5 w-full bg-[color:var(--border-overlay)] rounded motion-safe:animate-pulse" />
+                    <div className="h-5 w-[92%] bg-[color:var(--border-overlay)] rounded motion-safe:animate-pulse" />
+                    <div className="h-5 w-[88%] bg-[color:var(--border-overlay)] rounded motion-safe:animate-pulse" />
                   </div>
                 ))}
               </div>
@@ -1413,11 +1415,13 @@ export default function LessonViewerPage() {
         ) : error ? (
           <p className="text-red-400 font-inter text-sm">{error}</p>
         ) : !data ? (
-          <p className="text-[#a6a6a6] font-inter text-sm">No content</p>
+          <p className="text-[color:var(--text-secondary-strong)] font-inter text-sm">
+            No content
+          </p>
         ) : (
           <div
             ref={contentRef}
-            className="sm:bg-[#2e323a] sm:rounded-xl sm:p-6 sm:border sm:border-[#404040] relative overflow-x-hidden"
+            className="sm:bg-[var(--surface-card)] sm:rounded-xl sm:p-6 sm:border sm:border-[color:var(--border-strong)] relative overflow-x-hidden"
           >
             {story && (
               <StorySection
@@ -1646,11 +1650,11 @@ export default function LessonViewerPage() {
               )}
 
             {Array.isArray(story?.tipsRich) && story!.tipsRich!.length > 0 && (
-              <div className="mt-4 border border-[#3a3a3a] rounded-lg p-3 bg-[#1e2229]">
+              <div className="mt-4 border border-[color:var(--border-default)] rounded-lg p-3 bg-[var(--surface-note)]">
                 <div className="text-xs font-semibold text-white mb-2">
                   Tips
                 </div>
-                <ul className="space-y-2 list-disc list-outside pl-4 marker:text-[#596080]">
+                <ul className="space-y-2 list-disc list-outside pl-4 marker:text-[var(--text-marker)]">
                   {story!.tipsRich!.slice(0, 4).map((tip, i) => (
                     <li key={i}>
                       {Array.isArray(tip.segments) &&
@@ -1664,17 +1668,19 @@ export default function LessonViewerPage() {
                             { section: "dialogue", noteIndex: i, field: "tip" }
                           )}
                           {tip.en ? (
-                            <div className="text-[#8b949e] text-xs">
+                            <div className="text-[color:var(--text-tertiary)] text-xs">
                               {tip.en}
                             </div>
                           ) : null}
                         </>
                       ) : (
                         <>
-                          <div className="text-[#c9d1d9]">{tip.zh}</div>
+                          <div className="text-[color:var(--text-subtle)]">
+                            {tip.zh}
+                          </div>
                           {notesPinyinOn ? null : null}
                           {tip.en ? (
-                            <div className="text-[#8b949e] text-xs">
+                            <div className="text-[color:var(--text-tertiary)] text-xs">
                               {tip.en}
                             </div>
                           ) : null}
@@ -1688,11 +1694,11 @@ export default function LessonViewerPage() {
 
             {Array.isArray(dialogue?.tipsRich) &&
               dialogue!.tipsRich!.length > 0 && (
-                <div className="mt-4 border border-[#3a3a3a] rounded-lg p-3 bg-[#1e2229]">
+                <div className="mt-4 border border-[color:var(--border-default)] rounded-lg p-3 bg-[var(--surface-note)]">
                   <div className="text-xs font-semibold text-white mb-2">
                     Tips
                   </div>
-                  <ul className="space-y-2 list-disc list-outside pl-4 marker:text-[#596080]">
+                  <ul className="space-y-2 list-disc list-outside pl-4 marker:text-[var(--text-marker)]">
                     {dialogue!.tipsRich!.slice(0, 4).map((tip, i) => (
                       <li key={i}>
                         {Array.isArray(tip.segments) &&
@@ -1706,17 +1712,19 @@ export default function LessonViewerPage() {
                               { section: "story", noteIndex: i, field: "tip" }
                             )}
                             {tip.en ? (
-                              <div className="text-[#8b949e] text-xs">
+                              <div className="text-[color:var(--text-tertiary)] text-xs">
                                 {tip.en}
                               </div>
                             ) : null}
                           </>
                         ) : (
                           <>
-                            <div className="text-[#c9d1d9]">{tip.zh}</div>
+                            <div className="text-[color:var(--text-subtle)]">
+                              {tip.zh}
+                            </div>
                             {notesPinyinOn ? null : null}
                             {tip.en ? (
-                              <div className="text-[#8b949e] text-xs">
+                              <div className="text-[color:var(--text-tertiary)] text-xs">
                                 {tip.en}
                               </div>
                             ) : null}
@@ -1751,10 +1759,10 @@ export default function LessonViewerPage() {
                     }
                     disabled={finishLoading || Boolean(data?.finished)}
                     className={
-                      `w-full sm:w-auto px-4 py-2 text-sm rounded-lg font-medium transition-all duration-200 active:scale-[0.98]  disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#222831] ` +
+                      `w-full sm:w-auto px-4 py-2 text-sm rounded-lg font-medium transition-all duration-200 active:scale-[0.98]  disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent-blue)] focus-visible:ring-offset-[var(--surface-main)] ` +
                       (data?.finished
                         ? `bg-green-600 text-white border border-green-500 hover:bg-green-500`
-                        : `bg-[#222831] text-white border border-[#404060] hover:border-[#4040f2] shadow-sm`)
+                        : `bg-[var(--surface-main)] text-white border border-[color:var(--border-contrast)] hover:border-[color:var(--color-accent-blue)] shadow-sm`)
                     }
                     onClick={async () => {
                       try {
@@ -1773,7 +1781,7 @@ export default function LessonViewerPage() {
                   >
                     {!data?.finished && finishLoading ? (
                       <svg
-                        className="mr-2 inline h-4 w-4 animate-spin text-[#cbd5e1]"
+                        className="mr-2 inline h-4 w-4 animate-spin text-[color:var(--text-spinner)]"
                         xmlns="http://www.w3.org/2000/svg"
                         fill="none"
                         viewBox="0 0 24 24"
@@ -1813,7 +1821,7 @@ export default function LessonViewerPage() {
                     ? "none"
                     : "translate(-50%, calc(-100% - 8px))",
                 }}
-                className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+                className="hidden sm:block bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-xl shadow-2xl p-4 w-64"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="font-bold text-white text-lg truncate">
@@ -1831,13 +1839,13 @@ export default function LessonViewerPage() {
                   )}
                 </div>
                 {popup.data?.pinyin && (
-                  <div className="text-[#c6ceff] text-sm font-medium truncate">
+                  <div className="text-[color:var(--text-highlight)] text-sm font-medium truncate">
                     {popup.data?.pinyin}
                   </div>
                 )}
                 {Array.isArray(popup.data?.definitions) &&
                 (popup.data?.definitions?.length || 0) > 0 ? (
-                  <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
+                  <div className="text-xs text-[color:var(--text-secondary-strong)] mt-2 space-y-1">
                     {(popup.data?.definitions as string[]).map(
                       (d: string, i: number) => (
                         <div key={i}>• {d}</div>
@@ -1845,11 +1853,11 @@ export default function LessonViewerPage() {
                     )}
                   </div>
                 ) : popup.data?.definition ? (
-                  <div className="text-xs text-[#a6a6a6] mt-2">
+                  <div className="text-xs text-[color:var(--text-secondary-strong)] mt-2">
                     {popup.data?.definition}
                   </div>
                 ) : null}
-                <div className="mt-3 pt-3 border-t border-[#404040]">
+                <div className="mt-3 pt-3 border-t border-[color:var(--border-strong)]">
                   <button
                     onClick={() => {
                       // Build sentence-level context for the exact clicked token using stored indices
@@ -1999,7 +2007,7 @@ export default function LessonViewerPage() {
                       });
                       setPopup((p) => ({ ...p, open: false }));
                     }}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[var(--color-accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-strong)] transition-colors duration-200 cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span className="text-sm font-inter">
@@ -2023,7 +2031,7 @@ export default function LessonViewerPage() {
                     damping: 30,
                     duration: 0.3,
                   }}
-                  className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+                  className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[color:var(--surface-body-95)] backdrop-blur border-b border-[color:var(--border-muted)] p-4"
                 >
                   <div className="max-w-sm mx-auto">
                     <div className="flex items-center justify-between gap-3 mb-3">
@@ -2041,13 +2049,13 @@ export default function LessonViewerPage() {
                       )}
                     </div>
                     {popup.data?.pinyin && (
-                      <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                      <div className="text-[color:var(--text-highlight)] text-sm font-medium truncate mb-2">
                         {popup.data?.pinyin}
                       </div>
                     )}
                     {Array.isArray(popup.data?.definitions) &&
                     (popup.data?.definitions?.length || 0) > 0 ? (
-                      <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                      <div className="text-xs text-[color:var(--text-secondary-strong)] mb-3 space-y-1">
                         {(popup.data?.definitions as string[]).map(
                           (d: string, i: number) => (
                             <div key={i}>• {d}</div>
@@ -2055,7 +2063,7 @@ export default function LessonViewerPage() {
                         )}
                       </div>
                     ) : popup.data?.definition ? (
-                      <div className="text-xs text-[#a6a6a6] mb-3">
+                      <div className="text-xs text-[color:var(--text-secondary-strong)] mb-3">
                         {popup.data?.definition}
                       </div>
                     ) : null}
@@ -2064,7 +2072,7 @@ export default function LessonViewerPage() {
                         onClick={() => {
                           setPopup((p) => ({ ...p, open: false }));
                         }}
-                        className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                        className="px-3 py-2 bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-lg hover:border-[color:var(--color-accent-blue)] text-[color:var(--text-secondary-strong)] cursor-pointer text-sm"
                       >
                         Close
                       </button>
@@ -2231,7 +2239,7 @@ export default function LessonViewerPage() {
                           );
                           setPopup((p) => ({ ...p, open: false }));
                         }}
-                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[var(--color-accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-strong)] transition-colors duration-200 cursor-pointer"
                       >
                         <Plus className="w-4 h-4" />
                         <span className="text-sm font-inter">
@@ -2257,7 +2265,7 @@ export default function LessonViewerPage() {
                     ? "none"
                     : "translate(-50%, calc(-100% - 8px))",
                 }}
-                className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+                className="hidden sm:block bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-xl shadow-2xl p-4 w-64"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="font-bold text-white text-lg truncate">
@@ -2275,13 +2283,13 @@ export default function LessonViewerPage() {
                   )}
                 </div>
                 {notesPopup.data?.pinyin && (
-                  <div className="text-[#c6ceff] text-sm font-medium truncate">
+                  <div className="text-[color:var(--text-highlight)] text-sm font-medium truncate">
                     {notesPopup.data?.pinyin}
                   </div>
                 )}
                 {Array.isArray(notesPopup.data?.definitions) &&
                 (notesPopup.data?.definitions?.length || 0) > 0 ? (
-                  <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
+                  <div className="text-xs text-[color:var(--text-secondary-strong)] mt-2 space-y-1">
                     {(notesPopup.data?.definitions as string[]).map(
                       (d: string, i: number) => (
                         <div key={i}>• {d}</div>
@@ -2289,11 +2297,11 @@ export default function LessonViewerPage() {
                     )}
                   </div>
                 ) : notesPopup.data?.definition ? (
-                  <div className="text-xs text-[#a6a6a6] mt-2">
+                  <div className="text-xs text-[color:var(--text-secondary-strong)] mt-2">
                     {notesPopup.data?.definition}
                   </div>
                 ) : null}
-                <div className="mt-3 pt-3 border-t border-[#404040]">
+                <div className="mt-3 pt-3 border-t border-[color:var(--border-strong)]">
                   <button
                     onClick={async () => {
                       // Create context from the notes popup data
@@ -2326,7 +2334,7 @@ export default function LessonViewerPage() {
                       );
                       setNotesPopup((p) => ({ ...p, open: false }));
                     }}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[var(--color-accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-strong)] transition-colors duration-200 cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span className="text-sm font-inter">
@@ -2350,7 +2358,7 @@ export default function LessonViewerPage() {
                     damping: 30,
                     duration: 0.3,
                   }}
-                  className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+                  className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[color:var(--surface-body-95)] backdrop-blur border-b border-[color:var(--border-muted)] p-4"
                 >
                   <div className="max-w-sm mx-auto">
                     <div className="flex items-center justify-between gap-3 mb-3">
@@ -2368,13 +2376,13 @@ export default function LessonViewerPage() {
                       )}
                     </div>
                     {notesPopup.data?.pinyin && (
-                      <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                      <div className="text-[color:var(--text-highlight)] text-sm font-medium truncate mb-2">
                         {notesPopup.data?.pinyin}
                       </div>
                     )}
                     {Array.isArray(notesPopup.data?.definitions) &&
                     (notesPopup.data?.definitions?.length || 0) > 0 ? (
-                      <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                      <div className="text-xs text-[color:var(--text-secondary-strong)] mb-3 space-y-1">
                         {(notesPopup.data?.definitions as string[]).map(
                           (d: string, i: number) => (
                             <div key={i}>• {d}</div>
@@ -2382,7 +2390,7 @@ export default function LessonViewerPage() {
                         )}
                       </div>
                     ) : notesPopup.data?.definition ? (
-                      <div className="text-xs text-[#a6a6a6] mb-3">
+                      <div className="text-xs text-[color:var(--text-secondary-strong)] mb-3">
                         {notesPopup.data?.definition}
                       </div>
                     ) : null}
@@ -2391,7 +2399,7 @@ export default function LessonViewerPage() {
                         onClick={() => {
                           setNotesPopup((p) => ({ ...p, open: false }));
                         }}
-                        className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                        className="px-3 py-2 bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-lg hover:border-[color:var(--color-accent-blue)] text-[color:var(--text-secondary-strong)] cursor-pointer text-sm"
                       >
                         Close
                       </button>
@@ -2428,7 +2436,7 @@ export default function LessonViewerPage() {
                           );
                           setNotesPopup((p) => ({ ...p, open: false }));
                         }}
-                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[var(--color-accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-strong)] transition-colors duration-200 cursor-pointer"
                       >
                         <Plus className="w-4 h-4" />
                         <span className="text-sm font-inter">

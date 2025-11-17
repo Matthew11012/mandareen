@@ -90,7 +90,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   };
 
   return (
-    <div className="flex h-[100dvh] bg-[#222831] overflow-hidden">
+    <div className="flex h-[100dvh] bg-[var(--surface-main)] overflow-hidden">
       {/* Mobile Overlay */}
       {isMobile && showMobileMenu && (
         <div
@@ -127,17 +127,17 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
             }
             aria-expanded={!sidebarCollapsed}
-            className="absolute -right-3 top-20 w-6 h-6 bg-[#2e323a] border border-[#404040] rounded-full flex items-center justify-center hover:bg-[#3a3f47] transition-colors duration-200 z-50 cursor-pointer hidden md:flex"
+            className="absolute -right-3 top-20 w-6 h-6 bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-full flex items-center justify-center hover:bg-[color:var(--surface-card-strong)] transition-colors duration-200 z-50 cursor-pointer hidden md:flex"
             style={{ zIndex: 9999 }}
           >
             {sidebarCollapsed ? (
               <ChevronRight
-                className="w-3 h-3 text-[#a6a6a6]"
+                className="w-3 h-3 text-[color:var(--text-secondary-strong)]"
                 aria-hidden="true"
               />
             ) : (
               <ChevronLeft
-                className="w-3 h-3 text-[#a6a6a6]"
+                className="w-3 h-3 text-[color:var(--text-secondary-strong)]"
                 aria-hidden="true"
               />
             )}
@@ -148,7 +148,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 h-full">
         {/* Top Header Bar */}
-        <header className="bg-[#1a1d23] border-b border-[#2e323a] px-4 py-3 min-h-[75px] flex items-center justify-between">
+        <header className="bg-[var(--surface-body)] border-b border-[color:var(--border-muted)] px-4 py-3 min-h-[75px] flex items-center justify-between">
           <div className="flex items-center gap-4">
             {/* Mobile Menu Button */}
             {isMobile && (
@@ -161,9 +161,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 }
                 aria-expanded={showMobileMenu}
                 aria-controls="sidebar-nav"
-                className="p-2 hover:bg-[#2e323a] rounded-lg transition-colors duration-200 cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
+                className="p-2 hover:bg-[var(--surface-card)] rounded-lg transition-colors duration-200 cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
               >
-                <Menu className="w-5 h-5 text-[#a6a6a6]" aria-hidden="true" />
+                <Menu className="w-5 h-5 text-[color:var(--text-secondary-strong)]" aria-hidden="true" />
               </button>
             )}
 
@@ -175,16 +175,16 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 </h1>
               )}
               {subtitle && (
-                <p className="text-sm text-[#a6a6a6] font-inter">{subtitle}</p>
+                <p className="text-sm text-[color:var(--text-secondary-strong)] font-inter">{subtitle}</p>
               )}
             </div>
           </div>
 
           {/* User Menu */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-4 py-2.5 bg-[#2e323a] rounded-lg min-h-[44px] cursor-pointer hover:bg-[#3a3e46] transition-colors hidden sm:flex">
-              <User className="w-4 h-4 text-[#a6a6a6]" />
-              <span className="text-sm font-inter text-[#a6a6a6] hidden sm:block">
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-[var(--surface-card)] rounded-lg min-h-[44px] cursor-pointer hover:bg-[color:var(--surface-card-hover)] transition-colors hidden sm:flex">
+              <User className="w-4 h-4 text-[color:var(--text-secondary-strong)]" />
+              <span className="text-sm font-inter text-[color:var(--text-secondary-strong)] hidden sm:block">
                 {user?.email || "User"}
               </span>
             </div>
@@ -195,7 +195,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               className="p-3 min-w-[44px] min-h-[44px] hover:bg-red-600/20 hover:text-red-400 rounded-lg transition-all duration-200 group cursor-pointer"
             >
               <LogOut
-                className="w-5 h-5 text-[#a6a6a6] group-hover:text-red-400"
+                className="w-5 h-5 text-[color:var(--text-secondary-strong)] group-hover:text-red-400"
                 aria-hidden="true"
               />
             </button>
@@ -203,7 +203,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto bg-[#222831]">
+        <main className="flex-1 overflow-y-auto bg-[var(--surface-main)]">
           {/* aria-live region for inline announcements */}
           <div aria-live="polite" aria-atomic="true" className="sr-only" />
           <div className="h-full">{children}</div>

@@ -1658,11 +1658,6 @@ function FlashcardsPageContent() {
                   All Flashcards
                 </h2>
                 <div className="flex items-center gap-2">
-                  {multiSelectMode && (
-                    <span className="text-sm text-[#a6a6a6]">
-                      {selectedIds.size} selected
-                    </span>
-                  )}
                   <button
                     onClick={() => setMultiSelectMode(!multiSelectMode)}
                     className="px-3 py-1.5 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6b6bff] transition-colors"
@@ -1720,14 +1715,14 @@ function FlashcardsPageContent() {
                   <div className="p-4 space-y-4">
                     {groupCardsByDate(allCards).map((group) => (
                       <div key={group.date}>
-                        <div className="sticky top-0 bg-[#1a1d23] py-2 text-sm font-medium text-[#a6a6a6] border-b border-[#2e323a] mb-3">
+                        <div className="sticky top-0 z-20 bg-[#1a1d23] py-2 text-sm font-medium text-[#a6a6a6] border-b border-[#2e323a] mb-3 [box-shadow:0_6px_0_#1a1d23]">
                           {group.label}
                         </div>
                         <div className="space-y-2">
                           {group.cards.map((card) => (
                             <motion.div
                               key={card.id}
-                              className={`flex items-center gap-3 p-3 bg-[#2e323a] rounded-lg border border-[#404040] hover:border-[#4040f2] transition-colors${multiSelectMode ? " cursor-pointer" : ""}`}
+                              className={`flex items-center gap-3 p-3 bg-[#2e323a] rounded-lg border border-[#404040] hover:border-[#4040f2] transition-colors overflow-hidden${multiSelectMode ? " cursor-pointer" : ""}`}
                               onClick={(e) => {
                                 if (!multiSelectMode) return;
                                 const target = e.target as HTMLElement;
