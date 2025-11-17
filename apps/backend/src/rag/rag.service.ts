@@ -47,14 +47,7 @@ export class RagService {
       // Try Gemini first
       const geminiAvailable = await this.geminiEmbedding.isAvailable();
       if (geminiAvailable) {
-        this.logger.log(`Using Gemini embeddings for ${texts.length} texts`);
         const embeddings = await this.geminiEmbedding.embedTexts(texts);
-
-        // Log actual dimensions for debugging
-        if (embeddings.length > 0) {
-          const actualDim = embeddings[0].length;
-          this.logger.log(`Gemini embeddings have ${actualDim} dimensions`);
-        }
 
         // Store original dimension for database storage
         this.originalEmbeddingDimension =
@@ -64,16 +57,13 @@ export class RagService {
         return embeddings;
       }
     } catch (error) {
-      this.logger.warn(
+      this.logger.error(
         'Gemini embedding failed, falling back to OpenAI:',
-        error.message,
+        error,
       );
     }
 
     // Fallback to OpenAI
-    this.logger.log(
-      `Using OpenAI embeddings for ${texts.length} texts (Gemini fallback)`,
-    );
     const embeddings = await this.openai.embedTexts(
       texts,
       process.env.OPENAI_EMBED_MODEL,
@@ -140,9 +130,9 @@ export class RagService {
       }
       this.vectorUsable = true;
     } catch (e) {
-      this.logger.warn(
+      this.logger.error(
         'pgvector not available; falling back to LIKE search',
-        e as any,
+        e,
       );
       this.vectorUsable = false;
     }
@@ -216,13 +206,8 @@ export class RagService {
     userHanzi?: string,
   ): Promise<RagContext | null> {
     if (!this.isEnabled()) {
-      this.logger.log('RAG is disabled, skipping retrieval');
       return null;
     }
-
-    this.logger.log(
-      `RAG retrieval for user ${userId}: "${assistantHanzi}" | "${userHanzi || ''}"`,
-    );
 
     const user = await this.getUserProfile(userId);
     const queries = this.buildQueryVariants(
@@ -230,23 +215,9 @@ export class RagService {
       user,
     );
 
-    this.logger.log(
-      `Generated ${queries.length} query variants: [${queries.join(', ')}]`,
-    );
-
     const chunks = await this.searchChunks(queries, user.level, 3);
 
-    this.logger.log(`Found ${chunks.length} relevant chunks for RAG context`);
-
     const context = this.composeContext(chunks);
-
-    if (context) {
-      this.logger.log(
-        `RAG context composed: ${context.sources.length} sources, ${context.contextText.length} characters (limited to 3 sources for token efficiency)`,
-      );
-    } else {
-      this.logger.log('No RAG context generated');
-    }
 
     return context;
   }
@@ -281,19 +252,19 @@ export class RagService {
     // Try vector search first
     try {
       if (await this.ensureVectorSchema()) {
-        this.logger.log('Using vector search (ANN) for RAG retrieval');
         const ann = await this.searchChunksANN(queries, level, take);
         if (ann.length > 0) {
-          this.logger.log(`Vector search returned ${ann.length} chunks`);
           return ann;
         }
       }
     } catch (err) {
-      this.logger.warn('Error searching chunks ANN', err as any);
+      this.logger.error(
+        'Error searching chunks ANN, falling back to LIKE-based search',
+        err,
+      );
     }
 
     // Fallback: Simple LIKE-based retrieval
-    this.logger.log('Falling back to LIKE-based search');
     const orClauses: any[] = [];
     for (const q of queries) {
       if (!q) continue;
@@ -322,8 +293,6 @@ export class RagService {
       },
     } as any);
 
-    this.logger.log(`LIKE-based search returned ${rows.length} chunks`);
-
     return rows.map((r: any) => ({
       id: r.id,
       sourceTitle: r.source?.title,
@@ -351,16 +320,11 @@ export class RagService {
 
     // Generate embeddings using Gemini model (1536 dimensions)
     const queryText = qtexts.join(' ');
-    this.logger.log(`Generating embeddings for query: "${queryText}"`);
 
     const queryVecs = await this.generateEmbedding([queryText]);
     const titleVec = queryVecs;
     const enVec = queryVecs;
     const zhVec = queryVecs;
-
-    this.logger.log(
-      `Generated embeddings: title=${titleVec[0]?.length || 0}D, en=${enVec[0]?.length || 0}D, zh=${zhVec[0]?.length || 0}D`,
-    );
 
     const titleLit =
       '[' + (titleVec[0] || []).map((x) => (x ?? 0).toFixed(6)).join(',') + ']';
@@ -423,8 +387,6 @@ export class RagService {
       zhLit,
     );
 
-    this.logger.log(`Vector search query returned ${rows.length} results`);
-
     return rows.map((r) => ({
       id: r.id,
       sourceTitle: r.sourcetitle,
@@ -482,7 +444,6 @@ export class RagService {
 
       // Use original embedding dimension (before padding)
       const dim = this.originalEmbeddingDimension;
-      this.logger.log(`Using embedding dimension: ${dim} for storage`);
       for (let i = 0; i < ids.length; i++) {
         const id = ids[i];
         const chunk = chunks[i];

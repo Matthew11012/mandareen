@@ -45,6 +45,7 @@ export function notifyLessonReady(payload: LessonReadyNotification) {
       </div>
     </div>,
     {
+      id: `lesson-ready-${payload.id}`,
       duration: 10000,
       className: "!w-full",
     }

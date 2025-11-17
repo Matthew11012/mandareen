@@ -61,6 +61,7 @@ function LessonsPageContent() {
   const storiesRef = useRef<HTMLDivElement | null>(null);
   const dialoguesRef = useRef<HTMLDivElement | null>(null);
   const myStoriesRef = useRef<HTMLDivElement | null>(null);
+  const topicTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const myDialoguesRef = useRef<HTMLDivElement | null>(null);
 
   const [genLevel, setGenLevel] = useState<number | null>(null);
@@ -395,13 +396,43 @@ function LessonsPageContent() {
   // Track notified lesson IDs to prevent duplicates
   const notifiedLessonIdsRef = useRef<Set<number>>(new Set());
 
-  // Sync generation state on mount: if inProgress, set generating and progressOpen
+  // Sync generation state on mount and detect stale state
   useEffect(() => {
+    const startedAt = genStore.startedAt;
+    const now = Date.now();
+
+    if (genStore.inProgress && !genStore.attached) {
+      genStore.reset();
+      setGenerating(false);
+      setProgressOpen(false);
+      return;
+    }
+
+    const isStale =
+      genStore.inProgress &&
+      (!startedAt ||
+        now - startedAt > 10 * 60 * 1000 ||
+        startedAt > now + 60_000);
+
+    if (isStale) {
+      genStore.reset();
+      setGenerating(false);
+      setProgressOpen(false);
+      return;
+    }
+
     if (genStore.inProgress && !generating) {
       setGenerating(true);
       setProgressOpen(true);
     }
-  }, [genStore.inProgress, generating]);
+  }, [genStore, generating]);
+
+  useEffect(() => {
+    if (topicTextareaRef.current) {
+      topicTextareaRef.current.style.height = "auto";
+      topicTextareaRef.current.style.height = `${Math.min(topicTextareaRef.current.scrollHeight, 120)}px`;
+    }
+  }, [topic]);
 
   const handleLessonReady = useCallback(
     async (meta: {
@@ -436,18 +467,18 @@ function LessonsPageContent() {
         }
       }
 
+      genStore.setLastCompletedLesson({
+        id: meta.id,
+        title: resolvedTitle,
+        topic: effectiveTopic,
+      });
+
       notifyLessonReady({
         id: meta.id,
         title: resolvedTitle,
         topic: effectiveTopic ?? undefined,
         type: meta.type,
         onOpen: () => router.push(`/lessons/${meta.id}`),
-      });
-
-      genStore.setLastCompletedLesson({
-        id: meta.id,
-        title: resolvedTitle,
-        topic: effectiveTopic,
       });
     },
     [genStore, router]
@@ -968,29 +999,50 @@ function LessonsPageContent() {
             <label htmlFor="lesson-topic" className="sr-only">
               Topic
             </label>
-            <div className="relative flex-1">
-              <input
-                id="lesson-topic"
-                className="w-full bg-transparent border border-[#404040] rounded-lg px-3 py-2 pr-9 text-white placeholder-[#888] focus:outline-none min-h-[44px]"
-                placeholder="Type your topic..."
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") onGenerate();
-                }}
-                name="lesson-topic"
-                autoComplete="off"
-              />
-              {topic && (
-                <button
-                  type="button"
-                  onClick={() => setTopic("")}
-                  aria-label="Clear topic"
-                  className="absolute inset-y-0 right-0 px-3 text-[#c9c9c9] hover:text-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#2e323a]"
-                >
-                  ×
-                </button>
-              )}
+            <div className="flex-1">
+              <div className="relative">
+                <textarea
+                  ref={topicTextareaRef}
+                  id="lesson-topic"
+                  className="w-full bg-transparent border border-[#404040] rounded-lg px-3 py-2 pr-9 text-white placeholder-[#888] focus:outline-none min-h-[44px] resize-none overflow-hidden"
+                  placeholder="Type your topic..."
+                  value={topic}
+                  onChange={(e) => {
+                    const value = e.target.value.slice(0, 500);
+                    setTopic(value);
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      onGenerate();
+                    }
+                  }}
+                  name="lesson-topic"
+                  autoComplete="off"
+                  maxLength={500}
+                  rows={1}
+                />
+                {topic && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTopic("");
+                      if (topicTextareaRef.current) {
+                        topicTextareaRef.current.style.height = "auto";
+                      }
+                    }}
+                    aria-label="Clear topic"
+                    className="absolute top-2 right-0 px-3 text-[#c9c9c9] hover:text-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#2e323a]"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              <div className="text-right">
+                <span className="text-xs text-[#666]">{topic.length}/500</span>
+              </div>
             </div>
           </div>
           <div className="pt-1">

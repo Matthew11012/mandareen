@@ -1925,28 +1925,26 @@ export class LessonsService {
         ? `\n\nAVAILABLE CONTENT TAGS (prefer these): ${existingContentTags.join(', ')}\nYou may create 1-2 NEW content tags only if the topic absolutely requires them. If the lesson you are making is already covered by one of the tags, just use the tags available. If you must, do not create similar tags, but create completely separate tag categories from the available ones if absolutely necessary for the new lesson. `
         : '';
 
-    const messages = [
-      {
-        role: 'system' as const,
-        content: `You are a native Mandarin speaker and a senior Mandarin curriculum and lesson designer with much creativity in creating engaging lessons types and topics. Generate long, engaging lessons strictly as JSON. Do not include any extra commentary.
+    // Prompt structure optimized for OpenAI prompt caching:
+    // - System message is fully static (no dynamic interpolation)
+    // - User message has a long static prefix (instructions, JSON schema) followed by a short dynamic parameters tail
+    // This maximizes cache hits by ensuring the majority of tokens are identical across requests
+    const staticSystemMessage = `You are a native Mandarin speaker and a senior Mandarin curriculum and lesson designer with much creativity in creating engaging lessons types and topics. Generate long, engaging lessons strictly as JSON. Do not include any extra commentary.
           
           - **Content Requirements:**
             - Embed the entire story around the user-supplied TOPIC.
-            ${timeframeConditioning}
             - The story must progress at a pace suited to the specified HSK level, introducing and reinforcing level-appropriate vocabulary and grammar, but with occasional inclusion of a few "stretch" words/structures.
             - Promote gradual learning by organizing the story in a way that helps learners follow and understand (logical sequence, appropriate complexity for HSK level).
             - Be creative and use storytelling techniques that engage learners emotionally and intellectually (e.g., character motivation, some conflict/resolution, surprise, or humor if suited)
             
         Generate lesson content first. 
-        IMPORTANT: Ignore all tag-related instructions until AFTER you complete the lesson generation.`,
-      },
-      {
-        role: 'user' as const,
-        content: `Generate a Mandarin Chinese story lesson tailored to HSK level ${level}. Tell a coherent, engaging story strictly about the TOPIC. Length target: ~${approxChars} characters. Provide rich content. Use HSK-${level} vocab and grammar, with a few stretch words.${topicLine}
+        IMPORTANT: Ignore all tag-related instructions until AFTER you complete the lesson generation.`;
+
+    const staticUserPrefix = `Generate a Mandarin Chinese story lesson tailored to the specified HSK level. Tell a coherent, engaging story strictly about the TOPIC. Provide rich content. Use vocab and grammar appropriate for the specified HSK level, with a few stretch words.
 
         === TAG ASSIGNMENT (DO THIS LAST) ===
         Only after completing the lesson generation above, assign appropriate tags to the lesson.
-        After creating the lesson, Use the available tags to create the appropriate tags for the lesson. Do not let the available tags influence your creation of the lesson. Only after creating the lesson may you check and assign the tags to the generated lesson. Use the tags available only if it is absolutely relevant to the lesson you have just created.${availableTagsText}
+        After creating the lesson, Use the available tags to create the appropriate tags for the lesson. Do not let the available tags influence your creation of the lesson. Only after creating the lesson may you check and assign the tags to the generated lesson. Use the tags available only if it is absolutely relevant to the lesson you have just created.
 
         Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
         {
@@ -1954,8 +1952,8 @@ export class LessonsService {
           "titlePinyin": "string <using tone marks>",
           "titleTranslation": "string",
           "lessonType": "story",
-          "level": ${level},
-          "tags": ["${timeframe}", "content_tag_1", "content_tag_2<optional, only add if absolutely necessary>"],
+          "level": <use the HSK level specified in parameters>,
+          "tags": ["<use the timeframe specified in parameters>", "content_tag_1", "content_tag_2<optional, only add if absolutely necessary>"],
           "story": {
             "hanzi": "string (full Chinese text)",
             "translation": "string (full English translation; mirror paragraph breaks with blank lines)"
@@ -1963,16 +1961,55 @@ export class LessonsService {
           "namedEntities": [
             { "hanzi": "string", "pinyin": "string<using tone marks>", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" } <list main characters, locations, brands, organizations, title phrases, events, festivals introduced (as relevant to the story)> 
           ]
-        }`,
+        }
+
+        === PARAMETERS ===`;
+
+    const dynamicParams = `HSK Level: ${level}
+        Length target: ~${approxChars} characters
+        Timeframe: ${timeframe} (this is a required tag that must be included in the tags array)
+        ${topicLine}
+        ${timeframeConditioning}
+        ${availableTagsText}`;
+
+    const messages = [
+      {
+        role: 'system' as const,
+        content: staticSystemMessage,
+      },
+      {
+        role: 'user' as const,
+        content: `${staticUserPrefix}
+        ${dynamicParams}`,
       },
     ];
-    const completion = await client.chat.completions.create({
+    const response = await (client as any).responses.create({
       model: preferredModel,
-      messages: messages as any,
-      response_format: { type: 'json_object' },
+      input: messages as any,
+      text: { format: { type: 'json_object' } },
+      store: true,
     } as any);
-    const content = completion.choices[0].message.content;
-    if (!content) throw new Error('Empty OpenAI response');
+
+    // Extract content from Responses API structure
+    // Use output_text (SDK convenience property) first, then fallback to output array
+    const content =
+      (response as any).output_text ||
+      (response as any).output?.[0]?.content?.[0]?.text;
+
+    if (!content) {
+      // Log response structure for debugging
+      const outputStructure = (response as any).output?.map((item: any) => ({
+        type: item.type,
+        role: item.role,
+        hasContent: !!item.content,
+        contentLength: item.content?.length,
+        firstContentType: item.content?.[0]?.type,
+      }));
+      this.logger.error(
+        `Empty OpenAI response - hasOutputText: ${!!(response as any).output_text}, output length: ${(response as any).output?.length || 0}, output structure: ${JSON.stringify(outputStructure)}`,
+      );
+      throw new Error('Empty OpenAI response');
+    }
     return JSON.parse(content);
   }
 
@@ -2006,14 +2043,14 @@ export class LessonsService {
         ? `\n\nAVAILABLE CONTENT TAGS (prefer these): ${existingContentTags.join(', ')}\nYou may create 1-2 NEW content tags only if the topic genuinely requires them. If the lesson you are making is already covered by one of the tags, just use the tags available. If you must, do not create similar tags, but create completely separate tag categories from the available ones if absolutely necessary for the new lesson.`
         : '';
 
-    const messages = [
-      {
-        role: 'system' as const,
-        content: `You are a native Mandarin speaker and an expert Mandarin lesson designer. Your task is to generate an engaging, topical, practical Mandarin DIALOGUE lesson about the user-supplied TOPIC, tailored for the specified HSK level and focused on realistic learning objectives.
+    // Prompt structure optimized for OpenAI prompt caching:
+    // - System message is fully static (no dynamic interpolation)
+    // - User message has a long static prefix (instructions, JSON schema) followed by a short dynamic parameters tail
+    // This maximizes cache hits by ensuring the majority of tokens are identical across requests
+    const staticSystemMessage = `You are a native Mandarin speaker and an expert Mandarin lesson designer. Your task is to generate an engaging, topical, practical Mandarin DIALOGUE lesson about the user-supplied TOPIC, tailored for the specified HSK level and focused on realistic learning objectives.
           
           - **Topicality & Engagement**:
             - The entire dialogue must revolve around and deeply explore the TOPIC. Keep the flow realistic and practical.
-            ${timeframeConditioning}
             - Ensure the dialogue is contextually engaging—use light conflict, diverse opinions, practical needs, humor, or surprise if suited to the topic and learners' level.
             
           - **Quality and Pedagogy**:
@@ -2029,17 +2066,13 @@ export class LessonsService {
             5. **Do not output your reasoning—apply it only to craft your JSON.**
           
           Generate lesson content first. 
-          IMPORTANT: Ignore all tag-related instructions until AFTER you complete the lesson generation.`,
-      },
-      {
-        role: 'user' as const,
-        content: `Generate a Mandarin Chinese dialogue lesson tailored to HSK level ${level}. Provide ${approxTurns} turns of natural conversation. Use HSK-${level} vocab and grammar, with a few stretch words.  
-        TOPIC (mandatory): ${topicLine}  
-        Use realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC.
+          IMPORTANT: Ignore all tag-related instructions until AFTER you complete the lesson generation.`;
+
+    const staticUserPrefix = `Generate a Mandarin Chinese dialogue lesson tailored to the specified HSK level. Provide the requested number of turns of natural conversation. Use vocab and grammar appropriate for the specified HSK level, with a few stretch words. Use realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC.
 
         === TAG ASSIGNMENT (DO THIS LAST) ===
         Only after completing the lesson generation above, assign appropriate tags to the lesson.
-        After creating the dialogue lesson, Use the available tags to create the appropriate tags for the lesson. Do not let the available tags influence your creation of the lesson. Only after creating the lesson may you check and assign the tags to the generated lesson. Use the tags available only if it is absolutely relevant to the lesson you have just created.${availableTagsText}
+        After creating the dialogue lesson, Use the available tags to create the appropriate tags for the lesson. Do not let the available tags influence your creation of the lesson. Only after creating the lesson may you check and assign the tags to the generated lesson. Use the tags available only if it is absolutely relevant to the lesson you have just created.
 
         Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
         {
@@ -2047,12 +2080,12 @@ export class LessonsService {
           "titlePinyin": "string",
           "titleTranslation": "string",
           "lessonType": "dialogue",
-          "level": ${level},
-          "tags": ["${timeframe}", "content_tag_1", "content_tag_2<optional, only add if absolutely necessary>"],
+          "level": <use the HSK level specified in parameters>,
+          "tags": ["<use the timeframe specified in parameters>", "content_tag_1", "content_tag_2<optional, only add if absolutely necessary>"],
           "dialogue": {
-            "turns": [ // 18-22 turns of practical daily conversation suitable for HSK-${level}
+            "turns": [ // Provide the number of turns specified in parameters, suitable for the specified HSK level
               { "speaker": "<Character name or role(could be narrator or third person or other roles befitting the scenario)>", "hanzi": "string", "translation": "string" }
-              // ...repeat until at least ${approxTurns} turns
+              // ...repeat until at least the requested number of turns
             ]
           },
           "namedEntities": [
@@ -2067,16 +2100,55 @@ export class LessonsService {
         - Keep JSON concise but content-rich. No markdown, no commentary, JSON only.
         
         **REMINDER:**  
-        Your main goal is to create a realistic, engaging, educational dialogue strictly about the supplied topic, perfectly matched to the learner's HSK level, turning the scenario into a practical lesson—all output as valid, strict JSON.`,
+        Your main goal is to create a realistic, engaging, educational dialogue strictly about the supplied topic, perfectly matched to the learner's HSK level, turning the scenario into a practical lesson—all output as valid, strict JSON.
+
+        === PARAMETERS ===`;
+
+    const dynamicParams = `HSK Level: ${level}
+        Number of turns: ${approxTurns}
+        Timeframe: ${timeframe} (this is a required tag that must be included in the tags array)
+        ${topicLine}
+        ${timeframeConditioning}
+        ${availableTagsText}`;
+
+    const messages = [
+      {
+        role: 'system' as const,
+        content: staticSystemMessage,
+      },
+      {
+        role: 'user' as const,
+        content: `${staticUserPrefix}
+        ${dynamicParams}`,
       },
     ];
-    const completion = await client.chat.completions.create({
+    const response = await (client as any).responses.create({
       model: preferredModel,
-      messages: messages as any,
-      response_format: { type: 'json_object' },
+      input: messages as any,
+      text: { format: { type: 'json_object' } },
+      store: true,
     } as any);
-    const content = completion.choices[0].message.content;
-    if (!content) throw new Error('Empty OpenAI response');
+
+    // Extract content from Responses API structure
+    // Use output_text (SDK convenience property) first, then fallback to output array
+    const content =
+      (response as any).output_text ||
+      (response as any).output?.[0]?.content?.[0]?.text;
+
+    if (!content) {
+      // Log response structure for debugging
+      const outputStructure = (response as any).output?.map((item: any) => ({
+        type: item.type,
+        role: item.role,
+        hasContent: !!item.content,
+        contentLength: item.content?.length,
+        firstContentType: item.content?.[0]?.type,
+      }));
+      this.logger.error(
+        `Empty OpenAI response - hasOutputText: ${!!(response as any).output_text}, output length: ${(response as any).output?.length || 0}, output structure: ${JSON.stringify(outputStructure)}`,
+      );
+      throw new Error('Empty OpenAI response');
+    }
     return JSON.parse(content);
   }
 
