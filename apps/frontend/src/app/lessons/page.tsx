@@ -894,53 +894,53 @@ function LessonsPageContent() {
 
     // Reset stale generations that exceeded 10 minutes
     if (Date.now() - generationStartedAt > 10 * 60 * 1000) {
-      genStore.reset();
-      setProgressOpen(false);
-      return;
-    }
-
-    setProgressOpen(true);
-
-    const poll = async () => {
-      if (cancelled) {
+        genStore.reset();
+        setProgressOpen(false);
         return;
       }
-      try {
+
+      setProgressOpen(true);
+
+      const poll = async () => {
+      if (cancelled) {
+          return;
+        }
+        try {
         const createdAfter = generationStartedAt - 60_000;
         const type =
           generationParams.type ??
           (generationParams.readTimeMinutes === 10 ? "story" : "dialogue");
-        const mineData = await lessonsApi.listMine();
-        const candidates = mineData
-          .filter((i) => i.lessonType === type)
-          .filter((i) => new Date(i.createdAt).getTime() >= createdAfter)
-          .sort(
-            (a, b) =>
+          const mineData = await lessonsApi.listMine();
+          const candidates = mineData
+            .filter((i) => i.lessonType === type)
+            .filter((i) => new Date(i.createdAt).getTime() >= createdAfter)
+            .sort(
+              (a, b) =>
               new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
+            );
           if (candidates.length > 0) {
-          const id = candidates[0].id;
-          if (!notifiedLessonIdsRef.current.has(id)) {
-            genStore.finish();
-            setProgressOpen(false);
-            if (interval) {
-              clearInterval(interval);
-              interval = null;
-            }
-            setGenerating(false);
-            await load();
-            await handleLessonReady({
-              id,
-              type,
+            const id = candidates[0].id;
+            if (!notifiedLessonIdsRef.current.has(id)) {
+              genStore.finish();
+              setProgressOpen(false);
+              if (interval) {
+                clearInterval(interval);
+                interval = null;
+              }
+              setGenerating(false);
+              await load();
+              await handleLessonReady({
+                id,
+                type,
               topic: generationParams.topic ?? undefined,
-            });
+              });
+            }
           }
-        }
-      } catch {}
-    };
+        } catch {}
+      };
 
     void poll();
-    interval = setInterval(poll, 5000);
+      interval = setInterval(poll, 5000);
 
     return () => {
       cancelled = true;
@@ -1036,42 +1036,42 @@ function LessonsPageContent() {
               <div className="relative">
                 <textarea
                   ref={topicTextareaRef}
-                  id="lesson-topic"
+                id="lesson-topic"
                   className="w-full bg-transparent border border-[#404040] rounded-lg px-3 py-2 pr-9 text-white placeholder-[#888] focus:outline-none min-h-[44px] resize-none overflow-hidden"
-                  placeholder="Type your topic..."
-                  value={topic}
+                placeholder="Type your topic..."
+                value={topic}
                   onChange={(e) => {
                     const value = e.target.value.slice(0, 500);
                     setTopic(value);
                     e.target.style.height = "auto";
                     e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
                   }}
-                  onKeyDown={(e) => {
+                onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       onGenerate();
                     }
-                  }}
-                  name="lesson-topic"
-                  autoComplete="off"
+                }}
+                name="lesson-topic"
+                autoComplete="off"
                   maxLength={500}
                   rows={1}
-                />
-                {topic && (
-                  <button
-                    type="button"
+              />
+              {topic && (
+                <button
+                  type="button"
                     onClick={() => {
                       setTopic("");
                       if (topicTextareaRef.current) {
                         topicTextareaRef.current.style.height = "auto";
                       }
                     }}
-                    aria-label="Clear topic"
+                  aria-label="Clear topic"
                     className="absolute top-2 right-0 px-3 text-[#c9c9c9] hover:text-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#2e323a]"
-                  >
-                    ×
-                  </button>
-                )}
+                >
+                  ×
+                </button>
+              )}
               </div>
               <div className="text-right">
                 <span className="text-xs text-[#666]">{topic.length}/500</span>
