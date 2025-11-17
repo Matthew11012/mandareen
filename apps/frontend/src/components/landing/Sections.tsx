@@ -642,8 +642,8 @@ export function PricingSection() {
                       w-full inline-flex items-center justify-center px-4 py-3 rounded-full font-inter font-medium text-md transition-all duration-200 min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-black
                       ${
                         plan.isPopular
-                          ? "bg-white text-black hover:bg-white/90 border border-white/10"
-                          : "border border-white/10 text-white hover:bg-white/10"
+                          ? "bg-white text-black hover:bg-white/80 border border-white/10"
+                          : "bg-[#4040f2] border border-white/10 text-white hover:bg-[#3636d9]"
                       }
                     `}
                     aria-label={`Start ${plan.name} plan`}
