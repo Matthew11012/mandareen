@@ -27,6 +27,76 @@
   --color-success: #22c55e;
   --color-error: #ef4444;
 
+  /* Semantic surfaces */
+  --surface-body: #1a1d23; /* dashboard root, drawers */
+  --surface-shell: #20242b; /* dashboard main column */
+  --surface-main: #222831; /* primary content canvas */
+  --surface-main-80: color-mix(in srgb, #222831 80%, transparent);
+  --surface-panel: #24262b; /* profile cards, dialogs */
+  --surface-panel-alt: #262a31; /* flashcard cards, lesson controls */
+  --surface-sheet: #2a3039; /* auth modals, split forms */
+  --surface-card: #2e323a; /* generic card background */
+  --surface-card-hover: #3a3e46; /* hover state for cards */
+  --surface-card-strong: #3a3f47; /* stronger hover/edge state */
+  --surface-modal: #1b1f26; /* conversation overlays, destructive modals */
+  --surface-overlay: #1d2128; /* tooltips, sticky overlays */
+  --surface-note: #1e2229; /* lesson grammar notes */
+  --surface-skeleton: #16181d; /* shimmer placeholders */
+
+  /* Border roles */
+  --border-strong: #404040;
+  --border-default: #3a3a3a;
+  --border-muted: #2e323a;
+  --border-subtle: #2a2e36;
+  --border-header: #30333a;
+  --border-contrast: #404060;
+  --border-overlay: #3a3f48;
+  --border-success: #35503c;
+
+  /* Text roles */
+  --text-highlight: #c6ceff; /* pinyin emphasis */
+  --text-accent: #9aa6ff; /* interactive pills, CTA links */
+  --text-tertiary: #8b949e; /* supporting english translations */
+  --text-secondary-strong: #a6a6a6; /* general muted body text */
+  --text-meta: #7a7a7a; /* timestamps, helper text */
+  --text-disabled: #666666;
+  --text-placeholder: #888888;
+  --text-faded: #808080;
+  --text-contrast-soft: #c9c9c9; /* icon buttons resting state */
+  --text-marker: #596080; /* bullet markers */
+  --text-subtle: #c9d1d9;
+  --text-spinner: #cbd5e1;
+
+  /* Chips & badges */
+  --chip-muted-bg: #3a3a3a;
+  --chip-muted-border: #4a4a4a;
+  --chip-muted-text: #d0d0d0;
+  --chip-accent-bg: #333956;
+  --chip-accent-text: #c6ceff;
+
+  /* Control states */
+  --control-muted: #55596a;
+  --control-muted-strong: #777b94;
+
+  /* Gradients & specials */
+  --gradient-emerald-start: #20c997;
+  --gradient-emerald-end: #38ef7d;
+  --gradient-sunrise-start: #f59e0b;
+  --gradient-sunrise-end: #fbbf24;
+  --gradient-indigo-start: #4040f2;
+  --gradient-indigo-end: #7c80ff;
+  --accent-blue-strong: #3636d9;
+
+  /* Data / status colors */
+  --status-info: #4cc2f0;
+  --status-warn: #f97316;
+  --status-neutral: #9aa3af;
+  --status-alt-success: #10b981;
+  --status-alt-blue: #3b82f6;
+  --status-alt-purple: #a855f7;
+  --status-alt-pink: #ec4899;
+  --status-unknown: #59606b;
+
   /* Motion tokens */
   --motion-duration-fast: 160ms;
   --motion-duration-default: 360ms;
