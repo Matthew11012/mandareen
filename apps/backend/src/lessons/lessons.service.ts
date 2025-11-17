@@ -18,6 +18,14 @@ interface GenerateOptions {
   timeframe?: 'modern' | 'mythic' | 'imperial' | 'pre_modern' | 'futuristic';
 }
 
+interface GenerateStreamHooks {
+  onLessonPersisted?: (payload: {
+    lessonId: number;
+    lessonType: 'story' | 'dialogue';
+    requestId?: string;
+  }) => Promise<void>;
+}
+
 @Injectable()
 export class LessonsService {
   private readonly logger = new Logger(LessonsService.name);
@@ -262,6 +270,7 @@ export class LessonsService {
   streamGenerateWithToken(
     token: string,
     options: GenerateOptions,
+    hooks?: GenerateStreamHooks,
   ): Observable<{ event: string; data: any } | { data: string }> {
     return new Observable((subscriber) => {
       // heartbeat handle must be visible to error/complete paths
@@ -584,6 +593,13 @@ export class LessonsService {
                 e as any,
               );
             }
+            if (hooks?.onLessonPersisted) {
+              await hooks.onLessonPersisted({
+                lessonId: created.id,
+                lessonType: 'dialogue',
+                requestId: options.requestId,
+              });
+            }
             // Fire-and-forget push notification (best-effort)
             try {
               await this.notificationsService.notifyLessonReady(user.id, {
@@ -823,6 +839,13 @@ export class LessonsService {
               'populateWordInstancesForLesson failed (stream story)',
               e as any,
             );
+          }
+          if (hooks?.onLessonPersisted) {
+            await hooks.onLessonPersisted({
+              lessonId: created.id,
+              lessonType: 'story',
+              requestId: options.requestId,
+            });
           }
           // Fire-and-forget push notification (best-effort)
           try {

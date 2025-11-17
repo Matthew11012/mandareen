@@ -353,6 +353,77 @@ describe('UsageService', () => {
     });
   });
 
+  describe('ensureWithinQuota', () => {
+    it('should throw when usage would exceed plan cap', async () => {
+      mockPrismaService.usageDaily.aggregate.mockResolvedValue({
+        _sum: { used: 90 },
+      });
+      await expect(
+        service.ensureWithinQuota({
+          userId: 1,
+          resource: 'lesson',
+          amount: 15,
+          planCap: 100,
+        }),
+      ).rejects.toThrow(QuotaExceededError);
+    });
+
+    it('should return silently when duplicate idempotency key found', async () => {
+      mockPrismaService.usageDaily.aggregate.mockResolvedValue({
+        _sum: { used: 10 },
+      });
+      mockPrismaService.usageEvent.findMany.mockResolvedValue([
+        { metadata: { idempotencyKey: 'dup-key' } },
+      ]);
+      await expect(
+        service.ensureWithinQuota({
+          userId: 1,
+          resource: 'lesson',
+          amount: 1,
+          planCap: 100,
+          idempotencyKey: 'dup-key',
+        }),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('recordUsage', () => {
+    it('should record usage event with metadata', async () => {
+      mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
+      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
+      mockPrismaService.usageEvent.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.create.mockResolvedValue({});
+
+      await service.recordUsage({
+        userId: 2,
+        resource: 'lesson',
+        amount: 1,
+        metadata: { lessonId: 42 },
+      });
+
+      expect(mockPrismaService.usageEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          metadata: expect.objectContaining({ lessonId: 42 }),
+        }),
+      });
+    });
+
+    it('should skip recording when duplicate idempotency key detected', async () => {
+      mockPrismaService.usageEvent.findMany.mockResolvedValue([
+        { metadata: { idempotencyKey: 'dup-key' } },
+      ]);
+
+      await service.recordUsage({
+        userId: 2,
+        resource: 'lesson',
+        amount: 1,
+        idempotencyKey: 'dup-key',
+      });
+
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
   describe('recordAnalytics', () => {
     it('should record usage without quota enforcement', async () => {
       const userId = 1;
