@@ -30,7 +30,9 @@ export function useLessonGenerationStream() {
       onComplete: (payload: {
         id?: number;
         type: "story" | "dialogue";
-        topic?: string;
+        topic?: string | null;
+        title?: string | null;
+        timeframe?: string | null;
       }) => Promise<void> | void;
       onError: (err?: unknown) => void;
       markAllComplete: () => void;
@@ -70,6 +72,22 @@ export function useLessonGenerationStream() {
       let streamFinished = false;
       const markComplete = (key: string) => genStore.markCompleted(key);
 
+      const parsePayload = (raw: unknown): Record<string, unknown> | null => {
+        if (raw == null) return null;
+        if (typeof raw === "string") {
+          if (!raw.trim()) return null;
+          try {
+            return JSON.parse(raw) as Record<string, unknown>;
+          } catch {
+            return null;
+          }
+        }
+        if (typeof raw === "object") {
+          return raw as Record<string, unknown>;
+        }
+        return null;
+      };
+
       const handleStepPayload = (raw: unknown) => {
         let payload: unknown = null;
         try {
@@ -88,33 +106,9 @@ export function useLessonGenerationStream() {
         }
       };
 
-      es.onmessage = async (e) => {
+      es.onmessage = (e) => {
         const raw = (e as MessageEvent).data as unknown;
         handleStepPayload(raw);
-        try {
-          let id: number | undefined = undefined;
-          if (typeof raw === "string" && raw.trim().length > 0) {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed.id === "number") id = parsed.id;
-          } else if (
-            raw &&
-            typeof raw === "object" &&
-            typeof (raw as { id?: unknown }).id === "number"
-          ) {
-            id = (raw as { id?: unknown }).id as number;
-          }
-          if (typeof id === "number" && !streamFinished) {
-            steps.forEach((k) => markComplete(k));
-            genStore.setStep("complete");
-            streamFinished = true;
-            es.close();
-            await onComplete({
-              id,
-              type: params.type,
-              topic: params.topic,
-            });
-          }
-        } catch {}
       };
 
       es.addEventListener("queued", () => genStore.setStep("queued"));
@@ -123,26 +117,31 @@ export function useLessonGenerationStream() {
         handleStepPayload(e.data)
       );
       es.addEventListener("heartbeat", () => {});
-      es.addEventListener("complete", async (e: MessageEvent) => {
+      const handleCompleteEvent = async (raw: unknown) => {
         if (streamFinished) return;
         try {
-          let id: number | undefined = undefined;
-          const raw = (e as MessageEvent).data as unknown;
-          if (typeof raw === "string" && raw.trim().length > 0) {
-            try {
-              const parsed = JSON.parse(raw);
-              id =
-                parsed && typeof parsed.id === "number" ? parsed.id : undefined;
-            } catch {
-              id = undefined;
-            }
-          } else if (
-            raw &&
-            typeof raw === "object" &&
-            typeof (raw as { id?: unknown }).id === "number"
-          ) {
-            id = (raw as { id?: unknown }).id as number;
-          }
+          const data = parsePayload(raw);
+          const id =
+            data && typeof data.id === "number"
+              ? (data.id as number)
+              : undefined;
+          const resolvedType =
+            data && (data.type === "story" || data.type === "dialogue")
+              ? (data.type as "story" | "dialogue")
+              : params.type;
+          const resolvedTopic =
+            data && typeof data.topic === "string"
+              ? (data.topic as string)
+              : (params.topic ?? null);
+          const resolvedTitle =
+            data && typeof data.title === "string"
+              ? (data.title as string)
+              : null;
+          const resolvedTimeframe =
+            data && typeof data.timeframe === "string"
+              ? (data.timeframe as string)
+              : (params.timeframe ?? null);
+
           if (typeof id === "number") {
             steps.forEach((k) => markComplete(k));
             genStore.setStep("complete");
@@ -150,8 +149,10 @@ export function useLessonGenerationStream() {
             es.close();
             await onComplete({
               id,
-              type: params.type,
-              topic: params.topic,
+              type: resolvedType,
+              topic: resolvedTopic,
+              title: resolvedTitle,
+              timeframe: resolvedTimeframe,
             });
           }
         } catch {
@@ -161,6 +162,10 @@ export function useLessonGenerationStream() {
           } catch {}
           markAllComplete();
         }
+      };
+
+      es.addEventListener("complete", async (e: MessageEvent) => {
+        await handleCompleteEvent(e.data);
       });
       es.addEventListener("error", () => {
         if (streamFinished) return;

@@ -611,7 +611,13 @@ export class LessonsService {
             } catch {
               // ignore notification errors
             }
-            emit('complete', { id: created.id });
+            emit('complete', {
+              id: created.id,
+              type: 'dialogue',
+              title: generated.title || null,
+              topic: options.topic ?? null,
+              timeframe: timeframe ?? null,
+            });
             if (heartbeat) clearInterval(heartbeat);
             subscriber.complete();
             return;
@@ -858,7 +864,13 @@ export class LessonsService {
           } catch {
             // ignore notification errors
           }
-          emit('complete', { id: created.id });
+          emit('complete', {
+            id: created.id,
+            type: 'story',
+            title: (generated as any).title || null,
+            topic: options.topic ?? null,
+            timeframe: timeframe ?? null,
+          });
           if (heartbeat) clearInterval(heartbeat);
           subscriber.complete();
         } catch (err) {
