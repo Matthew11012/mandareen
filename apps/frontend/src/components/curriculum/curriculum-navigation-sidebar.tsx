@@ -242,7 +242,7 @@ function ConditionalTooltip({
   className,
   children,
 }: ConditionalTooltipProps) {
-  const containerRef = useRef<HTMLElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [isTruncated, setIsTruncated] = useState(false);
 
   // Check if text is truncated by finding the truncate element
@@ -286,21 +286,20 @@ function ConditionalTooltip({
     };
   }, [checkTruncation]);
 
-  // Use a wrapper div with ref to check truncation
-  // This avoids React 19 ref prop issues with cloneElement
+  // Use a wrapper div to measure truncation and anchor tooltip positioning
   const wrappedContent = (
     <div
-      ref={(node: HTMLDivElement | null) => {
+      ref={(node) => {
         containerRef.current = node;
         if (node) {
-          // Check truncation when ref is set
           requestAnimationFrame(() => {
             checkTruncation();
           });
           setTimeout(checkTruncation, 0);
         }
       }}
-      style={{ display: "contents" }}
+      className="w-full"
+      style={{ display: "block" }}
     >
       {children}
     </div>
