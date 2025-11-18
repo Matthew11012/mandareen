@@ -10,6 +10,9 @@ export const BILLING_RESOURCES = {
   CURRICULUM_GENERATED: 'curriculum_generated',
   ASSESSMENT_TAKEN: 'assessment_taken',
   CONVO_STREAM: 'convo_stream',
+  COMMUNITY_LESSON_FULL_VIEW: 'community_lesson_full_view',
+  CURRICULUM_UNIT_FULL_ACCESS: 'curriculum_unit_full_access',
+  CONVO_MANUAL_NOTES: 'convo_manual_notes',
 } as const;
 
 /**

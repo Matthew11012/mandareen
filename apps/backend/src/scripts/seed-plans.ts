@@ -26,6 +26,9 @@ const RESOURCES = {
   CURRICULUM_GENERATED: 'curriculum_generated',
   ASSESSMENT_TAKEN: 'assessment_taken',
   CONVO_STREAM: 'convo_stream',
+  COMMUNITY_LESSON_FULL_VIEW: 'community_lesson_full_view',
+  CURRICULUM_UNIT_FULL_ACCESS: 'curriculum_unit_full_access',
+  CONVO_MANUAL_NOTES: 'convo_manual_notes',
 } as const;
 
 interface PlanLimitConfig {
@@ -88,17 +91,17 @@ const PLANS: PlanConfig[] = [
       },
       {
         resource: RESOURCES.CONVO_TTS_SECONDS,
-        monthlyCap: 900, // 15 minutes
+        monthlyCap: 300, // 5 minutes
         rpm: 30,
       },
       {
         resource: RESOURCES.LESSON_CUSTOM_GENERATED,
-        monthlyCap: 8,
+        monthlyCap: 2,
         rpm: 240, // 4 per hour
       },
       {
         resource: RESOURCES.CURRICULUM_GENERATED,
-        monthlyCap: 5,
+        monthlyCap: 1,
         rpm: 4,
       },
       {
@@ -109,6 +112,18 @@ const PLANS: PlanConfig[] = [
         resource: RESOURCES.CONVO_STREAM,
         monthlyCap: 0, // Not used for monthlyCap, only concurrency
         concurrency: 1,
+      },
+      {
+        resource: RESOURCES.COMMUNITY_LESSON_FULL_VIEW,
+        monthlyCap: 10,
+      },
+      {
+        resource: RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
+        monthlyCap: 1,
+      },
+      {
+        resource: RESOURCES.CONVO_MANUAL_NOTES,
+        monthlyCap: 3,
       },
     ],
     features: [
@@ -160,6 +175,18 @@ const PLANS: PlanConfig[] = [
         monthlyCap: 0,
         concurrency: 2,
       },
+      {
+        resource: RESOURCES.COMMUNITY_LESSON_FULL_VIEW,
+        monthlyCap: 0,
+      },
+      {
+        resource: RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
+        monthlyCap: 0,
+      },
+      {
+        resource: RESOURCES.CONVO_MANUAL_NOTES,
+        monthlyCap: 80,
+      },
     ],
     features: [
       { key: 'dictionary_full', enabled: true }, // No value needed, enabled flag is sufficient
@@ -188,7 +215,7 @@ const PLANS: PlanConfig[] = [
       },
       {
         resource: RESOURCES.CONVO_TTS_SECONDS,
-        monthlyCap: 21600, // 360 minutes
+        monthlyCap: 18000, // 300 minutes
         rpm: 30,
       },
       {
@@ -209,6 +236,18 @@ const PLANS: PlanConfig[] = [
         resource: RESOURCES.CONVO_STREAM,
         monthlyCap: 0,
         concurrency: 3,
+      },
+      {
+        resource: RESOURCES.COMMUNITY_LESSON_FULL_VIEW,
+        monthlyCap: 0,
+      },
+      {
+        resource: RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
+        monthlyCap: 0,
+      },
+      {
+        resource: RESOURCES.CONVO_MANUAL_NOTES,
+        monthlyCap: 200,
       },
     ],
     features: [
@@ -248,30 +287,40 @@ async function main() {
 
     console.log(`[seed-plans] Plan ${planConfig.code} (ID: ${plan.id})`);
 
-    // Upsert limits
+    // Upsert limits (update if exists, insert otherwise)
+    const existingLimits = await prisma.planLimit.findMany({
+      where: { planId: plan.id },
+      select: { id: true, resource: true },
+    });
+    const existingLimitMap = new Map(
+      existingLimits.map((limit) => [limit.resource, limit.id]),
+    );
+
     for (const limitConfig of planConfig.limits) {
-      await prisma.planLimit.upsert({
-        where: {
-          planId_resource: {
+      const limitId = existingLimitMap.get(limitConfig.resource);
+
+      if (limitId) {
+        await prisma.planLimit.update({
+          where: { id: limitId },
+          data: {
+            monthlyCap: limitConfig.monthlyCap,
+            rpm: limitConfig.rpm ?? null,
+            burst: limitConfig.burst ?? null,
+            concurrency: limitConfig.concurrency ?? null,
+          },
+        });
+      } else {
+        await prisma.planLimit.create({
+          data: {
             planId: plan.id,
             resource: limitConfig.resource,
+            monthlyCap: limitConfig.monthlyCap,
+            rpm: limitConfig.rpm ?? null,
+            burst: limitConfig.burst ?? null,
+            concurrency: limitConfig.concurrency ?? null,
           },
-        },
-        update: {
-          monthlyCap: limitConfig.monthlyCap,
-          rpm: limitConfig.rpm ?? null,
-          burst: limitConfig.burst ?? null,
-          concurrency: limitConfig.concurrency ?? null,
-        },
-        create: {
-          planId: plan.id,
-          resource: limitConfig.resource,
-          monthlyCap: limitConfig.monthlyCap,
-          rpm: limitConfig.rpm ?? null,
-          burst: limitConfig.burst ?? null,
-          concurrency: limitConfig.concurrency ?? null,
-        },
-      });
+        });
+      }
     }
 
     console.log(
