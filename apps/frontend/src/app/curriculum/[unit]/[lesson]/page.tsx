@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, Suspense } from "react";
+import { useEffect, useMemo, useState, Suspense, useCallback } from "react";
 import {
   getLesson,
   generateLesson,
@@ -20,10 +20,12 @@ import {
   XCircle,
   Trophy,
   Target,
+  Menu,
 } from "lucide-react";
 import { useRef } from "react";
 import * as React from "react";
 import { toast } from "sonner";
+import { AnimatePresence, motion } from "framer-motion";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { useUsageSummary } from "@/lib/hooks/use-usage";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -37,6 +39,8 @@ import {
   LessonQuotaBanner,
   type LessonQuotaError,
 } from "@/components/curriculum/lesson-quota-banner";
+import { CurriculumNavigationSidebar } from "@/components/curriculum/curriculum-navigation-sidebar";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 
 type TokenLike = {
   text?: string;
@@ -121,6 +125,21 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
   const [generating, setGenerating] = useState<boolean>(false);
   const [quotaError, setQuotaError] = useState<LessonQuotaError | null>(null);
   const errorBannerRef = useRef<HTMLDivElement>(null);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const isSidebarOpen = searchParams.get("sidebar") === "open";
+
+  // Toggle sidebar
+  const toggleSidebar = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (isSidebarOpen) {
+      params.delete("sidebar");
+    } else {
+      params.set("sidebar", "open");
+    }
+    router.replace(`${pathname}?${params.toString()}`);
+  }, [isSidebarOpen, searchParams, router, pathname]);
 
   // Fetch usage summary to check curriculum_generated quota
   const { data: usageSummary, isLoading: usageLoading } =
@@ -345,271 +364,308 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
 
   return (
     <DashboardLayout title={lessonData?.title ?? "Lesson"} subtitle="">
-      <div className="p-3 sm:p-6 pt-0 space-y-4 sm:space-y-6">
-        <nav
-          className="sticky top-0 z-40 bg-[#222831] py-2 -mx-3 sm:-mx-6 px-3 sm:px-6 mb-2"
-          aria-label="Breadcrumb"
-        >
-          <ol className="flex items-center gap-2 text-xs font-inter text-white/60">
-            <li>
-              <Link href="/curriculum" className="hover:text-white">
-                Curriculum
-              </Link>
-            </li>
-            <li aria-hidden>›</li>
-            <li>
-              <Link href={`/curriculum/${unitId}`} className="hover:text-white">
-                Unit
-              </Link>
-            </li>
-            <li aria-hidden>›</li>
-            <li className="text-white/80 hidden sm:inline">
-              {lessonData?.title ?? "Lesson"}
-            </li>
-            <li className="text-white/80 sm:hidden">Lesson</li>
-          </ol>
-        </nav>
+      <div className="flex h-full relative overflow-hidden">
+        {/* Main Content */}
+        <div className="flex-1 min-w-0 overflow-y-auto overscroll-contain">
+          <div className="p-3 sm:p-6 pt-0 space-y-4 sm:space-y-6">
+            <nav
+              className="sticky top-0 z-40 bg-[#222831] py-2 -mx-3 sm:-mx-6 px-3 sm:px-6 mb-2"
+              aria-label="Breadcrumb"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <ol className="flex items-center gap-2 text-xs font-inter text-white/60">
+                  <li>
+                    <Link href="/curriculum" className="hover:text-white">
+                      Curriculum
+                    </Link>
+                  </li>
+                  <li aria-hidden>›</li>
+                  <li>
+                    <Link
+                      href={`/curriculum/${unitId}`}
+                      className="hover:text-white"
+                    >
+                      Unit
+                    </Link>
+                  </li>
+                  <li aria-hidden>›</li>
+                  <li className="text-white/80 hidden sm:inline">
+                    {lessonData?.title ?? "Lesson"}
+                  </li>
+                  <li className="text-white/80 sm:hidden">Lesson</li>
+                </ol>
+                {/* Sidebar Toggle Button - Mobile only */}
+                <button
+                  onClick={toggleSidebar}
+                  aria-label={
+                    isSidebarOpen
+                      ? "Close curriculum navigation"
+                      : "Open curriculum navigation"
+                  }
+                  aria-expanded={isSidebarOpen}
+                  className="md:hidden p-2 rounded-lg hover:bg-white/5 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#222831]"
+                >
+                  <Menu className="w-5 h-5 text-white/80" aria-hidden="true" />
+                </button>
+              </div>
+            </nav>
 
-        <header className="space-y-1.5 sm:space-y-2">
-          <h1 className="text-lg sm:text-xl md:text-2xl font-inter font-semibold text-white leading-tight">
-            {lessonData?.title || "Lesson"}
-          </h1>
-          <hr className="my-2" />
-        </header>
+            <header className="space-y-1.5 sm:space-y-2">
+              <h1 className="text-lg sm:text-xl md:text-2xl font-inter font-semibold text-white leading-tight">
+                {lessonData?.title || "Lesson"}
+              </h1>
+              <hr className="my-2" />
+            </header>
 
-        {/* Quota Error Banner */}
-        <LessonQuotaBanner
-          ref={errorBannerRef}
-          error={quotaError}
-          generating={generating}
-          isQuotaExceeded={isQuotaExceeded}
-          onRetry={onGenerate}
-          onDismiss={() => setQuotaError(null)}
+            {/* Quota Error Banner */}
+            <LessonQuotaBanner
+              ref={errorBannerRef}
+              error={quotaError}
+              generating={generating}
+              isQuotaExceeded={isQuotaExceeded}
+              onRetry={onGenerate}
+              onDismiss={() => setQuotaError(null)}
+            />
+
+            {/* Generic Error Banner */}
+            {error && !quotaError && (
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-inter text-red-200">
+                {error}
+              </div>
+            )}
+
+            {loading && (
+              <div className="space-y-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-16 rounded-xl border border-white/10 bg-[#16181d] animate-pulse"
+                  />
+                ))}
+              </div>
+            )}
+
+            {!loading && lesson && activities.length === 0 && (
+              <div className="rounded-2xl border border-white/10 bg-[#16181d] p-4 sm:p-6">
+                <p className="text-white/80 font-inter text-sm sm:text-base">
+                  No content yet. Generate the lesson activities.
+                </p>
+                <div className="mt-3">
+                  {(() => {
+                    const tooltipMessage = getTooltipMessage();
+                    const button = (
+                      <button
+                        onClick={onGenerate}
+                        disabled={generating || isQuotaExceeded || usageLoading}
+                        className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm sm:text-base min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d]"
+                      >
+                        {generating ? (
+                          <>
+                            <Loader2 className="h-5 w-5 sm:h-4 sm:w-4 animate-spin flex-shrink-0" />
+                            <span className="hidden sm:inline">
+                              Generating lesson (this may take 1-2 minutes)…
+                            </span>
+                            <span className="sm:hidden">Generating…</span>
+                          </>
+                        ) : (
+                          "Generate lesson"
+                        )}
+                      </button>
+                    );
+
+                    // Wrap with tooltip if quota exceeded
+                    if (isQuotaExceeded && tooltipMessage) {
+                      return (
+                        <Tooltip
+                          content={tooltipMessage}
+                          position="top"
+                          delay={0}
+                        >
+                          {button}
+                        </Tooltip>
+                      );
+                    }
+
+                    return button;
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {activities.length > 0 && (
+              <div className="space-y-8">
+                {/* Explain-first (GRAMMAR) */}
+                {hasExplain && (
+                  <section className="rounded-xl sm:p-2">
+                    <h2 className="text-lg sm:text-xl font-semibold mb-2">
+                      Explanation
+                    </h2>
+                    {activities
+                      .filter(
+                        (a): a is Extract<ActivityUnion, { type: "GRAMMAR" }> =>
+                          a.type === "GRAMMAR"
+                      )
+                      .map((a) => (
+                        <ExplainView key={a.id} content={a.content} />
+                      ))}
+                    {activities
+                      .filter(
+                        (a): a is Extract<ActivityUnion, { type: "GRAMMAR" }> =>
+                          a.type === "GRAMMAR"
+                      )
+                      .map((a) => (
+                        <ExplainMicroPassage
+                          key={`micro-${a.id}`}
+                          content={a.content}
+                        />
+                      ))}
+                  </section>
+                )}
+
+                {/* Micro Passage (READ) */}
+                {hasRead && (
+                  <section className="rounded-xl sm:p-2">
+                    <h2 className="text-lg sm:text-xl font-semibold mb-2">
+                      Micro passage
+                    </h2>
+                    {activities
+                      .filter(
+                        (a): a is Extract<ActivityUnion, { type: "READ" }> =>
+                          a.type === "READ"
+                      )
+                      .map((a) => (
+                        <ReadView key={a.id} content={a.content} />
+                      ))}
+                  </section>
+                )}
+
+                {/* Quiz */}
+                {hasQuiz && (
+                  <section className="rounded-xl sm:p-2">
+                    <h2 className="text-lg sm:text-xl font-semibold mb-2">
+                      Quiz
+                    </h2>
+                    {activities
+                      .filter(
+                        (a): a is Extract<ActivityUnion, { type: "QUIZ" }> =>
+                          a.type === "QUIZ"
+                      )
+                      .map((a) => (
+                        <QuizView
+                          key={a.id}
+                          content={a.content}
+                          activityId={a.id}
+                        />
+                      ))}
+                  </section>
+                )}
+              </div>
+            )}
+
+            {/* Navigation */}
+            {navigation && (navigation.previous || navigation.next) && (
+              <div className="pt-8 border-t border-white/10">
+                {/* Desktop: side-by-side */}
+                <div className="hidden md:flex items-center justify-between">
+                  {navigation.previous ? (
+                    <Link
+                      href={`/curriculum/${navigation.previous.unitId}/${navigation.previous.lessonId}`}
+                      className="inline-flex items-center gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      <div className="text-left">
+                        <div className="text-xs text-white/60">Previous</div>
+                        <div className="text-sm font-medium truncate max-w-[200px]">
+                          {navigation.previous.lessonTitle}
+                        </div>
+                        {navigation.previous.unitTitle !==
+                          lessonData?.title && (
+                          <div className="text-xs text-white/50 truncate max-w-[200px]">
+                            {navigation.previous.unitTitle}
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+                  ) : (
+                    <div></div>
+                  )}
+
+                  {navigation.next ? (
+                    <Link
+                      href={`/curriculum/${navigation.next.unitId}/${navigation.next.lessonId}`}
+                      className="inline-flex items-center gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+                    >
+                      <div className="text-right">
+                        <div className="text-xs text-white/60">Next</div>
+                        <div className="text-sm font-medium truncate max-w-[200px]">
+                          {navigation.next.lessonTitle}
+                        </div>
+                        {navigation.next.unitTitle !== lessonData?.title && (
+                          <div className="text-xs text-white/50 truncate max-w-[200px]">
+                            {navigation.next.unitTitle}
+                          </div>
+                        )}
+                      </div>
+                      <ChevronRight className="w-4 h-4" />
+                    </Link>
+                  ) : (
+                    <div></div>
+                  )}
+                </div>
+
+                {/* Mobile: stacked with Next first */}
+                <div className="flex flex-col gap-3 md:hidden">
+                  {navigation.next && (
+                    <Link
+                      href={`/curriculum/${navigation.next.unitId}/${navigation.next.lessonId}`}
+                      className="inline-flex items-center justify-between gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+                    >
+                      <div className="text-left min-w-0 flex-1">
+                        <div className="text-xs text-white/60">Next</div>
+                        <div className="text-sm font-medium truncate">
+                          {navigation.next.lessonTitle}
+                        </div>
+                        {navigation.next.unitTitle !== lessonData?.title && (
+                          <div className="text-xs text-white/50 truncate">
+                            {navigation.next.unitTitle}
+                          </div>
+                        )}
+                      </div>
+                      <ChevronRight className="w-4 h-4 flex-shrink-0" />
+                    </Link>
+                  )}
+
+                  {navigation.previous && (
+                    <Link
+                      href={`/curriculum/${navigation.previous.unitId}/${navigation.previous.lessonId}`}
+                      className="inline-flex items-center gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+                    >
+                      <ChevronLeft className="w-4 h-4 flex-shrink-0" />
+                      <div className="text-left min-w-0 flex-1">
+                        <div className="text-xs text-white/60">Previous</div>
+                        <div className="text-sm font-medium truncate">
+                          {navigation.previous.lessonTitle}
+                        </div>
+                        {navigation.previous.unitTitle !==
+                          lessonData?.title && (
+                          <div className="text-xs text-white/50 truncate">
+                            {navigation.previous.unitTitle}
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sidebar */}
+        <CurriculumNavigationSidebar
+          currentUnitId={unitId}
+          currentLessonId={lessonId}
         />
-
-        {/* Generic Error Banner */}
-        {error && !quotaError && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-inter text-red-200">
-            {error}
-          </div>
-        )}
-
-        {loading && (
-          <div className="space-y-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-16 rounded-xl border border-white/10 bg-[#16181d] animate-pulse"
-              />
-            ))}
-          </div>
-        )}
-
-        {!loading && lesson && activities.length === 0 && (
-          <div className="rounded-2xl border border-white/10 bg-[#16181d] p-4 sm:p-6">
-            <p className="text-white/80 font-inter text-sm sm:text-base">
-              No content yet. Generate the lesson activities.
-            </p>
-            <div className="mt-3">
-              {(() => {
-                const tooltipMessage = getTooltipMessage();
-                const button = (
-                  <button
-                    onClick={onGenerate}
-                    disabled={generating || isQuotaExceeded || usageLoading}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm sm:text-base min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d]"
-                  >
-                    {generating ? (
-                      <>
-                        <Loader2 className="h-5 w-5 sm:h-4 sm:w-4 animate-spin flex-shrink-0" />
-                        <span className="hidden sm:inline">
-                          Generating lesson (this may take 1-2 minutes)…
-                        </span>
-                        <span className="sm:hidden">Generating…</span>
-                      </>
-                    ) : (
-                      "Generate lesson"
-                    )}
-                  </button>
-                );
-
-                // Wrap with tooltip if quota exceeded
-                if (isQuotaExceeded && tooltipMessage) {
-                  return (
-                    <Tooltip content={tooltipMessage} position="top" delay={0}>
-                      {button}
-                    </Tooltip>
-                  );
-                }
-
-                return button;
-              })()}
-            </div>
-          </div>
-        )}
-
-        {activities.length > 0 && (
-          <div className="space-y-8">
-            {/* Explain-first (GRAMMAR) */}
-            {hasExplain && (
-              <section className="rounded-xl sm:p-2">
-                <h2 className="text-lg sm:text-xl font-semibold mb-2">
-                  Explanation
-                </h2>
-                {activities
-                  .filter(
-                    (a): a is Extract<ActivityUnion, { type: "GRAMMAR" }> =>
-                      a.type === "GRAMMAR"
-                  )
-                  .map((a) => (
-                    <ExplainView key={a.id} content={a.content} />
-                  ))}
-                {activities
-                  .filter(
-                    (a): a is Extract<ActivityUnion, { type: "GRAMMAR" }> =>
-                      a.type === "GRAMMAR"
-                  )
-                  .map((a) => (
-                    <ExplainMicroPassage
-                      key={`micro-${a.id}`}
-                      content={a.content}
-                    />
-                  ))}
-              </section>
-            )}
-
-            {/* Micro Passage (READ) */}
-            {hasRead && (
-              <section className="rounded-xl sm:p-2">
-                <h2 className="text-lg sm:text-xl font-semibold mb-2">
-                  Micro passage
-                </h2>
-                {activities
-                  .filter(
-                    (a): a is Extract<ActivityUnion, { type: "READ" }> =>
-                      a.type === "READ"
-                  )
-                  .map((a) => (
-                    <ReadView key={a.id} content={a.content} />
-                  ))}
-              </section>
-            )}
-
-            {/* Quiz */}
-            {hasQuiz && (
-              <section className="rounded-xl sm:p-2">
-                <h2 className="text-lg sm:text-xl font-semibold mb-2">Quiz</h2>
-                {activities
-                  .filter(
-                    (a): a is Extract<ActivityUnion, { type: "QUIZ" }> =>
-                      a.type === "QUIZ"
-                  )
-                  .map((a) => (
-                    <QuizView
-                      key={a.id}
-                      content={a.content}
-                      activityId={a.id}
-                    />
-                  ))}
-              </section>
-            )}
-          </div>
-        )}
-
-        {/* Navigation */}
-        {navigation && (navigation.previous || navigation.next) && (
-          <div className="pt-8 border-t border-white/10">
-            {/* Desktop: side-by-side */}
-            <div className="hidden md:flex items-center justify-between">
-              {navigation.previous ? (
-                <Link
-                  href={`/curriculum/${navigation.previous.unitId}/${navigation.previous.lessonId}`}
-                  className="inline-flex items-center gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  <div className="text-left">
-                    <div className="text-xs text-white/60">Previous</div>
-                    <div className="text-sm font-medium truncate max-w-[200px]">
-                      {navigation.previous.lessonTitle}
-                    </div>
-                    {navigation.previous.unitTitle !== lessonData?.title && (
-                      <div className="text-xs text-white/50 truncate max-w-[200px]">
-                        {navigation.previous.unitTitle}
-                      </div>
-                    )}
-                  </div>
-                </Link>
-              ) : (
-                <div></div>
-              )}
-
-              {navigation.next ? (
-                <Link
-                  href={`/curriculum/${navigation.next.unitId}/${navigation.next.lessonId}`}
-                  className="inline-flex items-center gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
-                >
-                  <div className="text-right">
-                    <div className="text-xs text-white/60">Next</div>
-                    <div className="text-sm font-medium truncate max-w-[200px]">
-                      {navigation.next.lessonTitle}
-                    </div>
-                    {navigation.next.unitTitle !== lessonData?.title && (
-                      <div className="text-xs text-white/50 truncate max-w-[200px]">
-                        {navigation.next.unitTitle}
-                      </div>
-                    )}
-                  </div>
-                  <ChevronRight className="w-4 h-4" />
-                </Link>
-              ) : (
-                <div></div>
-              )}
-            </div>
-
-            {/* Mobile: stacked with Next first */}
-            <div className="flex flex-col gap-3 md:hidden">
-              {navigation.next && (
-                <Link
-                  href={`/curriculum/${navigation.next.unitId}/${navigation.next.lessonId}`}
-                  className="inline-flex items-center justify-between gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
-                >
-                  <div className="text-left min-w-0 flex-1">
-                    <div className="text-xs text-white/60">Next</div>
-                    <div className="text-sm font-medium truncate">
-                      {navigation.next.lessonTitle}
-                    </div>
-                    {navigation.next.unitTitle !== lessonData?.title && (
-                      <div className="text-xs text-white/50 truncate">
-                        {navigation.next.unitTitle}
-                      </div>
-                    )}
-                  </div>
-                  <ChevronRight className="w-4 h-4 flex-shrink-0" />
-                </Link>
-              )}
-
-              {navigation.previous && (
-                <Link
-                  href={`/curriculum/${navigation.previous.unitId}/${navigation.previous.lessonId}`}
-                  className="inline-flex items-center gap-3 px-4 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
-                >
-                  <ChevronLeft className="w-4 h-4 flex-shrink-0" />
-                  <div className="text-left min-w-0 flex-1">
-                    <div className="text-xs text-white/60">Previous</div>
-                    <div className="text-sm font-medium truncate">
-                      {navigation.previous.lessonTitle}
-                    </div>
-                    {navigation.previous.unitTitle !== lessonData?.title && (
-                      <div className="text-xs text-white/50 truncate">
-                        {navigation.previous.unitTitle}
-                      </div>
-                    )}
-                  </div>
-                </Link>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </DashboardLayout>
   );
@@ -892,7 +948,7 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
           </button>
         </div>
         <p
-          className="text-white text-base sm:text-lg leading-7 sm:leading-8"
+          className="text-white text-base sm:text-lg leading-8"
           aria-label="Micro passage"
         >
           {tokens.length > 0 ? (
@@ -944,7 +1000,7 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
                   )
                 ) : null}
                 <span
-                  className={`px-[1px] rounded text-sm sm:text-lg ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
+                  className={`px-[1px] rounded text-md sm:text-lg ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
                 >
                   {t.text ?? t.zh ?? ""}
                 </span>
@@ -959,6 +1015,7 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
             {content.microPassage.translation}
           </div>
         )}
+        {/* Desktop popup */}
         {popup.open && (
           <div
             ref={popupRef}
@@ -972,7 +1029,7 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
                 ? "none"
                 : "translate(-50%, calc(-100% - 8px))",
             }}
-            className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+            className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="font-bold text-white text-lg truncate">
@@ -1048,6 +1105,108 @@ function ExplainMicroPassage({ content }: { content: ExplainContent }) {
             </div>
           </div>
         )}
+
+        {/* Mobile top sheet popup */}
+        <AnimatePresence>
+          {popup.open && (
+            <motion.div
+              initial={{ y: "-100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "-100%" }}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 30,
+                duration: 0.3,
+              }}
+              className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+            >
+              <div className="max-w-sm mx-auto">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="font-bold text-white text-lg truncate">
+                    {popup.word}
+                  </div>
+                  {typeof popup.hskLevel === "number" && (
+                    <span
+                      className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                        popup.hskLevel
+                      )}`}
+                    >
+                      HSK {popup.hskLevel}
+                    </span>
+                  )}
+                </div>
+                {popup.pinyin && (
+                  <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                    {popup.pinyin}
+                  </div>
+                )}
+                {Array.isArray(popup.definitions) &&
+                popup.definitions.length > 0 ? (
+                  <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                    {popup.definitions.map((d, i) => (
+                      <div key={i}>• {d}</div>
+                    ))}
+                  </div>
+                ) : popup.definition ? (
+                  <div className="text-xs text-[#a6a6a6] mb-3">
+                    {popup.definition}
+                  </div>
+                ) : null}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setPopup((p) => ({ ...p, open: false }));
+                    }}
+                    className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const ctx = {
+                          hanzi: popup.word,
+                          pinyin: popup.pinyin,
+                          translation:
+                            popup.definition ||
+                            (Array.isArray(popup.definitions) &&
+                            popup.definitions.length > 0
+                              ? popup.definitions[0]
+                              : undefined),
+                        };
+                        const { post } = await import("@/lib/http/http");
+                        await post("flashcards", {
+                          hanzi: popup.word,
+                          sentenceHanzi: ctx.hanzi,
+                          sentencePinyin: ctx.pinyin,
+                          sentenceTranslation: ctx.translation,
+                          vocabPinyin: popup.pinyin,
+                          vocabDefinition:
+                            Array.isArray(popup.definitions) &&
+                            popup.definitions.length > 0
+                              ? popup.definitions[0]
+                              : popup.definition,
+                        });
+                        toast.success("Added to flashcards");
+                      } catch {
+                        toast.error("Failed to add to flashcards");
+                      } finally {
+                        setPopup((p) => ({ ...p, open: false }));
+                      }
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="text-sm font-inter">
+                      Add to Flashcards
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -1139,7 +1298,7 @@ function ReadView({ content }: { content: ReadContent }) {
   const tokens = Array.isArray(content?.segments) ? content.segments : [];
   return (
     <div className="space-y-2 sm:space-y-3" ref={contentRef}>
-      <div className="rounded-xl border border-[#404040] bg-[#2e323a] p-3 sm:p-4 relative">
+      <div className="rounded-xl sm:border border-[#404040] sm:bg-[#2e323a] sm:p-4 relative mb-4">
         <div className="flex items-center justify-end mb-2">
           <button
             onClick={() => setShowPinyin((v) => !v)}
@@ -1155,10 +1314,7 @@ function ReadView({ content }: { content: ReadContent }) {
             Pinyin {showPinyin ? "On" : "Off"}
           </button>
         </div>
-        <p
-          className="text-white text-base sm:text-lg leading-7 sm:leading-8"
-          aria-label="Micro passage"
-        >
+        <p className="text-white text-lg leading-8" aria-label="Micro passage">
           {tokens.length > 0 ? (
             tokens.map((t, i) => (
               <span
@@ -1207,7 +1363,7 @@ function ReadView({ content }: { content: ReadContent }) {
                   )
                 ) : null}
                 <span
-                  className={`px-[1px] rounded text-sm sm:text-lg ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
+                  className={`px-[1px] rounded text-md sm:text-lg ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
                 >
                   {t.text ?? t.zh ?? ""}
                 </span>
@@ -1222,6 +1378,7 @@ function ReadView({ content }: { content: ReadContent }) {
             {content.passage.translation}
           </div>
         )}
+        {/* Desktop popup */}
         {popup.open && (
           <div
             ref={popupRef}
@@ -1235,7 +1392,7 @@ function ReadView({ content }: { content: ReadContent }) {
                 ? "none"
                 : "translate(-50%, calc(-100% - 8px))",
             }}
-            className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+            className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="font-bold text-white text-lg truncate">
@@ -1311,6 +1468,108 @@ function ReadView({ content }: { content: ReadContent }) {
             </div>
           </div>
         )}
+
+        {/* Mobile top sheet popup */}
+        <AnimatePresence>
+          {popup.open && (
+            <motion.div
+              initial={{ y: "-100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "-100%" }}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 30,
+                duration: 0.3,
+              }}
+              className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+            >
+              <div className="max-w-sm mx-auto">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="font-bold text-white text-lg truncate">
+                    {popup.word}
+                  </div>
+                  {typeof popup.hskLevel === "number" && (
+                    <span
+                      className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                        popup.hskLevel
+                      )}`}
+                    >
+                      HSK {popup.hskLevel}
+                    </span>
+                  )}
+                </div>
+                {popup.pinyin && (
+                  <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                    {popup.pinyin}
+                  </div>
+                )}
+                {Array.isArray(popup.definitions) &&
+                popup.definitions.length > 0 ? (
+                  <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                    {popup.definitions.map((d, i) => (
+                      <div key={i}>• {d}</div>
+                    ))}
+                  </div>
+                ) : popup.definition ? (
+                  <div className="text-xs text-[#a6a6a6] mb-3">
+                    {popup.definition}
+                  </div>
+                ) : null}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setPopup((p) => ({ ...p, open: false }));
+                    }}
+                    className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const ctx = {
+                          hanzi: popup.word,
+                          pinyin: popup.pinyin,
+                          translation:
+                            popup.definition ||
+                            (Array.isArray(popup.definitions) &&
+                            popup.definitions.length > 0
+                              ? popup.definitions[0]
+                              : undefined),
+                        };
+                        const { post } = await import("@/lib/http/http");
+                        await post("flashcards", {
+                          hanzi: popup.word,
+                          sentenceHanzi: ctx.hanzi,
+                          sentencePinyin: ctx.pinyin,
+                          sentenceTranslation: ctx.translation,
+                          vocabPinyin: popup.pinyin,
+                          vocabDefinition:
+                            Array.isArray(popup.definitions) &&
+                            popup.definitions.length > 0
+                              ? popup.definitions[0]
+                              : popup.definition,
+                        });
+                        toast.success("Added to flashcards");
+                      } catch {
+                        toast.error("Failed to add to flashcards");
+                      } finally {
+                        setPopup((p) => ({ ...p, open: false }));
+                      }
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="text-sm font-inter">
+                      Add to Flashcards
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
       {Array.isArray(content?.questions) && content.questions.length > 0 && (
         <ComprehensionView questions={content.questions} />
@@ -1603,7 +1862,7 @@ function QuestionText({
         ))}
       </div>
 
-      {/* Popup */}
+      {/* Desktop popup */}
       {popup.open && (
         <div
           ref={popupRef}
@@ -1615,7 +1874,7 @@ function QuestionText({
             visibility: popupPos ? "visible" : "hidden",
             transform: popupPos ? "none" : "translate(-50%, calc(-100% - 8px))",
           }}
-          className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+          className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
         >
           <div className="flex items-center justify-between gap-3">
             <div className="font-bold text-white text-lg truncate">
@@ -1690,6 +1949,106 @@ function QuestionText({
           </div>
         </div>
       )}
+
+      {/* Mobile top sheet popup */}
+      <AnimatePresence>
+        {popup.open && (
+          <motion.div
+            initial={{ y: "-100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "-100%" }}
+            transition={{
+              type: "spring",
+              stiffness: 300,
+              damping: 30,
+              duration: 0.3,
+            }}
+            className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+          >
+            <div className="max-w-sm mx-auto">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="font-bold text-white text-lg truncate">
+                  {popup.word}
+                </div>
+                {typeof popup.hskLevel === "number" && (
+                  <span
+                    className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                      popup.hskLevel
+                    )}`}
+                  >
+                    HSK {popup.hskLevel}
+                  </span>
+                )}
+              </div>
+              {popup.pinyin && (
+                <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                  {popup.pinyin}
+                </div>
+              )}
+              {Array.isArray(popup.definitions) &&
+              popup.definitions.length > 0 ? (
+                <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
+                  {popup.definitions.map((d, i) => (
+                    <div key={i}>• {d}</div>
+                  ))}
+                </div>
+              ) : popup.definition ? (
+                <div className="text-xs text-[#a6a6a6] mb-3">
+                  {popup.definition}
+                </div>
+              ) : null}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setPopup((p) => ({ ...p, open: false }));
+                  }}
+                  className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const ctx = {
+                        hanzi: popup.word,
+                        pinyin: popup.pinyin,
+                        translation:
+                          popup.definition ||
+                          (Array.isArray(popup.definitions) &&
+                          popup.definitions.length > 0
+                            ? popup.definitions[0]
+                            : undefined),
+                      };
+                      const { post } = await import("@/lib/http/http");
+                      await post("flashcards", {
+                        hanzi: popup.word,
+                        sentenceHanzi: ctx.hanzi,
+                        sentencePinyin: ctx.pinyin,
+                        sentenceTranslation: ctx.translation,
+                        vocabPinyin: popup.pinyin,
+                        vocabDefinition:
+                          Array.isArray(popup.definitions) &&
+                          popup.definitions.length > 0
+                            ? popup.definitions[0]
+                            : popup.definition,
+                      });
+                      toast.success("Added to flashcards");
+                    } catch {
+                      toast.error("Failed to add to flashcards");
+                    } finally {
+                      setPopup((p) => ({ ...p, open: false }));
+                    }
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm font-inter">Add to Flashcards</span>
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1883,9 +2242,7 @@ function QuizView({
                                   <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-green-400" />
                                 )}
                               </div>
-                              <span className="flex-1 text-sm sm:text-base">
-                                {opt}
-                              </span>
+                              <span className="flex-1 text-base">{opt}</span>
                               {showState && correctChoice && (
                                 <Check className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
                               )}

@@ -70,6 +70,9 @@ export const useLessonsGenerationStore = create<LessonsGenerationState>()(
           completedSteps: {},
           startedAt: Date.now(),
           lessonId: null,
+          lastCompletedLessonId: null,
+          lastCompletedLessonTitle: null,
+          lastCompletedLessonTopic: null,
         }),
       setStep: (key) => set({ progressStep: key }),
       markCompleted: (key) =>
@@ -90,7 +93,13 @@ export const useLessonsGenerationStore = create<LessonsGenerationState>()(
           lastCompletedLessonTitle: null,
           lastCompletedLessonTopic: null,
         }),
-      finish: () => set({ inProgress: false, attached: false }),
+      finish: () =>
+        set({
+          inProgress: false,
+          attached: false,
+          progressStep: null,
+          completedSteps: {},
+        }),
       reset: () =>
         set({
           inProgress: false,

@@ -150,9 +150,13 @@ export function usePopup<TData = unknown>(options: UsePopupOptions) {
       anchorHeight?: number;
       data?: TData;
     }) => {
-      const container = containerRef.current?.getBoundingClientRect();
-      const x = container ? params.clientX - container.left : params.clientX;
-      const y = container ? params.clientY - container.top : params.clientY;
+      const container = containerRef.current;
+      const contRect = container?.getBoundingClientRect();
+      const scrollTop = container?.scrollTop ?? 0;
+      const x = contRect ? params.clientX - contRect.left : params.clientX;
+      const y = contRect
+        ? params.clientY - contRect.top + scrollTop
+        : params.clientY;
       setState({
         open: true,
         x,
@@ -167,11 +171,13 @@ export function usePopup<TData = unknown>(options: UsePopupOptions) {
   const openFromElement = useCallback(
     (el: HTMLElement, data?: TData) => {
       const anchor = el.getBoundingClientRect();
-      const container = containerRef.current?.getBoundingClientRect();
-      const x = container
-        ? anchor.left - container.left + anchor.width / 2
+      const container = containerRef.current;
+      const contRect = container?.getBoundingClientRect();
+      const scrollTop = container?.scrollTop ?? 0;
+      const x = contRect
+        ? anchor.left - contRect.left + anchor.width / 2
         : anchor.left + anchor.width / 2;
-      const y = container ? anchor.top - container.top : anchor.top;
+      const y = contRect ? anchor.top - contRect.top + scrollTop : anchor.top;
       setState({ open: true, x, y, anchorH: anchor.height, data });
     },
     [containerRef]

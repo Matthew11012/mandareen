@@ -1,5 +1,6 @@
 import React, { useId } from "react";
 import { cn } from "@/lib/utils";
+import { AnimatePresence, motion } from "framer-motion";
 
 export interface InputProps
   extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -52,11 +53,20 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           )}
         </div>
 
-        {error && (
-          <p id={errorId} className="text-red-500 text-xs font-inter mt-1">
-            {error}
-          </p>
-        )}
+        <AnimatePresence mode="wait">
+          {error && (
+            <motion.p
+              id={errorId}
+              initial={{ opacity: 0, y: -4, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -4, height: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="text-red-500 text-xs font-inter mt-1 overflow-hidden"
+            >
+              {error}
+            </motion.p>
+          )}
+        </AnimatePresence>
       </div>
     );
   }

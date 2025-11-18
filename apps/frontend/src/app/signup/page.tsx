@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, EyeOff, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,7 @@ import { validatePassword } from "@/lib/utils";
 import { useCheckoutMutation } from "@/lib/hooks/use-billing";
 import { BillingPeriod } from "@/lib/api/billing";
 
-export default function SignupPage() {
+function SignupPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const authStore = useAuthStore();
@@ -265,7 +266,7 @@ export default function SignupPage() {
               placeholder="Create a strong password"
               autoComplete="new-password"
               {...register("password")}
-              error={errors.password?.message}
+              error={password ? undefined : errors.password?.message}
               icon={
                 <button
                   type="button"
@@ -278,75 +279,200 @@ export default function SignupPage() {
               }
             />
 
-            {password && (
-              <div className="bg-[#393e46] rounded-lg p-3 space-y-2">
-                <p className="text-white text-xs font-medium">
-                  Password Requirements
-                </p>
-                <ul className="space-y-1">
-                  <li className="flex items-center gap-2 text-xs">
-                    {password.length >= 8 ? (
-                      <Check size={12} className="text-green-400" />
-                    ) : (
-                      <X size={12} className="text-red-400" />
-                    )}
-                    <span
-                      className={
-                        password.length >= 8 ? "text-green-400" : "text-red-400"
-                      }
+            <AnimatePresence>
+              {password && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                  className="bg-[#393e46] rounded-lg p-3 space-y-2 overflow-hidden"
+                >
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2, delay: 0.1 }}
+                    className="text-white text-xs font-medium"
+                  >
+                    Password Requirements
+                  </motion.p>
+                  <ul className="space-y-1">
+                    <motion.li
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.25, delay: 0.15 }}
+                      className="flex items-center gap-2 text-xs"
                     >
-                      At least 8 characters
-                    </span>
-                  </li>
-                  <li className="flex items-center gap-2 text-xs">
-                    {/[a-z]/.test(password) ? (
-                      <Check size={12} className="text-green-400" />
-                    ) : (
-                      <X size={12} className="text-red-400" />
-                    )}
-                    <span
-                      className={
-                        /[a-z]/.test(password)
-                          ? "text-green-400"
-                          : "text-red-400"
-                      }
+                      <motion.div
+                        key={password.length >= 8 ? "check" : "x"}
+                        initial={{ scale: 0.5, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{
+                          duration: 0.2,
+                          type: "spring",
+                          stiffness: 300,
+                          damping: 20,
+                        }}
+                      >
+                        {password.length >= 8 ? (
+                          <Check
+                            size={12}
+                            className="text-green-400 transition-colors duration-300"
+                          />
+                        ) : (
+                          <X
+                            size={12}
+                            className="text-red-400 transition-colors duration-300"
+                          />
+                        )}
+                      </motion.div>
+                      <motion.span
+                        key={`length-${password.length >= 8}`}
+                        initial={{ opacity: 0.7 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2 }}
+                        className={
+                          password.length >= 8
+                            ? "text-green-400 transition-colors duration-300"
+                            : "text-red-400 transition-colors duration-300"
+                        }
+                      >
+                        At least 8 characters
+                      </motion.span>
+                    </motion.li>
+                    <motion.li
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.25, delay: 0.2 }}
+                      className="flex items-center gap-2 text-xs"
                     >
-                      One lowercase letter
-                    </span>
-                  </li>
-                  <li className="flex items-center gap-2 text-xs">
-                    {/[A-Z]/.test(password) ? (
-                      <Check size={12} className="text-green-400" />
-                    ) : (
-                      <X size={12} className="text-red-400" />
-                    )}
-                    <span
-                      className={
-                        /[A-Z]/.test(password)
-                          ? "text-green-400"
-                          : "text-red-400"
-                      }
+                      <motion.div
+                        key={/[a-z]/.test(password) ? "check" : "x"}
+                        initial={{ scale: 0.5, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{
+                          duration: 0.2,
+                          type: "spring",
+                          stiffness: 300,
+                          damping: 20,
+                        }}
+                      >
+                        {/[a-z]/.test(password) ? (
+                          <Check
+                            size={12}
+                            className="text-green-400 transition-colors duration-300"
+                          />
+                        ) : (
+                          <X
+                            size={12}
+                            className="text-red-400 transition-colors duration-300"
+                          />
+                        )}
+                      </motion.div>
+                      <motion.span
+                        key={`lowercase-${/[a-z]/.test(password)}`}
+                        initial={{ opacity: 0.7 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2 }}
+                        className={
+                          /[a-z]/.test(password)
+                            ? "text-green-400 transition-colors duration-300"
+                            : "text-red-400 transition-colors duration-300"
+                        }
+                      >
+                        One lowercase letter
+                      </motion.span>
+                    </motion.li>
+                    <motion.li
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.25, delay: 0.25 }}
+                      className="flex items-center gap-2 text-xs"
                     >
-                      One uppercase letter
-                    </span>
-                  </li>
-                  <li className="flex items-center gap-2 text-xs">
-                    {/\d/.test(password) ? (
-                      <Check size={12} className="text-green-400" />
-                    ) : (
-                      <X size={12} className="text-red-400" />
-                    )}
-                    <span
-                      className={
-                        /\d/.test(password) ? "text-green-400" : "text-red-400"
-                      }
+                      <motion.div
+                        key={/[A-Z]/.test(password) ? "check" : "x"}
+                        initial={{ scale: 0.5, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{
+                          duration: 0.2,
+                          type: "spring",
+                          stiffness: 300,
+                          damping: 20,
+                        }}
+                      >
+                        {/[A-Z]/.test(password) ? (
+                          <Check
+                            size={12}
+                            className="text-green-400 transition-colors duration-300"
+                          />
+                        ) : (
+                          <X
+                            size={12}
+                            className="text-red-400 transition-colors duration-300"
+                          />
+                        )}
+                      </motion.div>
+                      <motion.span
+                        key={`uppercase-${/[A-Z]/.test(password)}`}
+                        initial={{ opacity: 0.7 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2 }}
+                        className={
+                          /[A-Z]/.test(password)
+                            ? "text-green-400 transition-colors duration-300"
+                            : "text-red-400 transition-colors duration-300"
+                        }
+                      >
+                        One uppercase letter
+                      </motion.span>
+                    </motion.li>
+                    <motion.li
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.25, delay: 0.3 }}
+                      className="flex items-center gap-2 text-xs"
                     >
-                      One number
-                    </span>
-                  </li>
-                </ul>
-              </div>
-            )}
+                      <motion.div
+                        key={/\d/.test(password) ? "check" : "x"}
+                        initial={{ scale: 0.5, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{
+                          duration: 0.2,
+                          type: "spring",
+                          stiffness: 300,
+                          damping: 20,
+                        }}
+                      >
+                        {/\d/.test(password) ? (
+                          <Check
+                            size={12}
+                            className="text-green-400 transition-colors duration-300"
+                          />
+                        ) : (
+                          <X
+                            size={12}
+                            className="text-red-400 transition-colors duration-300"
+                          />
+                        )}
+                      </motion.div>
+                      <motion.span
+                        key={`number-${/\d/.test(password)}`}
+                        initial={{ opacity: 0.7 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2 }}
+                        className={
+                          /\d/.test(password)
+                            ? "text-green-400 transition-colors duration-300"
+                            : "text-red-400 transition-colors duration-300"
+                        }
+                      >
+                        One number
+                      </motion.span>
+                    </motion.li>
+                  </ul>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <Input
               label="CONFIRM PASSWORD"
@@ -426,5 +552,22 @@ export default function SignupPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#222831] flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent mx-auto" />
+            <p className="text-white font-inter text-sm">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <SignupPageContent />
+    </Suspense>
   );
 }

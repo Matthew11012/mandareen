@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Plus } from "lucide-react";
 import { TokenRenderer } from "@/components/lessons/TokenRenderer";
@@ -11,6 +12,7 @@ import {
   getSentenceContext,
 } from "@/lib/utils/flashcards";
 import type { Message } from "@/lib/api/conversations";
+import { usePopup } from "@/hooks/usePopup";
 
 // Local types for notes rendering
 type SegToken = {
@@ -49,7 +51,16 @@ interface AiMessageProps {
   showTranslation: boolean;
   showNotes: boolean;
   onOpenNotesModal: (message: Message) => void;
+  containerRef: React.RefObject<HTMLElement | null>;
 }
+
+type PopupData = {
+  word: string;
+  pinyin?: string;
+  definition?: string;
+  definitions?: string[];
+  tokenIndex?: number;
+};
 
 export function AiMessage({
   message,
@@ -57,43 +68,28 @@ export function AiMessage({
   showTranslation,
   showNotes,
   onOpenNotesModal,
+  containerRef,
 }: AiMessageProps) {
-  const [popup, setPopup] = useState<{
-    open: boolean;
-    x: number;
-    y: number;
-    word: string;
-    pinyin?: string;
-    definition?: string;
-    definitions?: string[];
-    tokenIndex?: number;
-  }>({ open: false, x: 0, y: 0, word: "" });
-  const popupRef = useRef<HTMLDivElement | null>(null);
-  const mobilePopupRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const mobilePopupRef = useRef<HTMLDivElement | null>(null);
 
-  // Click outside handler for popup
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      const clickedInsideDesktop = popupRef.current?.contains(target);
-      const clickedInsideMobile = mobilePopupRef.current?.contains(target);
-      // Only close if click is outside both popups
-      if (!clickedInsideDesktop && !clickedInsideMobile) {
-        setPopup((p) => ({ ...p, open: false }));
-      }
-    };
-    if (popup.open) document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [popup.open]);
+  const {
+    popupRef,
+    state: popup,
+    position: popupPos,
+    openFromElement: openPopupFromElement,
+    openAtPoint: openPopupAtPoint,
+    close: closePopup,
+  } = usePopup<PopupData>({
+    containerRef,
+    toolbarSelector: undefined,
+    margin: 8,
+  });
 
   // Adapter to handle TokenRenderer's openFromElement callback
-  // This maintains absolute positioning (current behavior) instead of container-relative
   const handleOpenFromElement = useCallback(
     (el: HTMLElement, data?: unknown, placement?: "above" | "below") => {
-      // Placement is available but not used - we use absolute positioning instead
       void placement;
-      const rect = el.getBoundingClientRect();
       const tokenData = data as
         | {
             word?: string;
@@ -115,10 +111,7 @@ export function AiMessage({
         }
       }
 
-      setPopup({
-        open: true,
-        x: rect.left + rect.width / 2,
-        y: rect.top,
+      openPopupFromElement(el, {
         word: tokenData?.word || "",
         pinyin: tokenData?.pinyin,
         definition: tokenData?.definition,
@@ -126,7 +119,7 @@ export function AiMessage({
         tokenIndex,
       });
     },
-    [message.segments]
+    [message.segments, openPopupFromElement]
   );
 
   // Render pinyin above hanzi for notes; skip non-CJK like "OK"/"Alright" tokens.
@@ -209,15 +202,18 @@ export function AiMessage({
                 title={seg.definition || ""}
                 onClick={(e: React.MouseEvent<HTMLSpanElement>) => {
                   if (!isWord) return;
-                  setPopup({
-                    open: true,
-                    x: e.clientX,
-                    y: e.clientY,
-                    word: seg.text,
-                    pinyin: seg.pinyin,
-                    definition: seg.definition,
-                    definitions: seg.definitions,
-                    tokenIndex: undefined, // Notes segments don't have token index
+                  const anchor = e.currentTarget.getBoundingClientRect();
+                  openPopupAtPoint({
+                    clientX: anchor.left + anchor.width / 2,
+                    clientY: anchor.top,
+                    anchorHeight: anchor.height,
+                    data: {
+                      word: seg.text,
+                      pinyin: seg.pinyin,
+                      definition: seg.definition,
+                      definitions: seg.definitions,
+                      tokenIndex: undefined, // Notes segments don't have token index
+                    },
                   });
                 }}
               >
@@ -470,50 +466,54 @@ export function AiMessage({
       {renderAligned(message.hanzi, message.pinyin)}
       <TranslationBlock show={showTranslation} text={message.translation} />
       {showNotes ? <NotesBlock /> : null}
-      {popup.open && (
-        <div
-          ref={popupRef}
-          style={{
-            position: "fixed",
-            left: Math.max(
-              10,
-              Math.min(popup.x - 110, window.innerWidth - 260)
-            ),
-            top: Math.max(10, popup.y - 150),
-            zIndex: 1000,
-          }}
-          className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
-        >
+      {popup.open &&
+        containerRef.current &&
+        createPortal(
+          <div
+            ref={popupRef}
+            style={{
+              position: "absolute",
+              left: popupPos ? popupPos.left : popup.x,
+              top: popupPos ? popupPos.top : popup.y,
+              zIndex: 10,
+              visibility: popupPos ? "visible" : "hidden",
+              transform: popupPos
+                ? "none"
+                : "translate(-50%, calc(-100% - 8px))",
+            }}
+            className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+          >
           <div className="font-bold text-white text-lg truncate">
-            {popup.word}
+            {popup.data?.word}
           </div>
-          {popup.pinyin && (
+          {popup.data?.pinyin && (
             <div className="text-[#c6ceff] text-sm font-medium truncate">
-              {popup.pinyin}
+              {popup.data.pinyin}
             </div>
           )}
-          {Array.isArray(popup.definitions) && popup.definitions.length > 0 ? (
+          {Array.isArray(popup.data?.definitions) &&
+          (popup.data?.definitions?.length || 0) > 0 ? (
             <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
-              {popup.definitions.map((d, i) => (
+              {(popup.data.definitions as string[]).map((d, i) => (
                 <div key={i}>• {d}</div>
               ))}
             </div>
-          ) : popup.definition ? (
+          ) : popup.data?.definition ? (
             <div className="text-xs text-[#a6a6a6] mt-2">
-              {popup.definition}
+              {popup.data.definition}
             </div>
           ) : null}
           <div className="mt-3 pt-3 border-t border-[#404040]">
             <button
               onClick={() => {
                 // Build sentence-level context using segments and token index
-                const tokenIndex = popup.tokenIndex ?? -1;
+                const tokenIndex = popup.data?.tokenIndex ?? -1;
                 const ctx =
                   tokenIndex >= 0
                     ? getSentenceContext(message, tokenIndex)
                     : undefined;
-                void addSingleToFlashcards(popup.word, ctx);
-                setPopup((p) => ({ ...p, open: false }));
+                void addSingleToFlashcards(popup.data?.word || "", ctx);
+                closePopup();
               }}
               className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
             >
@@ -521,8 +521,9 @@ export function AiMessage({
               <span className="text-sm font-inter">Add to Flashcards</span>
             </button>
           </div>
-        </div>
-      )}
+          </div>,
+          containerRef.current
+        )}
 
       {/* Mobile top sheet popup for AiMessage */}
       <AnimatePresence>
@@ -543,30 +544,30 @@ export function AiMessage({
             <div className="max-w-sm mx-auto">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="font-bold text-white text-lg truncate">
-                  {popup.word}
+                  {popup.data?.word}
                 </div>
               </div>
-              {popup.pinyin && (
+              {popup.data?.pinyin && (
                 <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
-                  {popup.pinyin}
+                  {popup.data.pinyin}
                 </div>
               )}
-              {Array.isArray(popup.definitions) &&
-              popup.definitions.length > 0 ? (
+              {Array.isArray(popup.data?.definitions) &&
+              (popup.data?.definitions?.length || 0) > 0 ? (
                 <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
-                  {popup.definitions.map((d, i) => (
+                  {(popup.data.definitions as string[]).map((d, i) => (
                     <div key={i}>• {d}</div>
                   ))}
                 </div>
-              ) : popup.definition ? (
+              ) : popup.data?.definition ? (
                 <div className="text-xs text-[#a6a6a6] mb-3">
-                  {popup.definition}
+                  {popup.data.definition}
                 </div>
               ) : null}
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    setPopup((p) => ({ ...p, open: false }));
+                    closePopup();
                   }}
                   className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
                 >
@@ -575,13 +576,13 @@ export function AiMessage({
                 <button
                   onClick={async () => {
                     // Build sentence-level context using segments and token index
-                    const tokenIndex = popup.tokenIndex ?? -1;
+                    const tokenIndex = popup.data?.tokenIndex ?? -1;
                     const ctx =
                       tokenIndex >= 0
                         ? getSentenceContext(message, tokenIndex)
                         : undefined;
-                    await addSingleToFlashcards(popup.word, ctx);
-                    setPopup((p) => ({ ...p, open: false }));
+                    await addSingleToFlashcards(popup.data?.word || "", ctx);
+                    closePopup();
                   }}
                   className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
                 >

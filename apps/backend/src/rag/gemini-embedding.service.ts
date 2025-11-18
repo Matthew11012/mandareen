@@ -12,7 +12,6 @@ export class GeminiEmbeddingService {
     this.ai = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY || '',
     });
-    this.logger.log('Gemini embedding service initialized with @google/genai');
   }
 
   /**
@@ -64,14 +63,6 @@ export class GeminiEmbeddingService {
             .map((e) => e.values)
             .filter((values) => values !== undefined) as number[][];
 
-          // Log actual dimensions for debugging
-          if (embeddings.length > 0) {
-            const actualDim = embeddings[0].length;
-            this.logger.log(
-              `Gemini returned embeddings with ${actualDim} dimensions (requested 1536)`,
-            );
-          }
-
           results.push(...embeddings);
         }
 
@@ -81,9 +72,6 @@ export class GeminiEmbeddingService {
         }
       }
 
-      this.logger.log(
-        `Generated ${results.length} Gemini embeddings via @google/genai (from ${validTexts.length} valid texts)`,
-      );
       return results;
     } catch (error) {
       this.logger.error('Error generating Gemini embeddings:', error);

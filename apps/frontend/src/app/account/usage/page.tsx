@@ -123,7 +123,7 @@ export default function UsagePage() {
     }
 
     return sorted;
-  }, [usageSummary?.resources]);
+  }, [usageSummary]);
 
   // Format window days text
   const getWindowDaysText = (windowDays: number): string => {
@@ -145,7 +145,9 @@ export default function UsagePage() {
 
     // Find the earliest reset date
     const resetDates = resources.map((r) => new Date(r.resetsAt));
-    const earliestReset = new Date(Math.min(...resetDates.map((d) => d.getTime())));
+    const earliestReset = new Date(
+      Math.min(...resetDates.map((d) => d.getTime()))
+    );
 
     try {
       const now = new Date();
@@ -345,4 +347,3 @@ export default function UsagePage() {
     </DashboardLayout>
   );
 }
-

@@ -40,9 +40,13 @@ describe("AssessmentQuotaBanner", () => {
     const onRetry = vi.fn();
     const onDismiss = vi.fn();
 
+    // Use rate_limited error type so dismiss button is shown
     render(
       <AssessmentQuotaBanner
-        error={baseError}
+        error={{
+          type: "rate_limited",
+          message: "Please slow down.",
+        }}
         starting={false}
         isQuotaExceeded={false}
         onRetry={onRetry}
@@ -50,7 +54,7 @@ describe("AssessmentQuotaBanner", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /try again/i }));
+    await user.click(screen.getByRole("button", { name: /retry/i }));
     expect(onRetry).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByRole("button", { name: /dismiss error/i }));

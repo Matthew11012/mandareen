@@ -82,84 +82,77 @@ export class UsageService {
       idempotencyKey,
       now = new Date(),
       planCap,
-      windowDays = this.windowDays,
     } = args;
 
-    // Check idempotency if key provided
-    // Look for events in the last 24 hours with matching idempotency key
-    if (idempotencyKey) {
-      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const recentEvents = await this.prisma.usageEvent.findMany({
-        where: {
-          userId,
-          resource,
-          occurredAt: {
-            gte: oneDayAgo,
-          },
-        },
-        select: {
-          metadata: true,
-        },
-        take: 100, // Limit to recent events for performance
-      });
-
-      // Check metadata for idempotency key (simpler than JSON path queries)
-      const hasDuplicate = recentEvents.some((event) => {
-        if (!event.metadata || typeof event.metadata !== 'object') {
-          return false;
-        }
-        const metadata = event.metadata as any;
-        return metadata.idempotencyKey === idempotencyKey;
-      });
-
-      if (hasDuplicate) {
-        this.logger.debug(
-          `Idempotency key ${idempotencyKey} already recorded for user ${userId}, resource ${resource}. Skipping.`,
-        );
-        return; // Already recorded, no-op
-      }
-    }
-
-    // Compute current usage
-    const used = await this.sumUsedLastNDays(userId, resource, windowDays);
-    const wouldExceed = used + amount > planCap;
-
-    // Log-only mode: compute and log but don't throw
-    if (!this.enforceUsage) {
-      this.logger.log(
-        `[LOG-ONLY] Usage check for user ${userId}, resource ${resource}: used=${used}, amount=${amount}, planCap=${planCap}, wouldExceed=${wouldExceed}`,
-      );
-      // Still record usage even in log-only mode for analytics
-      await this.recordUsageInternal(
+    await this.ensureWithinQuota(args);
+    await this.recordUsage(
+      {
         userId,
         resource,
         amount,
         idempotencyKey,
         now,
+      },
+      { logContext: 'usage' },
+    );
+  }
+
+  /**
+   * Lightweight quota check without recording usage.
+   * Used when consumption is deferred until after a long-running operation succeeds.
+   */
+  async ensureWithinQuota(args: CheckAndConsumeArgs): Promise<void> {
+    const {
+      userId,
+      resource,
+      amount,
+      idempotencyKey,
+      now = new Date(),
+      planCap,
+      windowDays = this.windowDays,
+    } = args;
+
+    if (idempotencyKey) {
+      const hasDuplicate = await this.hasRecentIdempotentEvent(
+          userId,
+          resource,
+        idempotencyKey,
+        now,
+      );
+      if (hasDuplicate) {
+        this.logger.debug(
+          `Idempotency key ${idempotencyKey} already recorded for user ${userId}, resource ${resource}. Skipping quota check.`,
+        );
+        return;
+      }
+    }
+
+    const used = await this.sumUsedLastNDays(userId, resource, windowDays);
+    const wouldExceed = used + amount > planCap;
+
+    if (!this.enforceUsage) {
+      this.logger.log(
+        `[LOG-ONLY] Usage check for user ${userId}, resource ${resource}: used=${used}, amount=${amount}, planCap=${planCap}, wouldExceed=${wouldExceed}`,
       );
       return;
     }
 
-    // Enforce mode: throw if quota exceeded
     if (wouldExceed) {
       this.logger.warn(
         `Quota exceeded for user ${userId}, resource ${resource}: used=${used}, amount=${amount}, planCap=${planCap}`,
       );
       throw new QuotaExceededError(resource, planCap, used);
     }
+  }
 
-    // Record usage within transaction for race safety
-    await this.recordUsageInternal(
-      userId,
-      resource,
-      amount,
-      idempotencyKey,
-      now,
-    );
-
-    this.logger.debug(
-      `Recorded usage for user ${userId}, resource ${resource}: amount=${amount}, newTotal=${used + amount}`,
-    );
+  /**
+   * Explicit consumption step – records usage after a successful operation.
+   */
+  async recordUsage(
+    args: RecordAnalyticsArgs,
+    options?: { logContext?: string },
+  ): Promise<void> {
+    await this.recordUsageWithIdempotency(args, options?.logContext ?? 'usage');
   }
 
   /**
@@ -167,58 +160,7 @@ export class UsageService {
    * Useful for tracking resources that don't have caps.
    */
   async recordAnalytics(args: RecordAnalyticsArgs): Promise<void> {
-    const {
-      userId,
-      resource,
-      amount,
-      idempotencyKey,
-      now = new Date(),
-      metadata,
-    } = args;
-
-    // Check idempotency if key provided
-    // Look for events in the last 24 hours with matching idempotency key
-    if (idempotencyKey) {
-      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const recentEvents = await this.prisma.usageEvent.findMany({
-        where: {
-          userId,
-          resource,
-          occurredAt: {
-            gte: oneDayAgo,
-          },
-        },
-        select: {
-          metadata: true,
-        },
-        take: 100, // Limit to recent events for performance
-      });
-
-      // Check metadata for idempotency key
-      const hasDuplicate = recentEvents.some((event) => {
-        if (!event.metadata || typeof event.metadata !== 'object') {
-          return false;
-        }
-        const metadata = event.metadata as any;
-        return metadata.idempotencyKey === idempotencyKey;
-      });
-
-      if (hasDuplicate) {
-        this.logger.debug(
-          `Idempotency key ${idempotencyKey} already recorded for analytics. Skipping.`,
-        );
-        return;
-      }
-    }
-
-    await this.recordUsageInternal(
-      userId,
-      resource,
-      amount,
-      idempotencyKey,
-      now,
-      metadata,
-    );
+    await this.recordUsageWithIdempotency(args, 'analytics');
   }
 
   /**
@@ -287,6 +229,74 @@ export class UsageService {
           },
         });
       }
+    });
+  }
+
+  private async recordUsageWithIdempotency(
+    args: RecordAnalyticsArgs,
+    logContext: string,
+  ): Promise<void> {
+    const {
+      userId,
+      resource,
+      amount,
+      idempotencyKey,
+      now = new Date(),
+      metadata,
+    } = args;
+
+    if (idempotencyKey) {
+      const hasDuplicate = await this.hasRecentIdempotentEvent(
+        userId,
+        resource,
+        idempotencyKey,
+        now,
+      );
+      if (hasDuplicate) {
+        this.logger.debug(
+          `Idempotency key ${idempotencyKey} already recorded for ${logContext}. Skipping.`,
+        );
+        return;
+      }
+    }
+
+    await this.recordUsageInternal(
+      userId,
+      resource,
+      amount,
+      idempotencyKey,
+      now,
+      metadata,
+    );
+  }
+
+  private async hasRecentIdempotentEvent(
+    userId: number,
+    resource: string,
+    idempotencyKey: string,
+    now: Date,
+  ): Promise<boolean> {
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const recentEvents = await this.prisma.usageEvent.findMany({
+      where: {
+        userId,
+        resource,
+        occurredAt: {
+          gte: oneDayAgo,
+        },
+      },
+      select: {
+        metadata: true,
+      },
+      take: 100,
+    });
+
+    return recentEvents.some((event) => {
+      if (!event.metadata || typeof event.metadata !== 'object') {
+        return false;
+      }
+      const metadata = event.metadata as any;
+      return metadata.idempotencyKey === idempotencyKey;
     });
   }
 

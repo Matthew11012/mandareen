@@ -69,6 +69,9 @@ export class LessonsStreamController {
             userId,
             resource,
           );
+          const hasMonthlyCap =
+            !!limit && typeof limit.monthlyCap === 'number' && limit.monthlyCap > 0;
+          let usageRecorded = false;
           if (limit) {
             // Rate limit check (RPM)
             if (limit.rpm && limit.rpm > 0) {
@@ -80,9 +83,9 @@ export class LessonsStreamController {
               });
             }
 
-            // Quota check and consume (before stream starts)
-            if (limit.monthlyCap > 0) {
-              await this.usageService.checkAndConsume({
+            // Quota check (no consumption yet)
+            if (hasMonthlyCap) {
+              await this.usageService.ensureWithinQuota({
                 userId,
                 resource,
                 amount: 1,
@@ -105,6 +108,30 @@ export class LessonsStreamController {
               requestId,
               timeframe,
             },
+            hasMonthlyCap
+              ? {
+                  onLessonPersisted: async ({ lessonId, lessonType }) => {
+                    if (usageRecorded) {
+                      return;
+                    }
+                    usageRecorded = true;
+                    await this.usageService.recordUsage(
+                      {
+                        userId,
+                        resource,
+                        amount: 1,
+                        idempotencyKey,
+                        metadata: {
+                          lessonId,
+                          type: lessonType,
+                          requestId,
+                        },
+                      },
+                      { logContext: 'usage' },
+                    );
+                  },
+                }
+              : undefined,
           );
 
           // Subscribe and forward events

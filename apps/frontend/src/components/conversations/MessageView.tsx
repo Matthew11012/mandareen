@@ -51,7 +51,7 @@ export function MessageView({
   return (
     <div
       ref={scrollRef}
-      className="flex-1 overflow-y-auto space-y-3 sm:bg-[#20242b] sm:border sm:border-[#2e2f36] rounded-xl sm:p-4"
+      className="flex-1 overflow-y-auto space-y-3 sm:bg-[#20242b] sm:border sm:border-[#2e2f36] rounded-xl sm:p-4 relative"
       aria-live="polite"
       aria-relevant="additions text"
       role="log"
@@ -240,6 +240,7 @@ export function MessageView({
               showTranslation={!!aiShowTrans[m.id]}
               showNotes={!!aiShowNotes[m.id]}
               onOpenNotesModal={onOpenNotesModal}
+              containerRef={scrollRef}
             />
             <div className="text-[10px] text-[#808080] mt-1">
               {new Date(m.createdAt).toLocaleTimeString()}
