@@ -7,10 +7,13 @@ import {
   UseGuards,
   Req,
   Query,
+  Logger,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { LessonsService } from './lessons.service';
 import { AuthenticatedRequest } from '../types/request.types';
+import { UsageService } from '../billing/usage.service';
+import { BILLING_RESOURCES } from '../billing/billing-resources.constants';
 
 export interface GenerateLessonDto {
   level?: number;
@@ -22,8 +25,13 @@ export interface GenerateLessonDto {
 @Controller('lessons')
 @UseGuards(JwtAuthGuard)
 export class LessonsController {
-  constructor(private readonly lessonsService: LessonsService) {
-    void this.lessonsService;
+  private readonly logger = new Logger(LessonsController.name);
+  private readonly lessonsService: LessonsService;
+  private readonly usageService: UsageService;
+
+  constructor(lessonsService: LessonsService, usageService: UsageService) {
+    this.lessonsService = lessonsService;
+    this.usageService = usageService;
   }
 
   @Post('generate')
@@ -192,10 +200,29 @@ export class LessonsController {
     sections: Array<{ id: number; sectionType: string; content: any }>;
     finished?: boolean;
   }> {
+    const userId = req.user?.id;
     const lesson = await this.lessonsService.getLessonById(
       parseInt(id, 10),
-      req.user?.id,
+      userId,
     );
+
+    if (userId) {
+      try {
+        await this.usageService.recordAnalytics({
+          userId,
+          resource: BILLING_RESOURCES.COMMUNITY_LESSON_FULL_VIEW,
+          amount: 1,
+          metadata: {
+            lessonId: lesson.id,
+            access: 'full',
+            view: 'lesson_detail',
+          },
+        });
+      } catch (err) {
+        this.logger.warn('Failed to record community lesson view', err as any);
+      }
+    }
+
     return {
       id: lesson.id,
       level: lesson.level,
