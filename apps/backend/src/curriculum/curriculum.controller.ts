@@ -6,6 +6,7 @@ import {
   Body,
   UseGuards,
   Req,
+  Logger,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { BadRequestException } from '@nestjs/common';
@@ -20,12 +21,23 @@ import { BILLING_RESOURCES } from '../billing/billing-resources.constants';
 @Controller('curriculum')
 @UseGuards(JwtAuthGuard)
 export class CurriculumController {
+  private readonly logger = new Logger(CurriculumController.name);
+  private readonly curriculum: CurriculumService;
+  private readonly billingPlanService: BillingPlanService;
+  private readonly usageService: UsageService;
+  private readonly rateLimitService: RateLimitService;
+
   constructor(
-    private readonly curriculum: CurriculumService,
-    private readonly billingPlanService: BillingPlanService,
-    private readonly usageService: UsageService,
-    private readonly rateLimitService: RateLimitService,
-  ) {}
+    curriculum: CurriculumService,
+    billingPlanService: BillingPlanService,
+    usageService: UsageService,
+    rateLimitService: RateLimitService,
+  ) {
+    this.curriculum = curriculum;
+    this.billingPlanService = billingPlanService;
+    this.usageService = usageService;
+    this.rateLimitService = rateLimitService;
+  }
 
   @Get('units')
   listUnits(
@@ -54,12 +66,34 @@ export class CurriculumController {
   }
 
   @Get('units/:unitId')
-  getUnit(@Req() req: AuthenticatedRequest, @Param('unitId') unitId: string) {
+  async getUnit(
+    @Req() req: AuthenticatedRequest,
+    @Param('unitId') unitId: string,
+  ) {
     const id = Number(unitId);
     if (!Number.isFinite(id)) {
       throw new BadRequestException('Invalid unitId');
     }
-    return this.curriculum.getUnitDetail(req.user.id, id);
+    const userId = req.user.id;
+    const unit = await this.curriculum.getUnitDetail(userId, id);
+
+    if (unit) {
+      try {
+        await this.usageService.recordAnalytics({
+          userId,
+          resource: BILLING_RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
+          amount: 1,
+          metadata: {
+            unitId: id,
+            view: 'unit_detail',
+          },
+        });
+      } catch (err) {
+        this.logger.warn('Failed to record curriculum unit view', err as any);
+      }
+    }
+
+    return unit;
   }
 
   @Get('units/:unitId/navigation')
@@ -88,7 +122,7 @@ export class CurriculumController {
   }
 
   @Get('units/:unitId/lessons/:lessonId')
-  getLesson(
+  async getLesson(
     @Req() req: AuthenticatedRequest,
     @Param('unitId') unitId: string,
     @Param('lessonId') lessonId: string,
@@ -98,7 +132,31 @@ export class CurriculumController {
     if (!Number.isFinite(uid) || !Number.isFinite(lid)) {
       throw new BadRequestException('Invalid unitId or lessonId');
     }
-    return this.curriculum.getLessonWithActivities(req.user.id, uid, lid);
+    const userId = req.user.id;
+    const lesson = await this.curriculum.getLessonWithActivities(
+      userId,
+      uid,
+      lid,
+    );
+
+    if (lesson) {
+      try {
+        await this.usageService.recordAnalytics({
+          userId,
+          resource: BILLING_RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
+          amount: 1,
+          metadata: {
+            unitId: uid,
+            lessonId: lid,
+            view: 'lesson_detail',
+          },
+        });
+      } catch (err) {
+        this.logger.warn('Failed to record curriculum lesson view', err as any);
+      }
+    }
+
+    return lesson;
   }
 
   @Get('units/:unitId/lessons/:lessonId/navigation')
