@@ -91,7 +91,7 @@ const PLANS: PlanConfig[] = [
       },
       {
         resource: RESOURCES.CONVO_TTS_SECONDS,
-        monthlyCap: 300, // 5 minutes
+        monthlyCap: 60, // 1 minutes
         rpm: 30,
       },
       {
@@ -115,7 +115,7 @@ const PLANS: PlanConfig[] = [
       },
       {
         resource: RESOURCES.COMMUNITY_LESSON_FULL_VIEW,
-        monthlyCap: 10,
+        monthlyCap: 4,
       },
       {
         resource: RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
@@ -153,12 +153,12 @@ const PLANS: PlanConfig[] = [
       },
       {
         resource: RESOURCES.CONVO_TTS_SECONDS,
-        monthlyCap: 7200, // 120 minutes
+        monthlyCap: 9000, // 120 minutes
         rpm: 30,
       },
       {
         resource: RESOURCES.LESSON_CUSTOM_GENERATED,
-        monthlyCap: 60,
+        monthlyCap: 80,
         rpm: 720, // 12 per hour
       },
       {

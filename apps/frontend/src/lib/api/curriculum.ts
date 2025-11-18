@@ -1,9 +1,19 @@
+export type CurriculumAccess = "full" | "preview";
+
+export type CurriculumUnlockInfo = {
+  reason: "curriculum_quota_exceeded" | "plan_restricted";
+  planCode: "FREE" | "BASIC" | "PREMIUM";
+};
+
 export type CurriculumUnit = {
   id: number;
+  order?: number;
   title: string;
   description?: string | null;
   totalLessons: number;
   completedLessons: number;
+  access?: CurriculumAccess;
+  isFreeSample?: boolean;
 };
 
 export type CurriculumLesson = {
@@ -19,6 +29,13 @@ export type CurriculumLesson = {
     | { id: number; type: "QUIZ"; levelBand: number; content: unknown }
     | { id: number; type: string; levelBand: number; content: unknown }
   >;
+  access?: CurriculumAccess;
+  isFreeSample?: boolean;
+  unlockInfo?: CurriculumUnlockInfo;
+};
+
+export type CurriculumUnitDetail = CurriculumUnit & {
+  lessons: CurriculumLesson[];
 };
 
 import { get, post } from "../http/http";
@@ -47,18 +64,8 @@ export async function listUnits(opts?: {
   return get<CurriculumUnit[]>(`curriculum/units${qs ? `?${qs}` : ""}`);
 }
 
-export async function getUnit(unitId: number): Promise<{
-  id: number;
-  title: string;
-  description?: string | null;
-  lessons: CurriculumLesson[];
-}> {
-  return get<{
-    id: number;
-    title: string;
-    description?: string | null;
-    lessons: CurriculumLesson[];
-  }>(`curriculum/units/${unitId}`);
+export async function getUnit(unitId: number): Promise<CurriculumUnitDetail> {
+  return get<CurriculumUnitDetail>(`curriculum/units/${unitId}`);
 }
 
 export async function getLesson(
