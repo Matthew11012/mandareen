@@ -432,10 +432,14 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
                     <p className="font-semibold">Preview lesson</p>
-                    <p className="mt-1 text-amber-100/80">
+                    <p className="mt-1 text-amber-100/80 text-sm">
                       {unlockInfo?.reason === "curriculum_quota_exceeded"
-                        ? "You’ve used your free full curriculum unit this period. Upgrade to keep learning."
-                        : "This lesson is preview-only on your current plan. Upgrade to unlock all practice activities."}
+                        ? "You've used your free full curriculum unit for this period. You're seeing a preview of this lesson."
+                        : "This lesson is preview-only on your current plan."}
+                    </p>
+                    <p className="mt-1 text-amber-100/80 text-sm">
+                      Upgrade to Basic or Premium for full access to all
+                      curriculum units, lessons, and quizzes.
                     </p>
                   </div>
                   <Link

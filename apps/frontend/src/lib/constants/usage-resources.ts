@@ -8,8 +8,8 @@ export const RESOURCE_LABELS: Record<string, string> = {
   curriculum_generated: "Curriculum generations",
   assessment_taken: "Assessments",
   convo_stream: "Concurrent conversation streams",
-  community_lesson_full_view: "Community lesson full views",
-  curriculum_unit_full_access: "Curriculum unit full access",
+  community_lesson_full_view: "Community full lesson views",
+  curriculum_unit_full_access: "Full curriculum units unlocked",
   convo_manual_notes: "Manual conversation notes",
 } as const;
 
