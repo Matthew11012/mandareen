@@ -1515,6 +1515,44 @@ export class LessonsService {
     return { ...lesson, finished: Boolean(progress?.finishedAt) } as any;
   }
 
+  buildLessonPreview(lesson: {
+    sections?: Array<{ id: number; sectionType: string; content: any }>;
+  }): Array<{ id: number; sectionType: string; content: any }> {
+    const sections = Array.isArray(lesson?.sections) ? lesson.sections : [];
+    if (sections.length === 0) return [];
+
+    const first = sections[0];
+    const sectionType = first?.sectionType || 'story';
+    const baseContent: Record<string, unknown> = {
+      ...(first?.content ?? {}),
+    };
+    const normalizedType = sectionType.toLowerCase();
+
+    if (normalizedType === 'dialogue') {
+      const turns = Array.isArray(baseContent.turns) ? baseContent.turns : [];
+      baseContent.turns = turns.slice(0, 3);
+    } else {
+      const segments = Array.isArray(baseContent.segments)
+        ? baseContent.segments
+        : [];
+      baseContent.segments = segments.slice(0, 50);
+      if (typeof baseContent.hanzi === 'string') {
+        baseContent.hanzi = baseContent.hanzi.slice(0, 300);
+      }
+      if (typeof baseContent.translation === 'string') {
+        baseContent.translation = baseContent.translation.slice(0, 300);
+      }
+    }
+
+    return [
+      {
+        id: first.id,
+        sectionType,
+        content: baseContent,
+      },
+    ];
+  }
+
   async markLessonFinished(userId: number, lessonId: number) {
     // Idempotent: upsert by unique (userId, lessonId)
     await (this.prismaService as any).lessonProgress.upsert({

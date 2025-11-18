@@ -3,13 +3,14 @@
  * Used for displaying usage data in the UI.
  */
 export const RESOURCE_LABELS: Record<string, string> = {
-  convo_message_text: "Conversation messages",
-  convo_message_audio: "Audio messages",
   convo_tts_seconds: "TTS minutes",
   lesson_custom_generated: "Custom lessons",
   curriculum_generated: "Curriculum generations",
   assessment_taken: "Assessments",
   convo_stream: "Concurrent conversation streams",
+  community_lesson_full_view: "Community lesson full views",
+  curriculum_unit_full_access: "Curriculum unit full access",
+  convo_manual_notes: "Manual conversation notes",
 } as const;
 
 /**
@@ -17,12 +18,13 @@ export const RESOURCE_LABELS: Record<string, string> = {
  * Resources are displayed in this order on the usage page.
  */
 export const RESOURCE_ORDER: string[] = [
-  "convo_message_text",
-  "convo_message_audio",
   "convo_tts_seconds",
   "lesson_custom_generated",
   "curriculum_generated",
   "assessment_taken",
+  "community_lesson_full_view",
+  "curriculum_unit_full_access",
+  "convo_manual_notes",
   "convo_stream",
 ];
 
@@ -43,6 +45,9 @@ export function getResourceLabel(resource: string): string {
  * @returns True if resource should be displayed
  */
 export function shouldDisplayResource(resource: string, cap: number): boolean {
+  if (resource === "convo_message_text" || resource === "convo_message_audio") {
+    return false;
+  }
   // Hide resources with cap 0 (unlimited or not applicable)
   if (cap === 0) {
     return false;
@@ -80,4 +85,3 @@ export function transformResourceUsage(
     label,
   };
 }
-

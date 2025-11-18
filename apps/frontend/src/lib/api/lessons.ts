@@ -17,13 +17,24 @@ export interface LessonSection {
   content: unknown;
 }
 
+export type LessonAccess = "full" | "preview";
+
+export interface LessonUnlockInfo {
+  reason: "community_quota_exceeded" | "plan_restricted";
+  planCode: "FREE" | "BASIC" | "PREMIUM";
+  remainingViews?: number | null;
+}
+
 export interface LessonDetail {
   id: number;
   level: number;
   title: string | null;
   createdAt: string;
   sections: LessonSection[];
+  sectionsPreview?: LessonSection[];
   finished?: boolean;
+  access?: LessonAccess;
+  unlockInfo?: LessonUnlockInfo;
 }
 
 export interface AvailableTags {
