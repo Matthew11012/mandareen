@@ -3,8 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
+import BezierEasing from "bezier-easing";
 import { Check } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useAuthStore } from "@/lib/stores/auth-store";
@@ -42,7 +43,7 @@ const LANDING_PLANS: LandingPlanData[] = [
   {
     code: "FREE",
     name: "Free",
-    description: "Perfect for beginners to get started with Mandarin learning",
+    description: "Perfect for beginners to get started",
     prices: {
       monthly: 0,
       "6month": 0,
@@ -69,7 +70,7 @@ const LANDING_PLANS: LandingPlanData[] = [
       { resource: "assessment_taken", label: "Assessments", value: 1 },
     ],
     features: [
-      "Flashcards with SRS (max 100 flashcards)",
+      "Flashcards (max 100 flashcards)",
       "Full dictionary access",
       "Basic conversation practice",
       "AI-guided lessons",
@@ -206,8 +207,65 @@ function getPriceForPeriod(
   };
 }
 
+function AnimatedPrice({
+  amountCents,
+  className,
+  prefersReducedMotion,
+}: {
+  amountCents: number;
+  className?: string;
+  prefersReducedMotion: boolean;
+}) {
+  const [displayValue, setDisplayValue] = useState<number>(amountCents);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      setDisplayValue(amountCents);
+      return;
+    }
+
+    const startValue = displayValue;
+    const endValue = amountCents;
+    const duration = 800;
+    const startTime = performance.now();
+
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easedProgress = priceEase(progress);
+      const current = startValue + (endValue - startValue) * easedProgress;
+      setDisplayValue(current);
+
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(animate);
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amountCents, prefersReducedMotion]);
+
+  const formatted = `$${(displayValue / 100).toFixed(2)}`;
+
+  return (
+    <span className={className} style={{ fontVariantNumeric: "tabular-nums" }}>
+      {formatted}
+    </span>
+  );
+}
+
+const priceEase = BezierEasing(0, 0.63, 0.15, 1);
+
 export function PricingSection() {
-  const prefersReducedMotion = useReducedMotion();
+  const reducedMotionPreference = useReducedMotion();
+  const prefersReducedMotion = reducedMotionPreference ?? false;
   const router = useRouter();
   const authStore = useAuthStore();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -422,38 +480,28 @@ export function PricingSection() {
               : "Get started"
             : `Start ${plan.name}`;
 
-          // Calculate per-month equivalent for display
-          const getPeriodLabel = () => {
-            switch (selectedBillingPeriod) {
-              case BillingPeriod.MONTHLY:
-                return "/mo";
-              case BillingPeriod.SIX_MONTH:
-                return "/6mo";
-              case BillingPeriod.YEARLY:
-                return "/yr";
-              default:
-                return "/mo";
-            }
-          };
+          const monthsInPeriod =
+            selectedBillingPeriod === BillingPeriod.SIX_MONTH
+              ? 6
+              : selectedBillingPeriod === BillingPeriod.YEARLY
+                ? 12
+                : 1;
 
-          const getPerMonthPrice = () => {
-            if (isFree) return null;
-            switch (selectedBillingPeriod) {
-              case BillingPeriod.MONTHLY:
-                return null; // Don't show per-month for monthly
-              case BillingPeriod.SIX_MONTH:
-                // Calculate per-month from 6-month price
-                const sixMonthPerMonth = priceCents / 6;
-                return `$${(sixMonthPerMonth / 100).toFixed(2)}/mo`;
-              case BillingPeriod.YEARLY:
-                // Calculate per-month from yearly price
-                const yearlyPerMonth = priceCents / 12;
-                return `$${(yearlyPerMonth / 100).toFixed(2)}/mo`;
-              default:
-                return null;
-            }
-          };
+          const highlightedCents =
+            selectedBillingPeriod === BillingPeriod.MONTHLY
+              ? priceCents
+              : priceCents / monthsInPeriod;
 
+          const recurringLabel =
+            selectedBillingPeriod === BillingPeriod.SIX_MONTH
+              ? "every 6 months"
+              : selectedBillingPeriod === BillingPeriod.YEARLY
+                ? "annually"
+                : null;
+          const totalBillingCopy =
+            !isFree && recurringLabel
+              ? `${priceDisplay} billed ${recurringLabel}`
+              : null;
           return (
             <motion.div
               key={plan.code}
@@ -494,44 +542,43 @@ export function PricingSection() {
                 </p>
                 <div className="mb-2">
                   <div className="flex items-baseline gap-1">
-                    <span
+                    <AnimatedPrice
+                      amountCents={highlightedCents}
                       className="text-4xl md:text-5xl font-bold text-white font-inter tabular-nums"
-                      style={{ fontVariantNumeric: "tabular-nums" }}
-                    >
-                      {priceDisplay}
-                    </span>
+                      prefersReducedMotion={prefersReducedMotion}
+                    />
                     {!isFree && (
                       <span className="text-white/70 text-lg font-inter">
-                        {getPeriodLabel()}
+                        /mo
                       </span>
                     )}
                   </div>
-                  {!isFree && getPerMonthPrice() && (
-                    <div className="text-sm text-white/60 mt-1 font-inter">
-                      {getPerMonthPrice()} billed{" "}
-                      {selectedBillingPeriod === BillingPeriod.SIX_MONTH
-                        ? "every 6 months"
-                        : "annually"}
+                  <div className="mt-1 min-h-[46px] flex flex-col justify-between">
+                    <div className="text-sm text-white/60 font-inter leading-relaxed">
+                      {totalBillingCopy ? (
+                        totalBillingCopy
+                      ) : (
+                        <span className="invisible">placeholder</span>
+                      )}
                     </div>
-                  )}
-                  {!isFree && discount > 0 && (
-                    <div className="mt-2">
-                      <span className="inline-flex items-center gap-1 text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded font-semibold font-inter">
-                        Save {discount}%{" "}
-                        {selectedBillingPeriod === BillingPeriod.SIX_MONTH && (
+                    <div>
+                      {!isFree && discount > 0 ? (
+                        <span className="inline-flex items-center gap-1 text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded font-semibold font-inter">
+                          Save {discount}%{" "}
                           <span className="text-green-300/80">vs monthly</span>
-                        )}
-                        {selectedBillingPeriod === BillingPeriod.YEARLY && (
-                          <span className="text-green-300/80">vs monthly</span>
-                        )}
-                      </span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs px-2 py-1 font-semibold font-inter invisible">
+                          Save 00% <span>vs monthly</span>
+                        </span>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
 
               {/* Plan Limits (Usage Quotas) */}
-              <div className="mb-6 flex-1">
+              <div className="mb-6">
                 <h3 className="text-sm font-semibold text-white/90 mb-3 font-inter">
                   Monthly Limits
                 </h3>
@@ -595,8 +642,8 @@ export function PricingSection() {
                       w-full inline-flex items-center justify-center px-4 py-3 rounded-full font-inter font-medium text-md transition-all duration-200 min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-black
                       ${
                         plan.isPopular
-                          ? "bg-white text-black hover:bg-white/90 border border-white/10"
-                          : "border border-white/10 text-white hover:bg-white/10"
+                          ? "bg-white text-black hover:bg-white/80 border border-white/10"
+                          : "bg-[#4040f2] border border-white/10 text-white hover:bg-[#3636d9]"
                       }
                     `}
                     aria-label={`Start ${plan.name} plan`}

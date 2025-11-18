@@ -114,8 +114,8 @@ export class UsageService {
 
     if (idempotencyKey) {
       const hasDuplicate = await this.hasRecentIdempotentEvent(
-        userId,
-        resource,
+          userId,
+          resource,
         idempotencyKey,
         now,
       );
