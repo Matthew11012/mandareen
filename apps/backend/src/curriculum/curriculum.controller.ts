@@ -17,6 +17,7 @@ import { BillingPlanService } from '../billing/billing-plan.service';
 import { UsageService } from '../billing/usage.service';
 import { RateLimitService } from '../billing/rate-limit.service';
 import { BILLING_RESOURCES } from '../billing/billing-resources.constants';
+import { isFreeSampleUnit } from './curriculum.config';
 
 @Controller('curriculum')
 @UseGuards(JwtAuthGuard)
@@ -40,7 +41,7 @@ export class CurriculumController {
   }
 
   @Get('units')
-  listUnits(
+  async listUnits(
     @Req() req: AuthenticatedRequest,
     @Query('sourceId') sourceIdRaw?: string,
     @Query('source') sourceSlug?: string,
@@ -54,9 +55,29 @@ export class CurriculumController {
         sourceSlug = undefined;
       }
     }
-    return this.curriculum.listUnitsWithProgress(req.user.id, {
+    const userId = req.user.id;
+    const units = await this.curriculum.listUnitsWithProgress(userId, {
       sourceId: Number.isFinite(sourceId) ? sourceId : undefined,
       sourceSlug: typeof sourceSlug === 'string' ? sourceSlug : undefined,
+    });
+
+    const {
+      plan: { code: rawPlanCode },
+    } = await this.billingPlanService.getUserPlan(userId);
+    const planCode = (String(rawPlanCode || 'FREE').toUpperCase() || 'FREE') as
+      | 'FREE'
+      | 'BASIC'
+      | 'PREMIUM';
+
+    return units.map((unit) => {
+      const isFreeSample = isFreeSampleUnit(unit.id, (unit as any).order);
+      const access =
+        planCode === 'FREE' && !isFreeSample ? ('preview' as const) : 'full';
+      return {
+        ...unit,
+        access,
+        isFreeSample,
+      };
     });
   }
 
@@ -76,24 +97,53 @@ export class CurriculumController {
     }
     const userId = req.user.id;
     const unit = await this.curriculum.getUnitDetail(userId, id);
-
-    if (unit) {
-      try {
-        await this.usageService.recordAnalytics({
-          userId,
-          resource: BILLING_RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
-          amount: 1,
-          metadata: {
-            unitId: id,
-            view: 'unit_detail',
-          },
-        });
-      } catch (err) {
-        this.logger.warn('Failed to record curriculum unit view', err as any);
-      }
+    if (!unit) {
+      return null;
     }
 
-    return unit;
+    const {
+      plan: { code: rawPlanCode },
+    } = await this.billingPlanService.getUserPlan(userId);
+    const planCode = (String(rawPlanCode || 'FREE').toUpperCase() || 'FREE') as
+      | 'FREE'
+      | 'BASIC'
+      | 'PREMIUM';
+    const unitOrder = (unit as any).order ?? null;
+    const isFreeSample = isFreeSampleUnit(id, unitOrder);
+    const access =
+      planCode === 'FREE' && !isFreeSample ? ('preview' as const) : 'full';
+
+    const lessons =
+      Array.isArray((unit as any).lessons) && (unit as any).lessons.length > 0
+        ? (unit as any).lessons.map((lesson: any) => ({
+            ...lesson,
+            access: typeof lesson.access === 'string' ? lesson.access : access,
+            isFreeSample,
+          }))
+        : (unit as any).lessons;
+
+    try {
+      await this.usageService.recordAnalytics({
+        userId,
+        resource: BILLING_RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
+        amount: 0,
+        metadata: {
+          unitId: id,
+          view: 'unit_detail',
+          access,
+          planCode,
+        },
+      });
+    } catch (err) {
+      this.logger.warn('Failed to record curriculum unit view', err as any);
+    }
+
+    return {
+      ...unit,
+      lessons,
+      access,
+      isFreeSample,
+    };
   }
 
   @Get('units/:unitId/navigation')
@@ -139,24 +189,68 @@ export class CurriculumController {
       lid,
     );
 
-    if (lesson) {
-      try {
-        await this.usageService.recordAnalytics({
-          userId,
-          resource: BILLING_RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
-          amount: 1,
-          metadata: {
-            unitId: uid,
-            lessonId: lid,
-            view: 'lesson_detail',
-          },
-        });
-      } catch (err) {
-        this.logger.warn('Failed to record curriculum lesson view', err as any);
-      }
+    if (!lesson) {
+      return null;
     }
 
-    return lesson;
+    const {
+      plan: { code: rawPlanCode },
+    } = await this.billingPlanService.getUserPlan(userId);
+    const planCode = (String(rawPlanCode || 'FREE').toUpperCase() || 'FREE') as
+      | 'FREE'
+      | 'BASIC'
+      | 'PREMIUM';
+    const unitOrder = (lesson as any)?.unit?.order ?? null;
+    const isFreeSample = isFreeSampleUnit(uid, unitOrder);
+
+    let access: 'full' | 'preview' = 'full';
+    let unlockInfo:
+      | {
+          reason: 'curriculum_quota_exceeded' | 'plan_restricted';
+          planCode: 'FREE' | 'BASIC' | 'PREMIUM';
+        }
+      | undefined;
+
+    if (planCode === 'FREE' && !isFreeSample) {
+      access = 'preview';
+      unlockInfo = {
+        reason: 'plan_restricted',
+        planCode,
+      };
+    }
+
+    const activities =
+      access === 'full' && Array.isArray((lesson as any).activities)
+        ? (lesson as any).activities
+        : [];
+
+    try {
+      await this.usageService.recordAnalytics({
+        userId,
+        resource: BILLING_RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
+        amount: 0,
+        metadata: {
+          unitId: uid,
+          lessonId: lid,
+          view: 'lesson_detail',
+          access,
+          planCode,
+        },
+      });
+    } catch (err) {
+      this.logger.warn('Failed to record curriculum lesson view', err as any);
+    }
+
+    const lessonRest = { ...(lesson as any) };
+    delete (lessonRest as any).unit;
+
+    return {
+      ...lessonRest,
+      activities,
+      access,
+      isFreeSample,
+      unlockInfo,
+    };
   }
 
   @Get('units/:unitId/lessons/:lessonId/navigation')

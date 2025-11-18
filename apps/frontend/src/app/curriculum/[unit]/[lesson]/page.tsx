@@ -8,6 +8,7 @@ import {
   submitAttempt,
   getLessonNavigation,
   type CurriculumLesson,
+  type CurriculumAccess,
 } from "@/lib/api/curriculum";
 import { DashboardLayout } from "@/components/layout";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
@@ -240,18 +241,27 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
     }
   }, [curriculumUsage, quotaError]);
 
+  const lessonAccess = (lessonData?.access ?? "full") as CurriculumAccess;
+  const unlockInfo = lessonData?.unlockInfo;
+  const isPreviewLesson = lessonAccess === "preview";
+
   const activities = useMemo<ActivityUnion[]>(
     () =>
-      Array.isArray(lessonData?.activities)
+      lessonAccess === "full" && Array.isArray(lessonData?.activities)
         ? (lessonData!.activities as ActivityUnion[])
         : [],
-    [lessonData]
+    [lessonData, lessonAccess]
   );
   const hasExplain = activities.some((a) => a.type === "GRAMMAR");
   const hasRead = activities.some((a) => a.type === "READ");
   const hasQuiz = activities.some((a) => a.type === "QUIZ");
 
   async function onGenerate() {
+    if (lessonAccess === "preview") {
+      toast.info("Upgrade to Basic or Premium to unlock full lessons.");
+      return;
+    }
+
     // Guard: prevent generation if quota exceeded
     if (isQuotaExceeded) {
       return;
@@ -417,6 +427,27 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
               <hr className="my-2" />
             </header>
 
+            {isPreviewLesson && (
+              <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-inter text-amber-50">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="font-semibold">Preview lesson</p>
+                    <p className="mt-1 text-amber-100/80">
+                      {unlockInfo?.reason === "curriculum_quota_exceeded"
+                        ? "You’ve used your free full curriculum unit this period. Upgrade to keep learning."
+                        : "This lesson is preview-only on your current plan. Upgrade to unlock all practice activities."}
+                    </p>
+                  </div>
+                  <Link
+                    href="/pricing"
+                    className="inline-flex items-center gap-2 rounded-md bg-amber-400 px-3 py-1.5 text-xs font-semibold text-black shadow hover:bg-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d]"
+                  >
+                    View plans
+                  </Link>
+                </div>
+              </div>
+            )}
+
             {/* Quota Error Banner */}
             <LessonQuotaBanner
               ref={errorBannerRef}
@@ -445,54 +476,68 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
               </div>
             )}
 
-            {!loading && lesson && activities.length === 0 && (
-              <div className="rounded-2xl border border-white/10 bg-[#16181d] p-4 sm:p-6">
-                <p className="text-white/80 font-inter text-sm sm:text-base">
-                  No content yet. Generate the lesson activities.
-                </p>
-                <div className="mt-3">
-                  {(() => {
-                    const tooltipMessage = getTooltipMessage();
-                    const button = (
-                      <button
-                        onClick={onGenerate}
-                        disabled={generating || isQuotaExceeded || usageLoading}
-                        className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm sm:text-base min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d]"
-                      >
-                        {generating ? (
-                          <>
-                            <Loader2 className="h-5 w-5 sm:h-4 sm:w-4 animate-spin flex-shrink-0" />
-                            <span className="hidden sm:inline">
-                              Generating lesson (this may take 1-2 minutes)…
-                            </span>
-                            <span className="sm:hidden">Generating…</span>
-                          </>
-                        ) : (
-                          "Generate lesson"
-                        )}
-                      </button>
-                    );
-
-                    // Wrap with tooltip if quota exceeded
-                    if (isQuotaExceeded && tooltipMessage) {
-                      return (
-                        <Tooltip
-                          content={tooltipMessage}
-                          position="top"
-                          delay={0}
+            {!loading &&
+              !isPreviewLesson &&
+              lessonData &&
+              activities.length === 0 && (
+                <div className="rounded-2xl border border-white/10 bg-[#16181d] p-4 sm:p-6">
+                  <p className="text-white/80 font-inter text-sm sm:text-base">
+                    No content yet. Generate the lesson activities.
+                  </p>
+                  <div className="mt-3">
+                    {(() => {
+                      const tooltipMessage = getTooltipMessage();
+                      const button = (
+                        <button
+                          onClick={onGenerate}
+                          disabled={
+                            generating || isQuotaExceeded || usageLoading
+                          }
+                          className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm sm:text-base min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d]"
                         >
-                          {button}
-                        </Tooltip>
+                          {generating ? (
+                            <>
+                              <Loader2 className="h-5 w-5 sm:h-4 sm:w-4 animate-spin flex-shrink-0" />
+                              <span className="hidden sm:inline">
+                                Generating lesson (this may take 1-2 minutes)…
+                              </span>
+                              <span className="sm:hidden">Generating…</span>
+                            </>
+                          ) : (
+                            "Generate lesson"
+                          )}
+                        </button>
                       );
-                    }
 
-                    return button;
-                  })()}
+                      // Wrap with tooltip if quota exceeded
+                      if (isQuotaExceeded && tooltipMessage) {
+                        return (
+                          <Tooltip
+                            content={tooltipMessage}
+                            position="top"
+                            delay={0}
+                          >
+                            {button}
+                          </Tooltip>
+                        );
+                      }
+
+                      return button;
+                    })()}
+                  </div>
                 </div>
+              )}
+
+            {isPreviewLesson && (
+              <div className="rounded-2xl border border-amber-500/30 bg-[#16181d] p-6 text-center">
+                <p className="text-sm font-inter text-amber-100/90">
+                  Upgrade to Basic or Premium to unlock the full reading,
+                  grammar, and quiz activities for this lesson.
+                </p>
               </div>
             )}
 
-            {activities.length > 0 && (
+            {activities.length > 0 && !isPreviewLesson && (
               <div className="space-y-8">
                 {/* Explain-first (GRAMMAR) */}
                 {hasExplain && (

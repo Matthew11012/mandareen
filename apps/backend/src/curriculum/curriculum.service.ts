@@ -70,6 +70,7 @@ export class CurriculumService {
     });
     return (units as any[]).map((u: any) => ({
       id: u.id,
+      order: u.order,
       title: u.title,
       description: u.description,
       totalLessons: u.lessons.length,
@@ -113,6 +114,7 @@ export class CurriculumService {
     const uUnit: any = unit as any;
     const result = {
       id: unit.id,
+      order: unit.order,
       title: unit.title,
       description: unit.description,
       lessons: uUnit.lessons.map((l: any) => {
@@ -338,7 +340,10 @@ export class CurriculumService {
   ) {
     const lesson = await this.prisma.curriculumLesson.findFirst({
       where: { id: lessonId, unitId },
-      include: { activities: { orderBy: { order: 'asc' } } },
+      include: {
+        activities: { orderBy: { order: 'asc' } },
+        unit: { select: { id: true, order: true } },
+      },
     });
     if (!lesson) return null;
     return lesson;
