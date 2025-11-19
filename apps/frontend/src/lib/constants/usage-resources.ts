@@ -3,7 +3,7 @@
  * Used for displaying usage data in the UI.
  */
 export const RESOURCE_LABELS: Record<string, string> = {
-  convo_tts_seconds: "TTS minutes",
+  convo_tts_seconds: "Audio minutes",
   lesson_custom_generated: "Custom lessons",
   curriculum_generated: "Curriculum generations",
   assessment_taken: "Assessments",
@@ -72,11 +72,11 @@ export function transformResourceUsage(
   let transformedCap = cap;
   let label = getResourceLabel(resource);
 
-  // Convert TTS seconds to minutes for display
+  // Convert audio seconds to minutes for display (with decimal precision)
   if (resource === "convo_tts_seconds") {
-    transformedUsed = Math.round(used / 60);
-    transformedCap = Math.round(cap / 60);
-    label = "TTS minutes";
+    transformedUsed = Number((used / 60).toFixed(2));
+    transformedCap = Number((cap / 60).toFixed(2));
+    label = "Audio minutes";
   }
 
   return {

@@ -75,42 +75,17 @@ export class ConversationsController {
     const userId = req.user.id;
     const resource = BILLING_RESOURCES.CONVO_MESSAGE_TEXT;
 
-    // Resolve limit for text messages
+    // Apply RPM rate limiting if configured, but do not log usage events
     const limit = await this.billingPlanService.getLimit(userId, resource);
-    if (limit) {
-      // Rate limit check (RPM)
-      if (limit.rpm && limit.rpm > 0) {
-        await this.rateLimitService.acquire({
-          userId,
-          resource,
-          rpm: limit.rpm,
-          burst: limit.burst ?? undefined,
-        });
-      }
-
-      // Create message first to get messageId for idempotency
-      const result = await this._service.sendUserMessage({
-        conversationId: Number(id),
+    if (limit?.rpm && limit.rpm > 0) {
+      await this.rateLimitService.acquire({
         userId,
-        hanzi: (body.hanzi || '').trim(),
+        resource,
+        rpm: limit.rpm,
+        burst: limit.burst ?? undefined,
       });
-
-      // Quota check and consume (after message creation for idempotency key)
-      const messageId = (result.user as any).id;
-      if (limit.monthlyCap > 0) {
-        await this.usageService.checkAndConsume({
-          userId,
-          resource,
-          amount: 1,
-          idempotencyKey: `msg:${messageId}`,
-          planCap: limit.monthlyCap,
-        });
-      }
-
-      return result;
     }
 
-    // No limit found, proceed without enforcement
     return await this._service.sendUserMessage({
       conversationId: Number(id),
       userId,
@@ -138,43 +113,39 @@ export class ConversationsController {
     const userId = req.user.id;
     const resource = BILLING_RESOURCES.CONVO_MESSAGE_AUDIO;
 
-    // Resolve limit for audio messages
+    // Rate limit check (RPM) for audio message count
     const limit = await this.billingPlanService.getLimit(userId, resource);
-    if (limit) {
-      // Rate limit check (RPM)
-      if (limit.rpm && limit.rpm > 0) {
-        await this.rateLimitService.acquire({
-          userId,
-          resource,
-          rpm: limit.rpm,
-          burst: limit.burst ?? undefined,
-        });
-      }
-
-      // Create message after STT (inside service) to get messageId
-      const result = await this._service.sendUserAudioMessage({
-        conversationId: Number(id),
+    if (limit && limit.rpm && limit.rpm > 0) {
+      await this.rateLimitService.acquire({
         userId,
-        audioBuffer: file.buffer,
-        mimeType: file.mimetype || 'audio/webm',
+        resource,
+        rpm: limit.rpm,
+        burst: limit.burst ?? undefined,
       });
-
-      // Quota check and consume (after message creation for idempotency key)
-      const messageId = (result.user as any).id;
-      if (limit.monthlyCap > 0) {
-        await this.usageService.checkAndConsume({
-          userId,
-          resource,
-          amount: 1,
-          idempotencyKey: `msg:${messageId}`,
-          planCap: limit.monthlyCap,
-        });
-      }
-
-      return result;
     }
 
-    // No limit found, proceed without enforcement
+    // Check if audio duration quota is already over 100% (reject if so)
+    const audioDurationResource = BILLING_RESOURCES.CONVO_TTS_SECONDS;
+    const audioDurationLimit = await this.billingPlanService.getLimit(
+      userId,
+      audioDurationResource,
+    );
+    if (audioDurationLimit && audioDurationLimit.monthlyCap > 0) {
+      const currentUsage = await this.usageService.sumUsedLastNDays(
+        userId,
+        audioDurationResource,
+      );
+      if (currentUsage >= audioDurationLimit.monthlyCap) {
+        const quotaPercentage =
+          (currentUsage / audioDurationLimit.monthlyCap) * 100;
+        throw new BadRequestException(
+          `Audio quota exceeded (${quotaPercentage.toFixed(1)}%). Your audio input quota has been reached. Please upgrade your plan to continue using audio features.`,
+        );
+      }
+    }
+
+    // Service handles audio duration quota (CONVO_TTS_SECONDS) and message count quota
+    // Audio duration is recorded after successful transcription (allows going slightly over)
     return await this._service.sendUserAudioMessage({
       conversationId: Number(id),
       userId,

@@ -8,6 +8,7 @@ import { RagService } from '../rag/rag.service';
 import { UsageService } from '../billing/usage.service';
 import { BillingPlanService } from '../billing/billing-plan.service';
 import { BILLING_RESOURCES } from '../billing/billing-resources.constants';
+import * as mm from 'music-metadata';
 
 export type MessageNotes = {
   grammarNotes?: any;
@@ -156,6 +157,39 @@ export class ConversationsService {
     return { user: userMsg } as any;
   }
 
+  /**
+   * Calculate audio duration in seconds from a buffer.
+   * Uses music-metadata to parse audio file metadata.
+   */
+  private async calculateAudioDuration(
+    audioBuffer: Buffer,
+    mimeType: string,
+  ): Promise<number> {
+    try {
+      const metadata = await mm.parseBuffer(audioBuffer, {
+        mimeType: mimeType || 'audio/webm',
+      });
+      const duration = metadata.format.duration;
+      if (duration && duration > 0) {
+        return Math.ceil(duration); // Round up to nearest whole second
+      }
+      // Fallback: estimate based on file size (rough approximation)
+      // Assume ~16kbps bitrate for webm/opus
+      const estimatedDuration = Math.ceil((audioBuffer.length * 8) / 16000);
+      this.logger.warn(
+        `Could not parse audio duration, using estimation: ${estimatedDuration}s`,
+      );
+      return Math.max(1, estimatedDuration); // Minimum 1 second
+    } catch (error) {
+      // Fallback: estimate based on file size
+      const estimatedDuration = Math.ceil((audioBuffer.length * 8) / 16000);
+      this.logger.warn(
+        `Failed to parse audio duration: ${error}. Using estimation: ${estimatedDuration}s`,
+      );
+      return Math.max(1, estimatedDuration); // Minimum 1 second
+    }
+  }
+
   async sendUserAudioMessage({
     conversationId,
     userId,
@@ -173,11 +207,23 @@ export class ConversationsService {
     if (!convo) {
       convo = await this.prisma.conversation.create({ data: { userId } });
     }
-    // Transcribe audio to text (Mandarin)
+
+    // 1) Calculate audio duration
+    const audioDurationSeconds = await this.calculateAudioDuration(
+      audioBuffer,
+      mimeType,
+    );
+    // 2) Fetch quota for usage metering (no logging needed)
+    const resource = BILLING_RESOURCES.CONVO_TTS_SECONDS;
+    const limit = await this.billingPlanService.getLimit(userId, resource);
+
+    // 3) Perform STT transcription
     const hanzi = await (this.openai as any).transcribeAudio(
       audioBuffer,
       mimeType,
     );
+
+    // 4) Create user message
     const userMsg = await this.prisma.message.create({
       data: {
         conversationId,
@@ -187,6 +233,30 @@ export class ConversationsService {
         translation: '',
       },
     });
+
+    // 5) Record audio duration usage after successful STT and message creation
+    if (limit && limit.monthlyCap > 0) {
+      try {
+        await this.usageService.recordUsage({
+          userId,
+          resource,
+          amount: audioDurationSeconds,
+          idempotencyKey: `stt:${userId}:${userMsg.id}`,
+          metadata: {
+            conversationId,
+            messageId: userMsg.id,
+            type: 'audio_input',
+            durationSeconds: audioDurationSeconds,
+          },
+        });
+      } catch (error) {
+        this.logger.warn(
+          'Failed to record STT audio usage (input metering)',
+          error as Error,
+        );
+      }
+    }
+
     return { user: userMsg } as any;
   }
 
@@ -803,28 +873,35 @@ export class ConversationsService {
       data: { audioUrl: publicUrl },
     });
 
-    // Meter TTS usage (estimate seconds: max(2, Math.ceil(hanzi.length / 10)))
+    // Calculate actual audio duration from the generated audio buffer
+    const audioDurationSeconds = await this.calculateAudioDuration(
+      audioBuffer,
+      `audio/${fileExtension}`,
+    );
+    // Meter TTS usage using actual audio duration
     if (userId) {
       try {
         const resource = BILLING_RESOURCES.CONVO_TTS_SECONDS;
         const limit = await this.billingPlanService.getLimit(userId, resource);
         if (limit && limit.monthlyCap > 0) {
-          // Estimate TTS seconds: roughly 10 characters per second, minimum 2 seconds
-          const estimatedSeconds = Math.max(
-            2,
-            Math.ceil(finalHanzi.length / 10),
-          );
-          await this.usageService.checkAndConsume({
+          await this.usageService.recordUsage({
             userId,
             resource,
-            amount: estimatedSeconds,
+            amount: audioDurationSeconds,
             idempotencyKey: `tts:${messageId}`,
-            planCap: limit.monthlyCap,
+            metadata: {
+              conversationId,
+              messageId,
+              type: 'tts_output',
+              durationSeconds: audioDurationSeconds,
+            },
           });
         }
       } catch (error) {
-        // Log but don't fail TTS generation if metering fails
-        this.logger.warn('Failed to meter TTS usage:', error);
+        this.logger.warn(
+          'Failed to record TTS audio usage (output metering)',
+          error as Error,
+        );
       }
     }
 

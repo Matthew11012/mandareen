@@ -84,15 +84,21 @@ export default function ConversationsPage() {
       if (updatedMessage) {
         openNotesModal(updatedMessage);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Extract error message for user feedback
       const errorMessage =
         err instanceof Error
           ? err.message
           : "Failed to generate notes. Please try again.";
-      
+
       // Check if it's a quota error
-      const status = (err as any)?.status ?? (err as any)?.response?.status;
+      const status =
+        typeof err === "object" && err !== null
+          ? ((err as { status?: number; response?: { status?: number } })
+              .status ??
+            (err as { status?: number; response?: { status?: number } })
+              .response?.status)
+          : undefined;
       if (status === 429 || status === 403) {
         toast.error(
           "You've reached the manual notes generation limit for your plan. Upgrade to generate more notes."
@@ -127,7 +133,22 @@ export default function ConversationsPage() {
   const [dismissedUsageReset, setDismissedUsageReset] = useState<string | null>(
     null
   );
-  const { data: usageSummary, isLoading: usageLoading } = useUsageSummary(true);
+  const autoPlayedAudioRef = useRef<Set<number>>(new Set());
+  const {
+    data: usageSummary,
+    isLoading: usageLoading,
+    isFetching: usageFetching,
+    refetch: refetchUsageSummary,
+  } = useUsageSummary(true);
+
+  const handleRefreshUsage = useCallback(async () => {
+    try {
+      await refetchUsageSummary();
+    } catch (err) {
+      console.error("Failed to refresh usage summary", err);
+      toast.error("Failed to refresh usage. Please try again.");
+    }
+  }, [refetchUsageSummary]);
 
   const extractConversationError = useCallback(
     (error: unknown): ConversationErrorState | null => {
@@ -327,7 +348,14 @@ export default function ConversationsPage() {
         ? `Try again in ${effectiveError.retrySeconds}s`
         : undefined;
 
-  const audioDisabled = sendDisabled;
+  const audioUsage = usageSummary?.resources?.convo_tts_seconds;
+  const audioQuotaExceeded =
+    !!audioUsage && audioUsage.cap > 0 && audioUsage.used >= audioUsage.cap;
+
+  const audioDisabled = sendDisabled || audioQuotaExceeded;
+  const audioDisabledReason = audioQuotaExceeded
+    ? "You’ve used all audio minutes available on your plan."
+    : sendDisabledReason;
 
   const dismissError = useCallback(() => {
     setConversationError(null);
@@ -346,7 +374,7 @@ export default function ConversationsPage() {
   const updateMessagesCache = useUpdateMessagesCache();
 
   // Use query data directly
-  const messages = messagesData ?? [];
+  const messages = useMemo(() => messagesData ?? [], [messagesData]);
 
   // Enriched conversations state (with previews)
   const [enrichedConversations, setEnrichedConversations] = useState<
@@ -886,6 +914,71 @@ export default function ConversationsPage() {
     []
   );
 
+  // Clear auto-play tracking when switching conversations
+  useEffect(() => {
+    autoPlayedAudioRef.current.clear();
+  }, [conversationId]);
+
+  // Auto-play newly received AI audio once it's available
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+
+    const nextMessage = [...messages]
+      .reverse()
+      .find(
+        (m) =>
+          m.role === "ai" &&
+          !!m.audioUrl &&
+          !autoPlayedAudioRef.current.has(m.id)
+      );
+
+    if (!nextMessage) return;
+
+    let cancelled = false;
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+    const audioElementId = `audio-${nextMessage.id}`;
+
+    const attemptPlay = () => {
+      if (cancelled) return;
+      const audioElement = document.getElementById(
+        audioElementId
+      ) as HTMLAudioElement | null;
+      if (!audioElement) {
+        retryTimeout = setTimeout(attemptPlay, 150);
+        return;
+      }
+
+      const startPlayback = () => {
+        if (cancelled) return;
+        if (!audioElement.paused) {
+          autoPlayedAudioRef.current.add(nextMessage.id);
+          return;
+        }
+        handleToggleAudio(nextMessage.id, audioElement);
+        autoPlayedAudioRef.current.add(nextMessage.id);
+      };
+
+      if (audioElement.readyState >= 2) {
+        startPlayback();
+      } else {
+        const handleCanPlay = () => {
+          audioElement.removeEventListener("canplay", handleCanPlay);
+          startPlayback();
+        };
+        audioElement.addEventListener("canplay", handleCanPlay, { once: true });
+      }
+    };
+
+    attemptPlay();
+
+    return () => {
+      cancelled = true;
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
+    };
+  }, [messages, handleToggleAudio]);
+
   // Mobile detection and sidebar management
   useEffect(() => {
     const handleResize = () => {
@@ -1122,6 +1215,8 @@ export default function ConversationsPage() {
           <ConversationUsageHeader
             summary={usageSummary}
             isLoading={usageLoading}
+            onRefresh={handleRefreshUsage}
+            isRefreshing={usageFetching && !usageLoading}
           />
           <MessageView
             messages={messages}
@@ -1159,7 +1254,7 @@ export default function ConversationsPage() {
             sendDisabled={sendDisabled}
             sendDisabledReason={sendDisabledReason}
             audioDisabled={audioDisabled}
-            audioDisabledReason={sendDisabledReason}
+            audioDisabledReason={audioDisabledReason}
           />
           {effectiveError && (
             <div className="mt-3">

@@ -12,6 +12,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
 import { UsageSummaryDto } from './dto/usage-summary.dto';
+import { BILLING_RESOURCES } from './billing-resources.constants';
+
+const OMITTED_USAGE_RESOURCES = new Set<string>([
+  BILLING_RESOURCES.CONVO_MESSAGE_TEXT,
+  BILLING_RESOURCES.CONVO_MESSAGE_AUDIO,
+]);
 
 /**
  * Usage controller for retrieving usage summaries.
@@ -234,7 +240,11 @@ export class UsageController {
     }
 
     // Get reset timestamps for all resources (only needed if no subscription period end)
-    const resourceNames = limits.map((limit) => limit.resource);
+    const displayLimits = limits.filter(
+      (limit) => !OMITTED_USAGE_RESOURCES.has(limit.resource),
+    );
+
+    const resourceNames = displayLimits.map((limit) => limit.resource);
     const resetMap = resetTimestamp
       ? new Map<string, string>()
       : await this.usageService.getWindowResetsAt(userId, resourceNames, {
@@ -255,7 +265,7 @@ export class UsageController {
     > = {};
 
     // Process each limit to build the response
-    for (const limit of limits) {
+    for (const limit of displayLimits) {
       const used = usageMap.get(limit.resource) || 0;
       const cap = limit.monthlyCap;
       const pct = cap > 0 ? Math.round((used / cap) * 100 * 100) / 100 : 0; // Round to 2 decimals
