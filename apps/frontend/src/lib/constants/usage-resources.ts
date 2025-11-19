@@ -10,7 +10,7 @@ export const RESOURCE_LABELS: Record<string, string> = {
   convo_stream: "Concurrent conversation streams",
   community_lesson_full_view: "Community full lesson views",
   curriculum_unit_full_access: "Full curriculum units unlocked",
-  convo_manual_notes: "Manual conversation notes",
+  convo_manual_notes: "Note generations",
 } as const;
 
 /**

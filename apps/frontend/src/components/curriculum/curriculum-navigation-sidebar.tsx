@@ -374,30 +374,30 @@ function LessonItem({
             <span className="text-[11px] text-amber-200">Preview</span>
           </div>
         ) : (
-          <Link
-            href={`/curriculum/${unitId}/${lesson.id}`}
-            onClick={handleClick}
-            aria-current={isCurrent ? "page" : undefined}
-            className={cn(
-              "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors duration-200 min-h-[44px] touch-manipulation w-full",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1d23]",
-              isCurrent
-                ? "bg-[#4040f2]/20 text-white font-semibold border border-[#4040f2]/30"
-                : isCompleted
-                  ? "text-white/70 hover:bg-white/5 hover:text-white"
-                  : "text-white/80 hover:bg-white/5 hover:text-white"
-            )}
-          >
-            {isCompleted ? (
-              <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
-            ) : (
-              <div className="w-4 h-4 flex-shrink-0" />
-            )}
+        <Link
+          href={`/curriculum/${unitId}/${lesson.id}`}
+          onClick={handleClick}
+          aria-current={isCurrent ? "page" : undefined}
+          className={cn(
+            "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors duration-200 min-h-[44px] touch-manipulation w-full",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1d23]",
+            isCurrent
+              ? "bg-[#4040f2]/20 text-white font-semibold border border-[#4040f2]/30"
+              : isCompleted
+                ? "text-white/70 hover:bg-white/5 hover:text-white"
+                : "text-white/80 hover:bg-white/5 hover:text-white"
+          )}
+        >
+          {isCompleted ? (
+            <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
+          ) : (
+            <div className="w-4 h-4 flex-shrink-0" />
+          )}
             <span className="flex-1 text-xs truncate block">
               {lesson.title}
             </span>
-            {isCurrent && <span className="sr-only">Current lesson</span>}
-          </Link>
+          {isCurrent && <span className="sr-only">Current lesson</span>}
+        </Link>
         )}
       </ConditionalTooltip>
     </li>
@@ -524,8 +524,8 @@ function UnitSection({
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <div className="font-medium text-xs text-white truncate w-full">
-                {unit.title}
+            <div className="font-medium text-xs text-white truncate w-full">
+              {unit.title}
               </div>
               {isLockedUnit && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-inter text-amber-100">

@@ -10,6 +10,8 @@ import {
   UseGuards,
   UploadedFile,
   UseInterceptors,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -309,5 +311,93 @@ export class ConversationsController {
       Number(id),
     );
     return { deleted };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':conversationId/messages/:messageId/generate-notes')
+  async generateManualNotes(
+    @Req() req: AuthenticatedRequest,
+    @Param('conversationId') conversationId: string,
+    @Param('messageId') messageId: string,
+  ) {
+    const userId = req.user.id;
+    const convId = Number(conversationId);
+    const msgId = Number(messageId);
+
+    if (!Number.isFinite(convId) || !Number.isFinite(msgId)) {
+      throw new BadRequestException('Invalid conversationId or messageId');
+    }
+
+    // 1) Verify conversation/message ownership and get message content
+    const message = await this._service['prisma'].message.findFirst({
+      where: {
+        id: msgId,
+        conversation: { id: convId, userId },
+        role: 'ai', // Only AI messages can have notes generated
+      },
+      select: { id: true, hanzi: true, conversationId: true },
+    });
+    if (!message) {
+      throw new NotFoundException('AI message not found');
+    }
+
+    if (!message.hanzi || message.hanzi.trim().length === 0) {
+      throw new BadRequestException(
+        'Message has no content to generate notes from',
+      );
+    }
+
+    // Get the most recent user message for context
+    const userMessage = await this._service['prisma'].message.findFirst({
+      where: {
+        conversationId: convId,
+        role: 'user',
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { hanzi: true },
+    });
+    const userHanzi = userMessage?.hanzi || '';
+
+    // 2) Check quota (but don't consume yet - only consume on success)
+    const resource = BILLING_RESOURCES.CONVO_MANUAL_NOTES;
+    const limit = await this.billingPlanService.getLimit(userId, resource);
+    const idempotencyKey = `manualnotes:${userId}:${msgId}`;
+
+    if (limit && limit.monthlyCap > 0) {
+      // Check quota without consuming (will throw if exceeded)
+      await this.usageService.ensureWithinQuota({
+        userId,
+        resource,
+        amount: 1,
+        planCap: limit.monthlyCap,
+        idempotencyKey,
+      });
+    }
+
+    // 3) Generate notes using the same method as automatic generation
+    // Only consume quota after successful generation and saving
+    const enrichedNotes = await this._service.generateEnrichedNotes(
+      userId,
+      message.hanzi,
+      userHanzi,
+      convId,
+      msgId,
+    );
+
+    // 4) Consume quota only after successful generation and database save
+    // If generation failed, this line won't execute and quota won't be consumed
+    if (limit && limit.monthlyCap > 0) {
+      await this.usageService.recordUsage({
+        userId,
+        resource,
+        amount: 1,
+        idempotencyKey,
+      });
+    }
+
+    return {
+      ok: true,
+      notes: enrichedNotes,
+    };
   }
 }

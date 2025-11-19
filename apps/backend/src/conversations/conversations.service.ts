@@ -9,6 +9,13 @@ import { UsageService } from '../billing/usage.service';
 import { BillingPlanService } from '../billing/billing-plan.service';
 import { BILLING_RESOURCES } from '../billing/billing-resources.constants';
 
+export type MessageNotes = {
+  grammarNotes?: any;
+  tips?: string[];
+  tipsRich?: any[];
+  citations?: any[];
+};
+
 @Injectable()
 export class ConversationsService {
   private readonly logger = new Logger(ConversationsService.name);
@@ -446,32 +453,11 @@ export class ConversationsService {
               );
             });
 
-          // Emit ai-notes when RAG + generation completes
-          const notesPromise = this.generateEnrichedNotes(
-            userId,
-            finalHanzi,
-            hanzi,
-            conversationId,
-            aiMsg.id,
-          )
-            .then((enrichedNotes) => {
-              subscriber.next({
-                data: JSON.stringify({
-                  type: 'ai-notes',
-                  conversationId,
-                  notes: enrichedNotes,
-                }),
-              });
-            })
-            .catch((err) => {
-              this.logger.warn(
-                'Grammar notes generation skipped (progressive)',
-                err as any,
-              );
-            });
+          // Notes generation is now manual-only via the generate-notes endpoint
+          // Removed automatic note generation to enforce quota
 
-          // Wait for all parallel tasks, then emit final
-          await Promise.all([audioPromise, notesPromise]);
+          // Wait for audio generation, then emit final
+          await Promise.all([audioPromise]);
           subscriber.next({
             data: JSON.stringify({
               type: 'final',
@@ -593,32 +579,11 @@ export class ConversationsService {
                 this.logger.warn('TTS synthesis failed (fallback)', err as any);
               });
 
-            // Emit ai-notes when RAG + generation completes
-            const notesPromise2 = this.generateEnrichedNotes(
-              userId,
-              finalHanziFallback,
-              hanzi,
-              conversationId,
-              aiMsg.id,
-            )
-              .then((enrichedNotes) => {
-                subscriber.next({
-                  data: JSON.stringify({
-                    type: 'ai-notes',
-                    conversationId,
-                    notes: enrichedNotes,
-                  }),
-                });
-              })
-              .catch((err) => {
-                this.logger.warn(
-                  'Grammar notes generation skipped (fallback)',
-                  err as any,
-                );
-              });
+            // Notes generation is now manual-only via the generate-notes endpoint
+            // Removed automatic note generation to enforce quota
 
-            // Wait for all parallel tasks, then emit final
-            await Promise.all([audioPromise2, notesPromise2]);
+            // Wait for audio generation, then emit final
+            await Promise.all([audioPromise2]);
             subscriber.next({
               data: JSON.stringify({
                 type: 'final',
@@ -866,7 +831,7 @@ export class ConversationsService {
     return publicUrl;
   }
 
-  private async generateEnrichedNotes(
+  async generateEnrichedNotes(
     userId: number,
     finalHanzi: string,
     userHanzi: string,

@@ -14,6 +14,7 @@ export const CONVERSATION_USAGE_RESOURCES = [
   "convo_message_text",
   "convo_message_audio",
   "convo_tts_seconds",
+  "convo_manual_notes",
 ] as const;
 
 interface ConversationUsageHeaderProps {

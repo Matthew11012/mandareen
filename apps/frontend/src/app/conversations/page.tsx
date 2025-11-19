@@ -55,6 +55,62 @@ export default function ConversationsPage() {
   const openNotesModal = (m: Message) =>
     setNotesModal({ open: true, message: m });
   const closeNotesModal = () => setNotesModal({ open: false, message: null });
+
+  // Handler to generate notes for a message
+  const handleGenerateNotes = async (messageId: number) => {
+    if (!conversationId) return;
+    try {
+      const res = await conversationsApi.generateManualNotes(
+        conversationId,
+        messageId
+      );
+      // Update the message in cache with generated notes
+      updateMessagesCache(conversationId, (prev) =>
+        prev.map((m) =>
+          m.id === messageId && m.role === "ai"
+            ? {
+                ...m,
+                notes: res.notes,
+              }
+            : m
+        )
+      );
+      // Refetch messages to ensure we have the latest data
+      const { data: updatedMessages } = await refetchMessages();
+      // Find the updated message and open modal
+      const updatedMessage = updatedMessages?.find(
+        (m) => m.id === messageId && m.role === "ai"
+      );
+      if (updatedMessage) {
+        openNotesModal(updatedMessage);
+      }
+    } catch (err: any) {
+      // Extract error message for user feedback
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "Failed to generate notes. Please try again.";
+      
+      // Check if it's a quota error
+      const status = (err as any)?.status ?? (err as any)?.response?.status;
+      if (status === 429 || status === 403) {
+        toast.error(
+          "You've reached the manual notes generation limit for your plan. Upgrade to generate more notes."
+        );
+      } else if (
+        errorMessage.includes("aborted") ||
+        errorMessage.includes("signal") ||
+        errorMessage.includes("timeout")
+      ) {
+        toast.error(
+          "Note generation timed out. Please try again. If this persists, the request may be taking too long."
+        );
+      } else {
+        toast.error(errorMessage);
+      }
+      throw err; // Re-throw so MessageView can handle it
+    }
+  };
   const [playing, setPlaying] = useState<Record<number, boolean>>({});
   const [loadingPreviews, setLoadingPreviews] = useState<boolean>(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -1084,6 +1140,8 @@ export default function ConversationsPage() {
             }
             onToggleAudio={handleToggleAudio}
             onOpenNotesModal={openNotesModal}
+            onGenerateNotes={handleGenerateNotes}
+            conversationId={conversationId}
             resolveMediaUrl={resolveMediaUrl}
           />
 
@@ -1119,6 +1177,7 @@ export default function ConversationsPage() {
       <NotesModal
         open={notesModal.open}
         message={notesModal.message}
+        conversationId={conversationId}
         onClose={closeNotesModal}
         notesPinyinOn={notesPinyinOn}
         onTogglePinyin={() => setNotesPinyinOn((v) => !v)}
