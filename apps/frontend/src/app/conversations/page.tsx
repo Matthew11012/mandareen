@@ -134,6 +134,10 @@ export default function ConversationsPage() {
     null
   );
   const autoPlayedAudioRef = useRef<Set<number>>(new Set());
+  const [pendingAutoPlayMessageId, setPendingAutoPlayMessageId] = useState<
+    number | null
+  >(null);
+  const previousConversationIdRef = useRef<number | null>(null);
   const {
     data: usageSummary,
     isLoading: usageLoading,
@@ -648,8 +652,13 @@ export default function ConversationsPage() {
 
         // Wrap onUserUpdate to ensure it matches the correct user message ID
         // The stream should send user-update events with the user message ID from sendAudio
+        const originalOnStart = callbacks.onStart;
         const originalOnUserUpdate = callbacks.onUserUpdate;
         const originalOnFinal = callbacks.onFinal;
+        callbacks.onStart = (payload) => {
+          originalOnStart?.(payload);
+          setPendingAutoPlayMessageId(payload.id);
+        };
         callbacks.onUserUpdate = (update) => {
           // Apply update if ID matches our user message
           // The original handler already handles the update logic correctly
@@ -899,74 +908,106 @@ export default function ConversationsPage() {
 
   // Audio toggle handler
   const handleToggleAudio = useCallback(
-    (messageId: number, audioElement: HTMLAudioElement | null) => {
-      if (!audioElement) return;
+    async (
+      messageId: number,
+      audioElement: HTMLAudioElement | null,
+      _source: "manual" | "auto" = "manual"
+    ): Promise<boolean> => {
+      void _source;
+      if (!audioElement) {
+        return false;
+      }
+
       if (audioElement.paused) {
-        void audioElement.play();
         setPlaying((s) => ({ ...s, [messageId]: true }));
         audioElement.onended = () =>
           setPlaying((s) => ({ ...s, [messageId]: false }));
-      } else {
-        audioElement.pause();
-        setPlaying((s) => ({ ...s, [messageId]: false }));
+
+        try {
+          const playPromise = audioElement.play();
+          if (playPromise) {
+            await playPromise;
+          }
+          return true;
+        } catch (_error) {
+          void _error;
+          setPlaying((s) => ({ ...s, [messageId]: false }));
+          return false;
+        }
       }
+
+      audioElement.pause();
+      setPlaying((s) => ({ ...s, [messageId]: false }));
+      return true;
     },
     []
   );
 
   // Clear auto-play tracking when switching conversations
   useEffect(() => {
+    if (previousConversationIdRef.current === conversationId) return;
+    previousConversationIdRef.current = conversationId;
     autoPlayedAudioRef.current.clear();
-  }, [conversationId]);
+    if (pendingAutoPlayMessageId !== null) {
+      setPendingAutoPlayMessageId(null);
+    }
+  }, [conversationId, pendingAutoPlayMessageId]);
 
   // Auto-play newly received AI audio once it's available
   useEffect(() => {
     if (!messages || messages.length === 0) return;
 
-    const nextMessage = [...messages]
-      .reverse()
-      .find(
-        (m) =>
-          m.role === "ai" &&
-          !!m.audioUrl &&
-          !autoPlayedAudioRef.current.has(m.id)
-      );
+    if (!pendingAutoPlayMessageId) return;
 
-    if (!nextMessage) return;
+    const nextMessage = messages.find(
+      (m) =>
+        m.id === pendingAutoPlayMessageId &&
+        m.role === "ai" &&
+        !!m.audioUrl &&
+        !autoPlayedAudioRef.current.has(m.id)
+    );
+
+    if (!nextMessage) {
+      return;
+    }
 
     let cancelled = false;
     let retryTimeout: ReturnType<typeof setTimeout> | null = null;
     const audioElementId = `audio-${nextMessage.id}`;
+    const maxRetries = 20;
 
-    const attemptPlay = () => {
+    const attemptPlay = (attempt = 0) => {
       if (cancelled) return;
       const audioElement = document.getElementById(
         audioElementId
       ) as HTMLAudioElement | null;
+
       if (!audioElement) {
-        retryTimeout = setTimeout(attemptPlay, 150);
+        if (attempt < maxRetries) {
+          retryTimeout = setTimeout(() => attemptPlay(attempt + 1), 150);
+        } else {
+          setPendingAutoPlayMessageId(null);
+        }
         return;
       }
 
-      const startPlayback = () => {
-        if (cancelled) return;
-        if (!audioElement.paused) {
-          autoPlayedAudioRef.current.add(nextMessage.id);
-          return;
+      if (audioElement.preload === "none") {
+        audioElement.preload = "auto";
+        try {
+          audioElement.load();
+        } catch {
+          // ignore load errors, play will still attempt to fetch
         }
-        handleToggleAudio(nextMessage.id, audioElement);
-        autoPlayedAudioRef.current.add(nextMessage.id);
-      };
-
-      if (audioElement.readyState >= 2) {
-        startPlayback();
-      } else {
-        const handleCanPlay = () => {
-          audioElement.removeEventListener("canplay", handleCanPlay);
-          startPlayback();
-        };
-        audioElement.addEventListener("canplay", handleCanPlay, { once: true });
       }
+
+      void handleToggleAudio(nextMessage.id, audioElement, "auto").then(
+        (started) => {
+          setPendingAutoPlayMessageId(null);
+          if (started) {
+            autoPlayedAudioRef.current.add(nextMessage.id);
+          }
+        }
+      );
     };
 
     attemptPlay();
@@ -977,7 +1018,7 @@ export default function ConversationsPage() {
         clearTimeout(retryTimeout);
       }
     };
-  }, [messages, handleToggleAudio]);
+  }, [messages, handleToggleAudio, pendingAutoPlayMessageId]);
 
   // Mobile detection and sidebar management
   useEffect(() => {

@@ -16,8 +16,9 @@ interface MessageViewProps {
   onToggleNotes: (messageId: number) => void;
   onToggleAudio: (
     messageId: number,
-    audioElement: HTMLAudioElement | null
-  ) => void;
+    audioElement: HTMLAudioElement | null,
+    source?: "manual" | "auto"
+  ) => void | Promise<boolean>;
   onOpenNotesModal: (message: Message) => void;
   onGenerateNotes?: (messageId: number) => Promise<void>;
   conversationId: number | null;
@@ -77,7 +78,7 @@ export function MessageView({
               <audio
                 id={`audio-${m.id}`}
                 src={resolveMediaUrl(m.audioUrl) || ""}
-                preload="none"
+                preload="metadata"
               />
             ) : null}
             {/* Always show toggles, disable + spinner if loading */}
@@ -92,7 +93,7 @@ export function MessageView({
                       const el = document.getElementById(
                         `audio-${m.id}`
                       ) as HTMLAudioElement | null;
-                      onToggleAudio(m.id, el);
+                      void onToggleAudio(m.id, el, "manual");
                     }
                   }}
                   className={`px-2 py-1 text-xs rounded border cursor-pointer ${
