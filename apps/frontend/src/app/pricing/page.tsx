@@ -2,7 +2,7 @@
 
 import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState, Suspense, useRef } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "framer-motion";
 import BezierEasing from "bezier-easing";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/hooks/use-auth";
@@ -46,7 +46,7 @@ const PLANS: PlanData[] = [
   {
     code: "FREE",
     name: "Free",
-    description: "Perfect for beginners to get started with Mandarin learning",
+    description: "Perfect for beginners to get started",
     prices: {
       monthly: 0,
       "6month": 0,
@@ -54,21 +54,19 @@ const PLANS: PlanData[] = [
     },
     limits: [
       {
-        resource: "convo_message_text",
-        label: "Conversation messages",
-        value: 60,
+        resource: "convo_tts_seconds",
+        label: "AI Conversation minutes",
+        value: "1",
       },
-      { resource: "convo_message_audio", label: "Audio messages", value: 20 },
-      { resource: "convo_tts_seconds", label: "TTS minutes", value: "15" },
       {
         resource: "lesson_custom_generated",
         label: "Custom lessons",
-        value: 8,
+        value: 2,
       },
       {
         resource: "curriculum_generated",
         label: "Curriculum generations",
-        value: 5,
+        value: 1,
       },
       { resource: "assessment_taken", label: "Assessments", value: 1 },
     ],
@@ -77,12 +75,16 @@ const PLANS: PlanData[] = [
       "Full dictionary access",
       "Basic conversation practice",
       "AI-guided lessons",
+      "Community lessons: Up to 4 full community lessons per month",
+      "Curriculum: Preview most units; limited full units available",
+      "AI Conversation practice minutes (up to 1 per month)",
+      "Manual conversation notes (up to 3 per month)",
     ],
   },
   {
     code: "BASIC",
     name: "Basic",
-    description: "For serious learners who want more practice",
+    description: "For learners who want more practice",
     prices: {
       monthly: 999, // $9.99
       "6month": 5499, // $54.99 (from database)
@@ -90,21 +92,19 @@ const PLANS: PlanData[] = [
     },
     limits: [
       {
-        resource: "convo_message_text",
-        label: "Conversation messages",
-        value: 400,
+        resource: "convo_tts_seconds",
+        label: "AI Conversation minutes",
+        value: "150",
       },
-      { resource: "convo_message_audio", label: "Audio messages", value: 150 },
-      { resource: "convo_tts_seconds", label: "TTS minutes", value: "120" },
       {
         resource: "lesson_custom_generated",
         label: "Custom lessons",
-        value: 60,
+        value: 80,
       },
       {
         resource: "curriculum_generated",
         label: "Curriculum generations",
-        value: 30,
+        value: 50,
       },
       { resource: "assessment_taken", label: "Assessments", value: 4 },
     ],
@@ -114,13 +114,17 @@ const PLANS: PlanData[] = [
       "2 concurrent conversation streams",
       "Advanced conversation coach",
       "Unlimited AI lessons",
+      "Community lessons: Full access to all user-generated lessons (all HSK levels)",
+      "Curriculum: Full access to all 60+ curriculum units and lessons",
+      "AI Conversation practice minutes (up to 150 minutes per month)",
+      "Manual conversation notes (up to 80 per month)",
     ],
     isPopular: true,
   },
   {
     code: "PREMIUM",
     name: "Premium",
-    description: "For advanced learners who want unlimited practice",
+    description: "For learners who want unlimited practice",
     prices: {
       monthly: 1499, // $14.99
       "6month": 7999, // $79.90 (from database)
@@ -128,12 +132,10 @@ const PLANS: PlanData[] = [
     },
     limits: [
       {
-        resource: "convo_message_text",
-        label: "Conversation messages",
-        value: 2000,
+        resource: "convo_tts_seconds",
+        label: "AI Conversation minutes",
+        value: "300",
       },
-      { resource: "convo_message_audio", label: "Audio messages", value: 600 },
-      { resource: "convo_tts_seconds", label: "TTS minutes", value: "360" },
       {
         resource: "lesson_custom_generated",
         label: "Custom lessons",
@@ -152,6 +154,10 @@ const PLANS: PlanData[] = [
       "3 concurrent conversation streams",
       "Advanced conversation coach",
       "Unlimited AI lessons",
+      "Community lessons: Full access to all user-generated lessons (all HSK levels)",
+      "Curriculum: Full access to all 60+ curriculum units and lessons",
+      "AI Conversation practice minutes (up to 300 minutes per month)",
+      "Manual conversation notes (up to 200 per month)",
     ],
   },
 ];
@@ -400,21 +406,13 @@ function PricingPageContent() {
   // Don't block rendering on auth loading - pricing page is public
   // Auth state will update asynchronously and buttons will adjust accordingly
 
-  const motionProps = prefersReducedMotion
-    ? {}
-    : {
-        initial: { y: 16, opacity: 0 },
-        whileInView: { y: 0, opacity: 1 },
-        viewport: { once: true, amount: 0.6 },
-        transition: { duration: 0.6, ease: [0.2, 0.8, 0.2, 1] },
-      };
+  // Removed scroll-triggered animations - all elements render immediately
 
   return (
     <div className="min-h-screen bg-[#222831]">
       <div className="max-w-7xl mx-auto px-4 py-4 md:py-8">
         {/* Hero Section */}
-        <motion.section
-          {...motionProps}
+        <section
           className="text-center mb-12 md:mb-16"
           aria-labelledby="pricing-title"
         >
@@ -435,11 +433,10 @@ function PricingPageContent() {
               View your current usage →
             </Link>
           )}
-        </motion.section>
+        </section>
 
         {/* Billing Period Selector */}
-        <motion.div
-          {...motionProps}
+        <div
           className="flex justify-center mb-8 md:mb-12"
           role="tablist"
           aria-label="Billing period selection"
@@ -534,15 +531,14 @@ function PricingPageContent() {
               ));
             })()}
           </div>
-        </motion.div>
+        </div>
 
         {/* Plan Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 lg:items-stretch">
-          {PLANS.map((plan, index) => (
+          {PLANS.map((plan) => (
             <PlanCard
               key={plan.code}
               plan={plan}
-              index={index}
               billingPeriod={selectedBillingPeriod}
               isAuthenticated={isAuthenticated}
               authLoading={authLoading}
@@ -558,15 +554,27 @@ function PricingPageContent() {
                   source: "card_view",
                 });
               }}
-              motionProps={prefersReducedMotion ? {} : motionProps}
               prefersReducedMotion={prefersReducedMotion ?? false}
             />
           ))}
         </div>
 
+        {/* Access Summary Section */}
+        <section className="mt-10 max-w-3xl mx-auto text-sm text-white/70 font-inter space-y-2">
+          <p>
+            Free plan users can preview all community lessons and curriculum
+            units, with a small allowance of full access to help you try
+            everything out.
+          </p>
+          <p>
+            Basic and Premium plans unlock full access to all community lessons
+            (all HSK levels) and the entire structured curriculum, plus higher
+            quotas for lessons, audio, and notes.
+          </p>
+        </section>
+
         {/* FAQ/Footnotes Section */}
-        <motion.section
-          {...motionProps}
+        <section
           className="mt-16 md:mt-24 max-w-3xl mx-auto"
           aria-labelledby="pricing-faq-title"
         >
@@ -607,7 +615,7 @@ function PricingPageContent() {
               </p>
             </div>
           </div>
-        </motion.section>
+        </section>
       </div>
     </div>
   );
@@ -624,14 +632,12 @@ function PricingPageContent() {
  */
 interface PlanCardProps {
   plan: PlanData;
-  index: number;
   billingPeriod: BillingPeriod;
   isAuthenticated: boolean;
   authLoading: boolean;
   isLoading: boolean;
   onCtaClick: () => void;
   onPlanView?: () => void;
-  motionProps: Record<string, unknown>;
   prefersReducedMotion: boolean;
 }
 
@@ -691,14 +697,12 @@ function getPriceForPeriod(
 
 function PlanCard({
   plan,
-  index,
   billingPeriod,
   isAuthenticated,
   authLoading,
   isLoading,
   onCtaClick,
   onPlanView,
-  motionProps,
   prefersReducedMotion,
 }: PlanCardProps) {
   const cardId = `plan-${plan.code.toLowerCase()}`;
@@ -775,20 +779,7 @@ function PlanCard({
       : `Start ${plan.name}`;
 
   return (
-    <motion.section
-      {...(typeof motionProps === "object" && motionProps !== null
-        ? motionProps
-        : {})}
-      transition={
-        typeof motionProps === "object" &&
-        motionProps !== null &&
-        "transition" in motionProps
-          ? {
-              ...(motionProps.transition as Record<string, unknown>),
-              delay: index * 0.1,
-            }
-          : { delay: index * 0.1 }
-      }
+    <section
       className={`relative rounded-2xl border p-6 md:p-8 flex flex-col ${
         plan.isPopular
           ? "border-white/20 bg-black shadow-[0_8px_30px_rgba(0,0,0,0.35)]"
@@ -938,7 +929,7 @@ function PlanCard({
           </Button>
         )}
       </div>
-    </motion.section>
+    </section>
   );
 }
 

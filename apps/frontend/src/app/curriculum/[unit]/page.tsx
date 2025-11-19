@@ -6,6 +6,7 @@ import {
   getUnit,
   getUnitNavigation,
   type CurriculumLesson,
+  type CurriculumAccess,
 } from "@/lib/api/curriculum";
 import { DashboardLayout } from "@/components/layout";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
@@ -17,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowRight,
+  Lock,
 } from "lucide-react";
 import * as React from "react";
 
@@ -114,9 +116,14 @@ export default function UnitDetailPage({
     );
   }
 
+  const unitAccess = (unitData?.access ?? "full") as CurriculumAccess;
+  const isPreviewUnit = unitAccess === "preview";
+
   const renderLessonRow = (lesson: LessonWithStatus) => {
     const isCompleted = lesson.status === "completed";
     const isAvailable = lesson.status === "available";
+    const lessonAccess = (lesson.access ?? unitAccess) as CurriculumAccess;
+    const isLocked = lessonAccess === "preview";
 
     const getCardClasses = () => {
       if (isCompleted) {
@@ -155,19 +162,8 @@ export default function UnitDetailPage({
       }
     };
 
-    return (
-      <Link
-        key={lesson.id}
-        href={`/curriculum/${unitId}/${lesson.id}`}
-        className={`${getCardClasses()} group`}
-        aria-label={`${lesson.title} - ${
-          isCompleted
-            ? `Completed${typeof lesson.latestQuizScore === "number" ? ` with ${lesson.latestQuizScore}% score` : ""}`
-            : isAvailable
-              ? "Available - Start Lesson"
-              : "Pending"
-        }`}
-      >
+    const cardContent = (
+      <>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h3 className="text-base font-inter font-semibold text-white leading-tight">
@@ -190,14 +186,77 @@ export default function UnitDetailPage({
           </div>
           <div className="flex flex-col items-end gap-3">
             {getBadge()}
-            {isAvailable && (
+            {isAvailable && !isLocked && (
               <span className="inline-flex items-center gap-1 text-sm font-inter font-semibold text-white group-hover:text-blue-300 transition-colors duration-200">
                 Start Lesson <ArrowRight className="h-4 w-4" />
               </span>
             )}
+            {isLocked && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs font-inter text-amber-200">
+                <Lock className="h-3.5 w-3.5" /> Preview only
+              </span>
+            )}
           </div>
         </div>
+        {isLocked && (
+          <p className="mt-2 text-sm font-inter text-amber-100/80">
+            Upgrade to Basic or Premium to unlock this lesson.
+          </p>
+        )}
+      </>
+    );
+
+    if (isLocked) {
+      return (
+        <div
+          key={lesson.id}
+          className={`${getCardClasses()} cursor-not-allowed opacity-70`}
+          aria-disabled="true"
+        >
+          {cardContent}
+        </div>
+      );
+    }
+
+    return (
+      <Link
+        key={lesson.id}
+        href={`/curriculum/${unitId}/${lesson.id}`}
+        className={`${getCardClasses()} group`}
+        aria-label={`${lesson.title} - ${
+          isCompleted
+            ? `Completed${typeof lesson.latestQuizScore === "number" ? ` with ${lesson.latestQuizScore}% score` : ""}`
+            : isAvailable
+              ? "Available - Start Lesson"
+              : "Pending"
+        }`}
+      >
+        {cardContent}
       </Link>
+    );
+  };
+
+  const renderAccessBanner = () => {
+    if (!isPreviewUnit) return null;
+    return (
+      <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-inter text-amber-50">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-semibold">Preview unit</p>
+            <p className="mt-1 text-amber-100/80 text-sm">
+              You&apos;re viewing a preview of this curriculum unit. Free users
+              get limited full units; upgrade to Basic or Premium for full
+              access to all units and lessons.
+            </p>
+          </div>
+          <Link
+            href="/pricing"
+            className="inline-flex items-center gap-2 rounded-md bg-amber-400 px-3 py-1.5 text-xs font-semibold text-black shadow hover:bg-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d]"
+          >
+            View plans
+          </Link>
+        </div>
+      </div>
     );
   };
 
@@ -227,6 +286,8 @@ export default function UnitDetailPage({
             {error}
           </div>
         )}
+
+        {renderAccessBanner()}
 
         <section className="grid gap-4 md:grid-cols-[2fr_1fr]">
           <div className="rounded-2xl border border-amber-500/40 bg-gradient-to-br from-amber-900/20 to-amber-800/10 p-6 transition-all duration-200 hover:border-amber-500/60 shadow-lg ring-1 ring-amber-500/20">

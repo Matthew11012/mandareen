@@ -1,5 +1,21 @@
 import { get, post, del } from "../http/http";
 
+export interface MessageNotes {
+  grammarNotes?: Array<{
+    point: string;
+    brief: string;
+    sources?: Array<{ key?: string; chunkId?: number }>;
+    pointPinyin?: string;
+    pointEn?: string;
+    briefPinyin?: string;
+    briefEn?: string;
+    examples?: Array<{ zh: string; en?: string; pinyin?: string }>;
+  }>;
+  tips?: string[];
+  tipsRich?: Array<{ zh: string; pinyin?: string; en?: string }>;
+  citations?: Array<{ key?: string; chunkId?: number }>;
+}
+
 export interface Message {
   id: number;
   role: "user" | "ai";
@@ -8,21 +24,7 @@ export interface Message {
   translation: string;
   createdAt: string;
   audioUrl?: string;
-  notes?: {
-    grammarNotes?: Array<{
-      point: string;
-      brief: string;
-      sources?: Array<{ key?: string; chunkId?: number }>;
-      pointPinyin?: string;
-      pointEn?: string;
-      briefPinyin?: string;
-      briefEn?: string;
-      examples?: Array<{ zh: string; en?: string; pinyin?: string }>;
-    }>;
-    tips?: string[];
-    tipsRich?: Array<{ zh: string; pinyin?: string; en?: string }>;
-    citations?: Array<{ key?: string; chunkId?: number }>;
-  };
+  notes?: MessageNotes;
   segments?: Array<{
     text: string;
     startIndex: number;
@@ -88,5 +90,19 @@ export const conversationsApi = {
 
   async delete(id: number): Promise<{ deleted: boolean }> {
     return del<{ deleted: boolean }>(`conversations/${id}`);
+  },
+
+  async generateManualNotes(
+    conversationId: number,
+    messageId: number
+  ): Promise<{ ok: true; notes: MessageNotes }> {
+    return post<{ ok: true; notes: MessageNotes }>(
+      `conversations/${conversationId}/messages/${messageId}/generate-notes`,
+      {},
+      {
+        // Increase timeout to 120 seconds since note generation can take longer
+        timeoutMs: 120000,
+      }
+    );
   },
 };

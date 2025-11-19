@@ -20,6 +20,7 @@ import {
   Play,
   RotateCcw,
   ChevronUp,
+  Lock,
 } from "lucide-react";
 import {
   Select,
@@ -325,6 +326,9 @@ export default function CurriculumUnitsPage() {
     );
 
   const renderUnitCard = (unit: CurriculumUnit) => {
+    const unitAccess = unit.access ?? "full";
+    const isPreviewUnit = unitAccess === "preview";
+    const isFreeSampleUnit = unit.isFreeSample === true;
     const total = unit.totalLessons ?? 0;
     const done = unit.completedLessons ?? 0;
     const percent = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
@@ -415,7 +419,43 @@ export default function CurriculumUnitsPage() {
       }
     };
 
+    const renderAccessBadge = () => {
+      if (isPreviewUnit) {
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-1 text-[11px] font-inter text-amber-100">
+            <Lock className="h-3 w-3" /> Preview only
+          </span>
+        );
+      }
+      if (isFreeSampleUnit) {
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-inter text-emerald-200">
+            <BookOpen className="h-3 w-3" /> Free sample
+          </span>
+        );
+      }
+      return null;
+    };
+
     const getActionButton = () => {
+      if (isPreviewUnit) {
+        return (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-inter text-amber-200 transition-colors duration-200 hover:bg-amber-500/20 hover:border-amber-500/50 cursor-pointer"
+            aria-label="Upgrade to unlock this unit"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              window.location.href = "/pricing";
+            }}
+          >
+            <Lock className="h-3.5 w-3.5" />
+            Unlock unit
+          </button>
+        );
+      }
+
       if (isCompleted) {
         return (
           <button
@@ -495,7 +535,10 @@ export default function CurriculumUnitsPage() {
                 return unit.title;
               })()}
             </h3>
-            {getStatusBadge()}
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              {getStatusBadge()}
+              {renderAccessBadge()}
+            </div>
           </div>
           <div className={`flex-shrink-0 ${getIconContainerClasses()}`}>
             {getIconComponent()}

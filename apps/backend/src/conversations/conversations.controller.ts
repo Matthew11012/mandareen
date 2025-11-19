@@ -10,6 +10,8 @@ import {
   UseGuards,
   UploadedFile,
   UseInterceptors,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -73,42 +75,17 @@ export class ConversationsController {
     const userId = req.user.id;
     const resource = BILLING_RESOURCES.CONVO_MESSAGE_TEXT;
 
-    // Resolve limit for text messages
+    // Apply RPM rate limiting if configured, but do not log usage events
     const limit = await this.billingPlanService.getLimit(userId, resource);
-    if (limit) {
-      // Rate limit check (RPM)
-      if (limit.rpm && limit.rpm > 0) {
-        await this.rateLimitService.acquire({
-          userId,
-          resource,
-          rpm: limit.rpm,
-          burst: limit.burst ?? undefined,
-        });
-      }
-
-      // Create message first to get messageId for idempotency
-      const result = await this._service.sendUserMessage({
-        conversationId: Number(id),
+    if (limit?.rpm && limit.rpm > 0) {
+      await this.rateLimitService.acquire({
         userId,
-        hanzi: (body.hanzi || '').trim(),
+        resource,
+        rpm: limit.rpm,
+        burst: limit.burst ?? undefined,
       });
-
-      // Quota check and consume (after message creation for idempotency key)
-      const messageId = (result.user as any).id;
-      if (limit.monthlyCap > 0) {
-        await this.usageService.checkAndConsume({
-          userId,
-          resource,
-          amount: 1,
-          idempotencyKey: `msg:${messageId}`,
-          planCap: limit.monthlyCap,
-        });
-      }
-
-      return result;
     }
 
-    // No limit found, proceed without enforcement
     return await this._service.sendUserMessage({
       conversationId: Number(id),
       userId,
@@ -136,43 +113,39 @@ export class ConversationsController {
     const userId = req.user.id;
     const resource = BILLING_RESOURCES.CONVO_MESSAGE_AUDIO;
 
-    // Resolve limit for audio messages
+    // Rate limit check (RPM) for audio message count
     const limit = await this.billingPlanService.getLimit(userId, resource);
-    if (limit) {
-      // Rate limit check (RPM)
-      if (limit.rpm && limit.rpm > 0) {
-        await this.rateLimitService.acquire({
-          userId,
-          resource,
-          rpm: limit.rpm,
-          burst: limit.burst ?? undefined,
-        });
-      }
-
-      // Create message after STT (inside service) to get messageId
-      const result = await this._service.sendUserAudioMessage({
-        conversationId: Number(id),
+    if (limit && limit.rpm && limit.rpm > 0) {
+      await this.rateLimitService.acquire({
         userId,
-        audioBuffer: file.buffer,
-        mimeType: file.mimetype || 'audio/webm',
+        resource,
+        rpm: limit.rpm,
+        burst: limit.burst ?? undefined,
       });
-
-      // Quota check and consume (after message creation for idempotency key)
-      const messageId = (result.user as any).id;
-      if (limit.monthlyCap > 0) {
-        await this.usageService.checkAndConsume({
-          userId,
-          resource,
-          amount: 1,
-          idempotencyKey: `msg:${messageId}`,
-          planCap: limit.monthlyCap,
-        });
-      }
-
-      return result;
     }
 
-    // No limit found, proceed without enforcement
+    // Check if audio duration quota is already over 100% (reject if so)
+    const audioDurationResource = BILLING_RESOURCES.CONVO_TTS_SECONDS;
+    const audioDurationLimit = await this.billingPlanService.getLimit(
+      userId,
+      audioDurationResource,
+    );
+    if (audioDurationLimit && audioDurationLimit.monthlyCap > 0) {
+      const currentUsage = await this.usageService.sumUsedLastNDays(
+        userId,
+        audioDurationResource,
+      );
+      if (currentUsage >= audioDurationLimit.monthlyCap) {
+        const quotaPercentage =
+          (currentUsage / audioDurationLimit.monthlyCap) * 100;
+        throw new BadRequestException(
+          `Audio quota exceeded (${quotaPercentage.toFixed(1)}%). Your audio input quota has been reached. Please upgrade your plan to continue using audio features.`,
+        );
+      }
+    }
+
+    // Service handles audio duration quota (CONVO_TTS_SECONDS) and message count quota
+    // Audio duration is recorded after successful transcription (allows going slightly over)
     return await this._service.sendUserAudioMessage({
       conversationId: Number(id),
       userId,
@@ -309,5 +282,93 @@ export class ConversationsController {
       Number(id),
     );
     return { deleted };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':conversationId/messages/:messageId/generate-notes')
+  async generateManualNotes(
+    @Req() req: AuthenticatedRequest,
+    @Param('conversationId') conversationId: string,
+    @Param('messageId') messageId: string,
+  ) {
+    const userId = req.user.id;
+    const convId = Number(conversationId);
+    const msgId = Number(messageId);
+
+    if (!Number.isFinite(convId) || !Number.isFinite(msgId)) {
+      throw new BadRequestException('Invalid conversationId or messageId');
+    }
+
+    // 1) Verify conversation/message ownership and get message content
+    const message = await this._service['prisma'].message.findFirst({
+      where: {
+        id: msgId,
+        conversation: { id: convId, userId },
+        role: 'ai', // Only AI messages can have notes generated
+      },
+      select: { id: true, hanzi: true, conversationId: true },
+    });
+    if (!message) {
+      throw new NotFoundException('AI message not found');
+    }
+
+    if (!message.hanzi || message.hanzi.trim().length === 0) {
+      throw new BadRequestException(
+        'Message has no content to generate notes from',
+      );
+    }
+
+    // Get the most recent user message for context
+    const userMessage = await this._service['prisma'].message.findFirst({
+      where: {
+        conversationId: convId,
+        role: 'user',
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { hanzi: true },
+    });
+    const userHanzi = userMessage?.hanzi || '';
+
+    // 2) Check quota (but don't consume yet - only consume on success)
+    const resource = BILLING_RESOURCES.CONVO_MANUAL_NOTES;
+    const limit = await this.billingPlanService.getLimit(userId, resource);
+    const idempotencyKey = `manualnotes:${userId}:${msgId}`;
+
+    if (limit && limit.monthlyCap > 0) {
+      // Check quota without consuming (will throw if exceeded)
+      await this.usageService.ensureWithinQuota({
+        userId,
+        resource,
+        amount: 1,
+        planCap: limit.monthlyCap,
+        idempotencyKey,
+      });
+    }
+
+    // 3) Generate notes using the same method as automatic generation
+    // Only consume quota after successful generation and saving
+    const enrichedNotes = await this._service.generateEnrichedNotes(
+      userId,
+      message.hanzi,
+      userHanzi,
+      convId,
+      msgId,
+    );
+
+    // 4) Consume quota only after successful generation and database save
+    // If generation failed, this line won't execute and quota won't be consumed
+    if (limit && limit.monthlyCap > 0) {
+      await this.usageService.recordUsage({
+        userId,
+        resource,
+        amount: 1,
+        idempotencyKey,
+      });
+    }
+
+    return {
+      ok: true,
+      notes: enrichedNotes,
+    };
   }
 }

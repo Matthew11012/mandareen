@@ -10,8 +10,13 @@ import {
   MouseEvent as ReactMouseEvent,
 } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { DashboardLayout } from "@/components/layout";
-import { lessonsApi, type LessonDetail } from "@/lib/api/lessons";
+import {
+  lessonsApi,
+  type LessonDetail,
+  type LessonAccess,
+} from "@/lib/api/lessons";
 import {
   Eye,
   EyeOff,
@@ -46,6 +51,26 @@ export default function LessonViewerPage() {
   useEffect(() => {
     if (lessonQuery.data) setData(lessonQuery.data);
   }, [lessonQuery.data]);
+
+  const access: LessonAccess =
+    data?.access === "preview" || data?.access === "full"
+      ? data.access
+      : "full";
+  const unlockInfo = data?.unlockInfo;
+
+  const visibleSections = useMemo(() => {
+    if (!data) return [];
+    if (
+      access === "preview" &&
+      Array.isArray(data.sectionsPreview) &&
+      data.sectionsPreview.length > 0
+    ) {
+      return data.sectionsPreview;
+    }
+    return data.sections ?? [];
+  }, [data, access]);
+
+  const isPreview = access === "preview";
 
   // Phase 2: Consolidated UI state via useReducer
   type SelectedWord = {
@@ -358,8 +383,8 @@ export default function LessonViewerPage() {
   };
 
   const storySection = useMemo(
-    () => data?.sections.find((s) => s.sectionType === "story"),
-    [data]
+    () => visibleSections.find((s) => s.sectionType === "story"),
+    [visibleSections]
   );
   type LessonToken = {
     text: string;
@@ -458,9 +483,41 @@ export default function LessonViewerPage() {
     | undefined;
 
   const dialogueSection = useMemo(
-    () => data?.sections.find((s) => s.sectionType === "dialogue"),
-    [data]
+    () => visibleSections.find((s) => s.sectionType === "dialogue"),
+    [visibleSections]
   );
+
+  const accessBanner = useMemo(() => {
+    if (access === "full") return null;
+    const message =
+      unlockInfo?.reason === "community_quota_exceeded"
+        ? "You've used your 10 free full community lessons for this period. You're seeing a preview of this lesson."
+        : "This community lesson is preview-only on your current plan.";
+
+    return (
+      <div
+        className="mb-6 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-50"
+        role="status"
+        aria-live="polite"
+      >
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-semibold text-amber-50/90">{message}</p>
+            <p className="mt-1 text-amber-100/80 text-sm">
+              Upgrade to Basic or Premium for full access to all user-generated
+              lessons (all HSK levels).
+            </p>
+          </div>
+          <Link
+            href="/pricing"
+            className="inline-flex items-center justify-center rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-black shadow hover:bg-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0e13]"
+          >
+            View plans
+          </Link>
+        </div>
+      </div>
+    );
+  }, [access, unlockInfo]);
   const dialogue = dialogueSection?.content as
     | {
         title?: string | null;
@@ -1423,7 +1480,13 @@ export default function LessonViewerPage() {
             ref={contentRef}
             className="sm:bg-[var(--surface-card)] sm:rounded-xl sm:p-6 sm:border sm:border-[color:var(--border-strong)] relative overflow-x-hidden"
           >
-            {story && (
+            {accessBanner}
+            {isPreview && (
+              <div className="text-center text-sm text-[color:var(--text-secondary-strong)] py-12">
+                Upgrade to Basic or Premium to unlock the full lesson content.
+              </div>
+            )}
+            {story && !isPreview && (
               <StorySection
                 segmentedParagraphs={
                   segmentedParagraphs as unknown as LessonToken[][]
@@ -1447,7 +1510,7 @@ export default function LessonViewerPage() {
               />
             )}
 
-            {dialogue && Array.isArray(dialogue.turns) && (
+            {dialogue && !isPreview && Array.isArray(dialogue.turns) && (
               <DialogueSection
                 turns={dialogue.turns}
                 isTurnPinyinOn={isTurnPinyinOn}
@@ -1465,72 +1528,73 @@ export default function LessonViewerPage() {
                 }
               />
             )}
-            {dialogue && (
+            {dialogue && !isPreview && (
               <>
                 {/* Quiz section (dialogue) */}
-                {(() => {
-                  type Seg = {
-                    text: string;
-                    isWord?: boolean;
-                    pinyin?: string;
-                    definition?: string;
-                    definitions?: string[];
-                    hskLevel?: number;
-                  };
-                  type QuizShape = {
-                    items?: Array<{
-                      question: {
-                        zh: string;
-                        translation?: string;
-                        segments?: Seg[];
-                      };
-                      options?: Array<{
-                        zh: string;
-                        translation?: string;
-                        segments?: Seg[];
+                {!isPreview &&
+                  (() => {
+                    type Seg = {
+                      text: string;
+                      isWord?: boolean;
+                      pinyin?: string;
+                      definition?: string;
+                      definitions?: string[];
+                      hskLevel?: number;
+                    };
+                    type QuizShape = {
+                      items?: Array<{
+                        question: {
+                          zh: string;
+                          translation?: string;
+                          segments?: Seg[];
+                        };
+                        options?: Array<{
+                          zh: string;
+                          translation?: string;
+                          segments?: Seg[];
+                        }>;
+                        answerIndex?: number;
+                        rationale?: string;
                       }>;
-                      answerIndex?: number;
-                      rationale?: string;
-                    }>;
-                    passingScore?: number;
-                  };
-                  const dialogueContent = dialogue as unknown as
-                    | { quiz?: QuizShape }
-                    | undefined;
-                  const quiz = dialogueContent?.quiz;
-                  if (
-                    !quiz ||
-                    !Array.isArray(quiz.items) ||
-                    quiz.items.length === 0
-                  )
-                    return null;
-                  return (
-                    <div className="mt-6">
-                      <QuizSection
-                        quiz={quiz}
-                        disabled={Boolean(data?.finished)}
-                        multiSelect={multiSelect}
-                        selectedWords={selectedWords}
-                        toggleSelectWord={toggleSelectWord}
-                        onAddFlashcard={(hanzi, ctx, vocab) =>
-                          void addSingleToFlashcards(hanzi, ctx, vocab)
-                        }
-                        onPerfectScore={async () => {
-                          if (data?.finished) return;
-                          try {
-                            await lessonsApi.finish(id);
-                            setData((prev) =>
-                              prev ? { ...prev, finished: true } : prev
-                            );
-                            toast.success("Marked as finished");
-                          } catch {
-                            toast.error("Failed to mark as finished");
+                      passingScore?: number;
+                    };
+                    const dialogueContent = dialogue as unknown as
+                      | { quiz?: QuizShape }
+                      | undefined;
+                    const quiz = dialogueContent?.quiz;
+                    if (
+                      !quiz ||
+                      !Array.isArray(quiz.items) ||
+                      quiz.items.length === 0
+                    )
+                      return null;
+                    return (
+                      <div className="mt-6">
+                        <QuizSection
+                          quiz={quiz}
+                          disabled={Boolean(data?.finished)}
+                          multiSelect={multiSelect}
+                          selectedWords={selectedWords}
+                          toggleSelectWord={toggleSelectWord}
+                          onAddFlashcard={(hanzi, ctx, vocab) =>
+                            void addSingleToFlashcards(hanzi, ctx, vocab)
                           }
-                        }}
-                      />
-                    </div>
-                  );
-                })()}
+                          onPerfectScore={async () => {
+                            if (data?.finished) return;
+                            try {
+                              await lessonsApi.finish(id);
+                              setData((prev) =>
+                                prev ? { ...prev, finished: true } : prev
+                              );
+                              toast.success("Marked as finished");
+                            } catch {
+                              toast.error("Failed to mark as finished");
+                            }
+                          }}
+                        />
+                      </div>
+                    );
+                  })()}
                 {Array.isArray(dialogue.grammarNotes) &&
                   dialogue.grammarNotes.length > 0 && (
                     <NotesSection
@@ -1554,79 +1618,81 @@ export default function LessonViewerPage() {
             )}
 
             {/* Quiz section (story only; dialogue quiz is rendered above notes inside the dialogue block) */}
-            {(() => {
-              type Seg = {
-                text: string;
-                isWord?: boolean;
-                pinyin?: string;
-                definition?: string;
-                definitions?: string[];
-                hskLevel?: number;
-              };
-              type QuizShape = {
-                items?: Array<{
-                  question: {
-                    zh: string;
-                    translation?: string;
-                    segments?: Seg[];
-                  };
-                  options?: Array<{
-                    zh: string;
-                    translation?: string;
-                    segments?: Seg[];
+            {!isPreview &&
+              (() => {
+                type Seg = {
+                  text: string;
+                  isWord?: boolean;
+                  pinyin?: string;
+                  definition?: string;
+                  definitions?: string[];
+                  hskLevel?: number;
+                };
+                type QuizShape = {
+                  items?: Array<{
+                    question: {
+                      zh: string;
+                      translation?: string;
+                      segments?: Seg[];
+                    };
+                    options?: Array<{
+                      zh: string;
+                      translation?: string;
+                      segments?: Seg[];
+                    }>;
+                    answerIndex?: number;
+                    rationale?: string;
                   }>;
-                  answerIndex?: number;
-                  rationale?: string;
-                }>;
-                passingScore?: number;
-              };
-              const hasDialogue = Boolean(
-                dialogue &&
-                  Array.isArray(
-                    (dialogue as unknown as { turns?: unknown[] }).turns
-                  )
-              );
-              const hasStory = Boolean(storySection && story);
-              const storyContent = story as unknown as
-                | { quiz?: QuizShape }
-                | undefined;
-              if (hasDialogue || !hasStory) return null;
-              const quiz = storyContent?.quiz;
-              if (
-                !quiz ||
-                !Array.isArray(quiz.items) ||
-                quiz.items.length === 0
-              )
-                return null;
-              return (
-                <div className="mt-6">
-                  <QuizSection
-                    quiz={quiz}
-                    disabled={Boolean(data?.finished)}
-                    multiSelect={multiSelect}
-                    selectedWords={selectedWords}
-                    toggleSelectWord={toggleSelectWord}
-                    onAddFlashcard={(hanzi, ctx, vocab) =>
-                      void addSingleToFlashcards(hanzi, ctx, vocab)
-                    }
-                    onPerfectScore={async () => {
-                      if (data?.finished) return;
-                      try {
-                        await lessonsApi.finish(id);
-                        setData((prev) =>
-                          prev ? { ...prev, finished: true } : prev
-                        );
-                        toast.success("Marked as finished");
-                      } catch {
-                        toast.error("Failed to mark as finished");
+                  passingScore?: number;
+                };
+                const hasDialogue = Boolean(
+                  dialogue &&
+                    Array.isArray(
+                      (dialogue as unknown as { turns?: unknown[] }).turns
+                    )
+                );
+                const hasStory = Boolean(storySection && story);
+                const storyContent = story as unknown as
+                  | { quiz?: QuizShape }
+                  | undefined;
+                if (hasDialogue || !hasStory) return null;
+                const quiz = storyContent?.quiz;
+                if (
+                  !quiz ||
+                  !Array.isArray(quiz.items) ||
+                  quiz.items.length === 0
+                )
+                  return null;
+                return (
+                  <div className="mt-6">
+                    <QuizSection
+                      quiz={quiz}
+                      disabled={Boolean(data?.finished)}
+                      multiSelect={multiSelect}
+                      selectedWords={selectedWords}
+                      toggleSelectWord={toggleSelectWord}
+                      onAddFlashcard={(hanzi, ctx, vocab) =>
+                        void addSingleToFlashcards(hanzi, ctx, vocab)
                       }
-                    }}
-                  />
-                </div>
-              );
-            })()}
+                      onPerfectScore={async () => {
+                        if (data?.finished) return;
+                        try {
+                          await lessonsApi.finish(id);
+                          setData((prev) =>
+                            prev ? { ...prev, finished: true } : prev
+                          );
+                          toast.success("Marked as finished");
+                        } catch {
+                          toast.error("Failed to mark as finished");
+                        }
+                      }}
+                    />
+                  </div>
+                );
+              })()}
 
             {story &&
+              !isPreview &&
               Array.isArray(story.grammarNotes) &&
               story.grammarNotes.length > 0 && (
                 <div className="mt-6">
@@ -1649,50 +1715,57 @@ export default function LessonViewerPage() {
                 </div>
               )}
 
-            {Array.isArray(story?.tipsRich) && story!.tipsRich!.length > 0 && (
-              <div className="mt-4 border border-[color:var(--border-default)] rounded-lg p-3 bg-[var(--surface-note)]">
-                <div className="text-xs font-semibold text-white mb-2">
-                  Tips
+            {Array.isArray(story?.tipsRich) &&
+              !isPreview &&
+              story!.tipsRich!.length > 0 && (
+                <div className="mt-4 border border-[color:var(--border-default)] rounded-lg p-3 bg-[var(--surface-note)]">
+                  <div className="text-xs font-semibold text-white mb-2">
+                    Tips
+                  </div>
+                  <ul className="space-y-2 list-disc list-outside pl-4 marker:text-[var(--text-marker)]">
+                    {story!.tipsRich!.slice(0, 4).map((tip, i) => (
+                      <li key={i}>
+                        {Array.isArray(tip.segments) &&
+                        tip.segments.length > 0 ? (
+                          <>
+                            {renderNotesSegmentsWithPopup(
+                              tip.segments,
+                              tip.zh,
+                              tip.en,
+                              notesPinyinOn,
+                              {
+                                section: "dialogue",
+                                noteIndex: i,
+                                field: "tip",
+                              }
+                            )}
+                            {tip.en ? (
+                              <div className="text-[color:var(--text-tertiary)] text-xs">
+                                {tip.en}
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-[color:var(--text-subtle)]">
+                              {tip.zh}
+                            </div>
+                            {notesPinyinOn ? null : null}
+                            {tip.en ? (
+                              <div className="text-[color:var(--text-tertiary)] text-xs">
+                                {tip.en}
+                              </div>
+                            ) : null}
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <ul className="space-y-2 list-disc list-outside pl-4 marker:text-[var(--text-marker)]">
-                  {story!.tipsRich!.slice(0, 4).map((tip, i) => (
-                    <li key={i}>
-                      {Array.isArray(tip.segments) &&
-                      tip.segments.length > 0 ? (
-                        <>
-                          {renderNotesSegmentsWithPopup(
-                            tip.segments,
-                            tip.zh,
-                            tip.en,
-                            notesPinyinOn,
-                            { section: "dialogue", noteIndex: i, field: "tip" }
-                          )}
-                          {tip.en ? (
-                            <div className="text-[color:var(--text-tertiary)] text-xs">
-                              {tip.en}
-                            </div>
-                          ) : null}
-                        </>
-                      ) : (
-                        <>
-                          <div className="text-[color:var(--text-subtle)]">
-                            {tip.zh}
-                          </div>
-                          {notesPinyinOn ? null : null}
-                          {tip.en ? (
-                            <div className="text-[color:var(--text-tertiary)] text-xs">
-                              {tip.en}
-                            </div>
-                          ) : null}
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              )}
 
             {Array.isArray(dialogue?.tipsRich) &&
+              !isPreview &&
               dialogue!.tipsRich!.length > 0 && (
                 <div className="mt-4 border border-[color:var(--border-default)] rounded-lg p-3 bg-[var(--surface-note)]">
                   <div className="text-xs font-semibold text-white mb-2">

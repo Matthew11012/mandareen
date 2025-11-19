@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { Volume2, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Volume2, Loader2, Sparkles } from "lucide-react";
 import { AiMessage } from "./AiMessage";
-import type { Message } from "@/lib/api/conversations";
+import type { Message, MessageNotes } from "@/lib/api/conversations";
 
 interface MessageViewProps {
   messages: Message[];
@@ -19,6 +19,8 @@ interface MessageViewProps {
     audioElement: HTMLAudioElement | null
   ) => void;
   onOpenNotesModal: (message: Message) => void;
+  onGenerateNotes?: (messageId: number) => Promise<void>;
+  conversationId: number | null;
   resolveMediaUrl: (url?: string) => string | undefined;
 }
 
@@ -33,9 +35,14 @@ export function MessageView({
   onToggleNotes,
   onToggleAudio,
   onOpenNotesModal,
+  onGenerateNotes,
+  conversationId,
   resolveMediaUrl,
 }: MessageViewProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [generatingNotes, setGeneratingNotes] = useState<
+    Record<number, boolean>
+  >({});
 
   // Auto-scroll to bottom when messages update
   useEffect(() => {
@@ -194,37 +201,83 @@ export function MessageView({
                 </div>
               </button>
 
-              {/* Notes toggle (AI only, show if notes exist or loading) */}
-              {m.role === "ai" &&
-                (m._loadingNotes || m.notes?.grammarNotes?.length) && (
-                  <button
-                    type="button"
-                    disabled={m._loadingNotes}
-                    onClick={() => !m._loadingNotes && onToggleNotes(m.id)}
-                    className={`px-2 py-1 text-xs rounded border ${
-                      m._loadingNotes
-                        ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
-                        : aiShowNotes[m.id]
+              {/* Notes toggle / Generate Notes button (AI only) */}
+              {m.role === "ai" && (
+                <>
+                  {/* Show notes toggle if notes exist */}
+                  {m.notes?.grammarNotes?.length ||
+                  (m.notes as MessageNotes)?.tipsRich?.length ? (
+                    <button
+                      type="button"
+                      onClick={() => onToggleNotes(m.id)}
+                      className={`px-2 py-1 text-xs rounded border ${
+                        aiShowNotes[m.id]
                           ? "border-[#4040f2] text-[#9aa6ff]"
                           : "border-[#404040] text-[#a6a6a6]"
-                    } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
-                    aria-pressed={!!aiShowNotes[m.id]}
-                    aria-label={
-                      m._loadingNotes
-                        ? "Generating notes..."
-                        : aiShowNotes[m.id]
-                          ? "Hide notes"
-                          : "Show notes"
-                    }
-                  >
-                    <div className="flex items-center gap-1">
-                      {m._loadingNotes && (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      )}
+                      } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
+                      aria-pressed={!!aiShowNotes[m.id]}
+                      aria-label={
+                        aiShowNotes[m.id] ? "Hide notes" : "Show notes"
+                      }
+                    >
                       <span>Notes {aiShowNotes[m.id] ? "On" : "Off"}</span>
-                    </div>
-                  </button>
-                )}
+                    </button>
+                  ) : (
+                    /* Show Generate Notes button if no notes exist */
+                    onGenerateNotes &&
+                    conversationId && (
+                      <button
+                        type="button"
+                        disabled={generatingNotes[m.id]}
+                        onClick={async () => {
+                          if (generatingNotes[m.id] || !onGenerateNotes) return;
+                          setGeneratingNotes((prev) => ({
+                            ...prev,
+                            [m.id]: true,
+                          }));
+                          try {
+                            await onGenerateNotes(m.id);
+                            // Modal will be opened by the parent component after generation
+                          } catch (err) {
+                            // Error handling is done in the parent component (toast shown)
+                            // Just log for debugging
+                            console.error("Failed to generate notes:", err);
+                          } finally {
+                            setGeneratingNotes((prev) => {
+                              const next = { ...prev };
+                              delete next[m.id];
+                              return next;
+                            });
+                          }
+                        }}
+                        className={`px-2 py-1 text-xs rounded border ${
+                          generatingNotes[m.id]
+                            ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
+                            : "border-blue-500/40 text-blue-400 bg-blue-500/10"
+                        } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 focus-visible:ring-offset-[#20242b]`}
+                        aria-label={
+                          generatingNotes[m.id]
+                            ? "Generating notes..."
+                            : "Generate notes"
+                        }
+                      >
+                        <div className="flex items-center gap-1">
+                          {generatingNotes[m.id] ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3 h-3" />
+                          )}
+                          <span>
+                            {generatingNotes[m.id]
+                              ? "Generating..."
+                              : "Generate Notes"}
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  )}
+                </>
+              )}
             </>
           </div>
           <div

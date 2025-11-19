@@ -40,7 +40,7 @@ export class OpenAIService {
   async analyzeChineseSentence(
     text: string,
   ): Promise<{ pinyin: string; translation: string }> {
-    const model = 'gpt-4o-mini';
+    const model = process.env.OPENAI_MODEL_TRANSLATE || 'gpt-5-nano';
     const completion = await this.openai.chat.completions.create({
       model,
       messages: [

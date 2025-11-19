@@ -3,13 +3,14 @@
  * Used for displaying usage data in the UI.
  */
 export const RESOURCE_LABELS: Record<string, string> = {
-  convo_message_text: "Conversation messages",
-  convo_message_audio: "Audio messages",
-  convo_tts_seconds: "TTS minutes",
+  convo_tts_seconds: "Audio minutes",
   lesson_custom_generated: "Custom lessons",
   curriculum_generated: "Curriculum generations",
   assessment_taken: "Assessments",
   convo_stream: "Concurrent conversation streams",
+  community_lesson_full_view: "Community full lesson views",
+  curriculum_unit_full_access: "Full curriculum units unlocked",
+  convo_manual_notes: "Note generations",
 } as const;
 
 /**
@@ -17,12 +18,13 @@ export const RESOURCE_LABELS: Record<string, string> = {
  * Resources are displayed in this order on the usage page.
  */
 export const RESOURCE_ORDER: string[] = [
-  "convo_message_text",
-  "convo_message_audio",
   "convo_tts_seconds",
   "lesson_custom_generated",
   "curriculum_generated",
   "assessment_taken",
+  "community_lesson_full_view",
+  "curriculum_unit_full_access",
+  "convo_manual_notes",
   "convo_stream",
 ];
 
@@ -43,6 +45,9 @@ export function getResourceLabel(resource: string): string {
  * @returns True if resource should be displayed
  */
 export function shouldDisplayResource(resource: string, cap: number): boolean {
+  if (resource === "convo_message_text" || resource === "convo_message_audio") {
+    return false;
+  }
   // Hide resources with cap 0 (unlimited or not applicable)
   if (cap === 0) {
     return false;
@@ -67,11 +72,11 @@ export function transformResourceUsage(
   let transformedCap = cap;
   let label = getResourceLabel(resource);
 
-  // Convert TTS seconds to minutes for display
+  // Convert audio seconds to minutes for display (with decimal precision)
   if (resource === "convo_tts_seconds") {
-    transformedUsed = Math.round(used / 60);
-    transformedCap = Math.round(cap / 60);
-    label = "TTS minutes";
+    transformedUsed = Number((used / 60).toFixed(2));
+    transformedCap = Number((cap / 60).toFixed(2));
+    label = "Audio minutes";
   }
 
   return {
@@ -80,4 +85,3 @@ export function transformResourceUsage(
     label,
   };
 }
-

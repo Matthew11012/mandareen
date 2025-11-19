@@ -26,6 +26,9 @@ const RESOURCES = {
   CURRICULUM_GENERATED: 'curriculum_generated',
   ASSESSMENT_TAKEN: 'assessment_taken',
   CONVO_STREAM: 'convo_stream',
+  COMMUNITY_LESSON_FULL_VIEW: 'community_lesson_full_view',
+  CURRICULUM_UNIT_FULL_ACCESS: 'curriculum_unit_full_access',
+  CONVO_MANUAL_NOTES: 'convo_manual_notes',
 } as const;
 
 interface PlanLimitConfig {
@@ -76,29 +79,18 @@ const PLANS: PlanConfig[] = [
     polarPriceId: 'polar_price_free_monthly', // Placeholder
     limits: [
       {
-        resource: RESOURCES.CONVO_MESSAGE_TEXT,
-        monthlyCap: 60,
-        rpm: 12,
-        burst: 24,
-      },
-      {
-        resource: RESOURCES.CONVO_MESSAGE_AUDIO,
-        monthlyCap: 20,
-        rpm: 30,
-      },
-      {
         resource: RESOURCES.CONVO_TTS_SECONDS,
-        monthlyCap: 900, // 15 minutes
+        monthlyCap: 60, // 1 minutes
         rpm: 30,
       },
       {
         resource: RESOURCES.LESSON_CUSTOM_GENERATED,
-        monthlyCap: 8,
+        monthlyCap: 2,
         rpm: 240, // 4 per hour
       },
       {
         resource: RESOURCES.CURRICULUM_GENERATED,
-        monthlyCap: 5,
+        monthlyCap: 1,
         rpm: 4,
       },
       {
@@ -109,6 +101,18 @@ const PLANS: PlanConfig[] = [
         resource: RESOURCES.CONVO_STREAM,
         monthlyCap: 0, // Not used for monthlyCap, only concurrency
         concurrency: 1,
+      },
+      {
+        resource: RESOURCES.COMMUNITY_LESSON_FULL_VIEW,
+        monthlyCap: 4,
+      },
+      {
+        resource: RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
+        monthlyCap: 1,
+      },
+      {
+        resource: RESOURCES.CONVO_MANUAL_NOTES,
+        monthlyCap: 3,
       },
     ],
     features: [
@@ -126,29 +130,18 @@ const PLANS: PlanConfig[] = [
     polarPriceId: 'polar_price_basic_monthly', // Placeholder
     limits: [
       {
-        resource: RESOURCES.CONVO_MESSAGE_TEXT,
-        monthlyCap: 400,
-        rpm: 24,
-        burst: 48,
-      },
-      {
-        resource: RESOURCES.CONVO_MESSAGE_AUDIO,
-        monthlyCap: 150,
-        rpm: 30,
-      },
-      {
         resource: RESOURCES.CONVO_TTS_SECONDS,
-        monthlyCap: 7200, // 120 minutes
+        monthlyCap: 9000, // 150 minutes
         rpm: 30,
       },
       {
         resource: RESOURCES.LESSON_CUSTOM_GENERATED,
-        monthlyCap: 60,
+        monthlyCap: 80,
         rpm: 720, // 12 per hour
       },
       {
         resource: RESOURCES.CURRICULUM_GENERATED,
-        monthlyCap: 30,
+        monthlyCap: 50,
         rpm: 8,
       },
       {
@@ -159,6 +152,18 @@ const PLANS: PlanConfig[] = [
         resource: RESOURCES.CONVO_STREAM,
         monthlyCap: 0,
         concurrency: 2,
+      },
+      {
+        resource: RESOURCES.COMMUNITY_LESSON_FULL_VIEW,
+        monthlyCap: 0,
+      },
+      {
+        resource: RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
+        monthlyCap: 0,
+      },
+      {
+        resource: RESOURCES.CONVO_MANUAL_NOTES,
+        monthlyCap: 80,
       },
     ],
     features: [
@@ -176,19 +181,8 @@ const PLANS: PlanConfig[] = [
     polarPriceId: 'polar_price_premium_monthly', // Placeholder
     limits: [
       {
-        resource: RESOURCES.CONVO_MESSAGE_TEXT,
-        monthlyCap: 2000,
-        rpm: 48,
-        burst: 96,
-      },
-      {
-        resource: RESOURCES.CONVO_MESSAGE_AUDIO,
-        monthlyCap: 600,
-        rpm: 30,
-      },
-      {
         resource: RESOURCES.CONVO_TTS_SECONDS,
-        monthlyCap: 21600, // 360 minutes
+        monthlyCap: 18000, // 300 minutes
         rpm: 30,
       },
       {
@@ -209,6 +203,18 @@ const PLANS: PlanConfig[] = [
         resource: RESOURCES.CONVO_STREAM,
         monthlyCap: 0,
         concurrency: 3,
+      },
+      {
+        resource: RESOURCES.COMMUNITY_LESSON_FULL_VIEW,
+        monthlyCap: 0,
+      },
+      {
+        resource: RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
+        monthlyCap: 0,
+      },
+      {
+        resource: RESOURCES.CONVO_MANUAL_NOTES,
+        monthlyCap: 200,
       },
     ],
     features: [
@@ -248,30 +254,40 @@ async function main() {
 
     console.log(`[seed-plans] Plan ${planConfig.code} (ID: ${plan.id})`);
 
-    // Upsert limits
+    // Upsert limits (update if exists, insert otherwise)
+    const existingLimits = await prisma.planLimit.findMany({
+      where: { planId: plan.id },
+      select: { id: true, resource: true },
+    });
+    const existingLimitMap = new Map(
+      existingLimits.map((limit) => [limit.resource, limit.id]),
+    );
+
     for (const limitConfig of planConfig.limits) {
-      await prisma.planLimit.upsert({
-        where: {
-          planId_resource: {
+      const limitId = existingLimitMap.get(limitConfig.resource);
+
+      if (limitId) {
+        await prisma.planLimit.update({
+          where: { id: limitId },
+          data: {
+            monthlyCap: limitConfig.monthlyCap,
+            rpm: limitConfig.rpm ?? null,
+            burst: limitConfig.burst ?? null,
+            concurrency: limitConfig.concurrency ?? null,
+          },
+        });
+      } else {
+        await prisma.planLimit.create({
+          data: {
             planId: plan.id,
             resource: limitConfig.resource,
+            monthlyCap: limitConfig.monthlyCap,
+            rpm: limitConfig.rpm ?? null,
+            burst: limitConfig.burst ?? null,
+            concurrency: limitConfig.concurrency ?? null,
           },
-        },
-        update: {
-          monthlyCap: limitConfig.monthlyCap,
-          rpm: limitConfig.rpm ?? null,
-          burst: limitConfig.burst ?? null,
-          concurrency: limitConfig.concurrency ?? null,
-        },
-        create: {
-          planId: plan.id,
-          resource: limitConfig.resource,
-          monthlyCap: limitConfig.monthlyCap,
-          rpm: limitConfig.rpm ?? null,
-          burst: limitConfig.burst ?? null,
-          concurrency: limitConfig.concurrency ?? null,
-        },
-      });
+        });
+      }
     }
 
     console.log(

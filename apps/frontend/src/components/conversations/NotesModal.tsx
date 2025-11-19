@@ -2,10 +2,12 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Plus } from "lucide-react";
+import { Plus, Loader2, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { NotesSection } from "@/components/lessons/NotesSection";
 import { addSingleToFlashcards } from "@/lib/utils/flashcards";
-import type { Message } from "@/lib/api/conversations";
+import type { Message, MessageNotes } from "@/lib/api/conversations";
+import { conversationsApi } from "@/lib/api/conversations";
 
 // Local types for notes rendering
 type SegToken = {
@@ -27,7 +29,8 @@ type GrammarNote = {
   briefSegments?: SegToken[];
   examples?: Tip[];
 };
-type MessageNotes = {
+// Local type alias for type assertions (extends imported MessageNotes)
+type LocalMessageNotes = MessageNotes & {
   grammarNotes?: GrammarNote[];
   tipsRich?: Tip[];
 };
@@ -35,6 +38,7 @@ type MessageNotes = {
 interface NotesModalProps {
   open: boolean;
   message: Message | null;
+  conversationId: number | null;
   onClose: () => void;
   notesPinyinOn: boolean;
   onTogglePinyin: () => void;
@@ -43,10 +47,65 @@ interface NotesModalProps {
 export function NotesModal({
   open,
   message,
+  conversationId,
   onClose,
   notesPinyinOn,
   onTogglePinyin,
 }: NotesModalProps) {
+  // Manual notes generation state
+  // Check if notes actually exist (notes are now manual-only, so ignore _loadingNotes)
+  const hasNotes = Boolean(
+    message?.notes &&
+      (((message.notes as LocalMessageNotes).grammarNotes?.length ?? 0) > 0 ||
+        ((message.notes as LocalMessageNotes).tipsRich?.length ?? 0) > 0)
+  );
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
+
+  // Reset state when message changes
+  useEffect(() => {
+    setGenerateError(null);
+    setQuotaExceeded(false);
+  }, [message]);
+
+  // Generate notes handler
+  const handleGenerateNotes = async () => {
+    if (!message || !conversationId || message.role !== "ai") return;
+    setGenerating(true);
+    setGenerateError(null);
+    setQuotaExceeded(false);
+    try {
+      const res = await conversationsApi.generateManualNotes(
+        conversationId,
+        message.id
+      );
+      // Update local message.notes
+      if (message) {
+        (message as Message).notes = res.notes;
+      }
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Failed to generate notes. Please try again.";
+      setGenerateError(msg);
+
+      // Detect quota exceeded
+      if (typeof err === "object" && err !== null) {
+        const errorObj = err as {
+          status?: number;
+          response?: { status?: number };
+        };
+        const status = errorObj.status ?? errorObj.response?.status;
+        if (status === 429 || status === 403) {
+          setQuotaExceeded(true);
+        }
+      }
+    } finally {
+      setGenerating(false);
+    }
+  };
   // Popup state for word definitions
   const [notesPopup, setNotesPopup] = useState<{
     open: boolean;
@@ -260,6 +319,7 @@ export function NotesModal({
               <button
                 onClick={onClose}
                 className="text-[#a6a6a6] text-xs hover:text-white cursor-pointer"
+                aria-label="Close notes modal"
               >
                 Close
               </button>
@@ -322,14 +382,14 @@ export function NotesModal({
                 maxItems={Infinity}
               />
             ) : null}
-            {Array.isArray((message.notes as MessageNotes)?.tipsRich) &&
-            (message.notes as MessageNotes).tipsRich!.length > 0 ? (
+            {Array.isArray((message.notes as LocalMessageNotes)?.tipsRich) &&
+            (message.notes as LocalMessageNotes).tipsRich!.length > 0 ? (
               <div className="pt-2 border-t border-[#2a2e36]">
                 <div className="text-sm font-semibold text-white mb-2">
                   Tips
                 </div>
                 <ul className="space-y-2 list-disc list-outside pl-5 marker:text-[#596080]">
-                  {(message.notes as MessageNotes).tipsRich!.map(
+                  {(message.notes as LocalMessageNotes).tipsRich!.map(
                     (t: Tip, i: number) => (
                       <li key={i}>
                         {Array.isArray(t.segments) && t.segments.length > 0 ? (
@@ -367,6 +427,65 @@ export function NotesModal({
                 </ul>
               </div>
             ) : null}
+
+            {/* Manual Notes Generation Section */}
+            {/* Show generate button for AI messages without notes */}
+            {conversationId && message.role === "ai" && !hasNotes && (
+              <div className="mt-4 border-t border-[#2a2e36] pt-4">
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white mb-1">
+                      Generate Notes
+                    </h3>
+                    <p className="text-xs text-white/70">
+                      Generate grammar notes and tips for this AI response.
+                    </p>
+                  </div>
+                  {generateError && (
+                    <p className="text-xs text-red-400" role="alert">
+                      {generateError}
+                    </p>
+                  )}
+                  {quotaExceeded && (
+                    <p className="text-xs text-amber-300" role="alert">
+                      You&apos;ve reached the manual notes generation limit for
+                      your plan.{" "}
+                      <Link
+                        href="/pricing"
+                        className="underline hover:text-amber-200"
+                      >
+                        View plans
+                      </Link>{" "}
+                      to increase your quota.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleGenerateNotes}
+                    disabled={generating}
+                    className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-400 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101218]"
+                    aria-label={
+                      generating ? "Generating notes" : "Generate notes"
+                    }
+                  >
+                    {generating ? (
+                      <>
+                        <Loader2
+                          className="w-4 h-4 animate-spin"
+                          aria-hidden="true"
+                        />
+                        <span>Generating notes…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" aria-hidden="true" />
+                        <span>Generate Notes</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

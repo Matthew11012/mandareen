@@ -14,6 +14,7 @@ import {
   getUnit,
   type CurriculumUnit,
   type CurriculumLesson,
+  type CurriculumAccess,
 } from "@/lib/api/curriculum";
 import {
   ChevronRight,
@@ -22,6 +23,7 @@ import {
   CheckCircle2,
   Loader2,
   AlertCircle,
+  Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -136,6 +138,8 @@ function useCurriculumData() {
             const next = new Map(prev);
             next.set(unitId, {
               ...unit,
+              access: data.access ?? unit.access,
+              isFreeSample: data.isFreeSample ?? unit.isFreeSample,
               lessons: data.lessons,
               isLoading: false,
               error: null,
@@ -328,6 +332,7 @@ interface LessonItemProps {
   unitId: number;
   isCurrent: boolean;
   onNavigate?: () => void;
+  unitAccess?: CurriculumAccess;
 }
 
 function LessonItem({
@@ -335,11 +340,16 @@ function LessonItem({
   unitId,
   isCurrent,
   onNavigate,
+  unitAccess,
 }: LessonItemProps) {
   const handleClick = () => {
     onNavigate?.();
   };
   const isCompleted = lesson.completed ?? false;
+  const lessonAccess = (lesson.access ??
+    unitAccess ??
+    "full") as CurriculumAccess;
+  const isLocked = lessonAccess === "preview";
 
   return (
     <li>
@@ -349,6 +359,21 @@ function LessonItem({
         delay={300}
         className="z-[10000] w-full"
       >
+        {isLocked ? (
+          <div
+            aria-disabled="true"
+            className={cn(
+              "flex items-center gap-2 px-3 py-2 rounded-lg text-sm min-h-[44px] touch-manipulation w-full cursor-not-allowed opacity-60 bg-white/5 text-white/70",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1d23]"
+            )}
+          >
+            <Lock className="w-4 h-4 text-amber-300 flex-shrink-0" />
+            <span className="flex-1 text-xs truncate block">
+              {lesson.title}
+            </span>
+            <span className="text-[11px] text-amber-200">Preview</span>
+          </div>
+        ) : (
         <Link
           href={`/curriculum/${unitId}/${lesson.id}`}
           onClick={handleClick}
@@ -368,9 +393,12 @@ function LessonItem({
           ) : (
             <div className="w-4 h-4 flex-shrink-0" />
           )}
-          <span className="flex-1 text-xs truncate block">{lesson.title}</span>
+            <span className="flex-1 text-xs truncate block">
+              {lesson.title}
+            </span>
           {isCurrent && <span className="sr-only">Current lesson</span>}
         </Link>
+        )}
       </ConditionalTooltip>
     </li>
   );
@@ -401,6 +429,8 @@ function UnitSection({
   const hasLessons = Array.isArray(unit.lessons) && unit.lessons.length > 0;
   const isLoading = unit.isLoading ?? false;
   const error = unit.error;
+  const unitAccess = (unit.access ?? "full") as CurriculumAccess;
+  const isLockedUnit = unitAccess === "preview";
   const prefersReducedMotion = useReducedMotionSafe();
   const hasAnimatedRef = useRef(false);
   const hasBeenManuallyToggledRef = useRef(false);
@@ -493,8 +523,15 @@ function UnitSection({
             )}
           </div>
           <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
             <div className="font-medium text-xs text-white truncate w-full">
               {unit.title}
+              </div>
+              {isLockedUnit && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-inter text-amber-100">
+                  <Lock className="w-3 h-3" /> Preview
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 mt-1">
               <div className="text-xs text-white/60 tabular-nums">
@@ -577,6 +614,14 @@ function UnitSection({
 
             {hasLessons && (
               <ul className="space-y-1 px-2 mt-2" role="list">
+                {isLockedUnit && (
+                  <li>
+                    <div className="mx-1 mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] font-inter text-amber-50">
+                      Preview only – upgrade to Basic or Premium to unlock this
+                      unit.
+                    </div>
+                  </li>
+                )}
                 {unit
                   .lessons!.sort((a, b) => a.order - b.order)
                   .map((lesson) => (
@@ -586,6 +631,7 @@ function UnitSection({
                       unitId={unit.id}
                       isCurrent={lesson.id === currentLessonId}
                       onNavigate={onLessonNavigate}
+                      unitAccess={unit.access as CurriculumAccess | undefined}
                     />
                   ))}
               </ul>
@@ -712,7 +758,12 @@ export function CurriculumNavigationSidebar({
   }, []);
 
   const sortedUnits = useMemo(
-    () => [...units].sort((a, b) => a.id - b.id),
+    () =>
+      [...units].sort((a, b) => {
+        const aOrder = a.order ?? a.id;
+        const bOrder = b.order ?? b.id;
+        return aOrder - bOrder;
+      }),
     [units]
   );
 

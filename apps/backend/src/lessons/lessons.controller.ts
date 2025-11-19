@@ -7,10 +7,26 @@ import {
   UseGuards,
   Req,
   Query,
+  Logger,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { LessonsService } from './lessons.service';
 import { AuthenticatedRequest } from '../types/request.types';
+import { UsageService } from '../billing/usage.service';
+import { BILLING_RESOURCES } from '../billing/billing-resources.constants';
+import { BillingPlanService } from '../billing/billing-plan.service';
+import { QuotaExceededError } from '../billing/errors/billing.errors';
+
+type LessonAccess = 'full' | 'preview';
+type PlanCode = 'FREE' | 'BASIC' | 'PREMIUM';
+type LessonUnlockInfo =
+  | {
+      reason: 'community_quota_exceeded' | 'plan_restricted';
+      planCode: PlanCode;
+      remainingViews?: number | null;
+    }
+  | undefined;
 
 export interface GenerateLessonDto {
   level?: number;
@@ -22,8 +38,19 @@ export interface GenerateLessonDto {
 @Controller('lessons')
 @UseGuards(JwtAuthGuard)
 export class LessonsController {
-  constructor(private readonly lessonsService: LessonsService) {
-    void this.lessonsService;
+  private readonly logger = new Logger(LessonsController.name);
+  private readonly lessonsService: LessonsService;
+  private readonly usageService: UsageService;
+  private readonly billingPlanService: BillingPlanService;
+
+  constructor(
+    lessonsService: LessonsService,
+    usageService: UsageService,
+    billingPlanService: BillingPlanService,
+  ) {
+    this.lessonsService = lessonsService;
+    this.usageService = usageService;
+    this.billingPlanService = billingPlanService;
   }
 
   @Post('generate')
@@ -190,23 +217,120 @@ export class LessonsController {
     title: string | null;
     createdAt: string;
     sections: Array<{ id: number; sectionType: string; content: any }>;
+    sectionsPreview?: Array<{ id: number; sectionType: string; content: any }>;
     finished?: boolean;
+    access: LessonAccess;
+    unlockInfo?: LessonUnlockInfo;
   }> {
-    const lesson = await this.lessonsService.getLessonById(
-      parseInt(id, 10),
-      req.user?.id,
-    );
+    const lessonId = parseInt(id, 10);
+    if (!Number.isFinite(lessonId)) {
+      throw new BadRequestException('Invalid lesson id');
+    }
+
+    const userId = req.user.id;
+    const lesson = await this.lessonsService.getLessonById(lessonId, userId);
+    const isCreator =
+      lesson?.createdBy &&
+      typeof req.user?.email === 'string' &&
+      lesson.createdBy === req.user.email;
+    const {
+      plan: { code: rawPlanCode },
+    } = await this.billingPlanService.getUserPlan(userId);
+    const planCode = (String(rawPlanCode || 'FREE').toUpperCase() ||
+      'FREE') as PlanCode;
+
+    let sections = lesson.sections.map((s) => ({
+      id: s.id,
+      sectionType: s.sectionType,
+      content: s.content,
+    }));
+
+    const resource = BILLING_RESOURCES.COMMUNITY_LESSON_FULL_VIEW;
+    let access: LessonAccess = 'full';
+    let sectionsPreview:
+      | Array<{ id: number; sectionType: string; content: any }>
+      | undefined;
+    let unlockInfo: LessonUnlockInfo;
+
+    const recordAnalytics = async (
+      event: 'community_full_view' | 'community_preview_view',
+      viewAccess: LessonAccess,
+      owned = false,
+    ) => {
+      try {
+        await this.usageService.recordAnalytics({
+          userId,
+          resource,
+          amount: 0,
+          metadata: {
+            lessonId,
+            access: viewAccess,
+            event,
+            planCode,
+            owned,
+          },
+        });
+      } catch (err) {
+        this.logger.warn('Failed to record community lesson view', err as any);
+      }
+    };
+
+    if (isCreator) {
+      await recordAnalytics('community_full_view', 'full', true);
+    } else if (planCode === 'BASIC' || planCode === 'PREMIUM') {
+      await recordAnalytics('community_full_view', 'full');
+    } else {
+      const limit = await this.billingPlanService.getLimit(userId, resource);
+      if (!limit || typeof limit.monthlyCap !== 'number') {
+        access = 'preview';
+        sectionsPreview = this.lessonsService.buildLessonPreview(lesson as any);
+        unlockInfo = {
+          reason: 'plan_restricted',
+          planCode,
+          remainingViews: null,
+        };
+        await recordAnalytics('community_preview_view', 'preview');
+      } else if (limit.monthlyCap <= 0) {
+        await recordAnalytics('community_full_view', 'full');
+      } else {
+        const idempotencyKey = `community_view:${userId}:${lessonId}`;
+        try {
+          await this.usageService.checkAndConsume({
+            userId,
+            resource,
+            amount: 1,
+            planCap: limit.monthlyCap,
+            idempotencyKey,
+          });
+          await recordAnalytics('community_full_view', 'full');
+        } catch (err) {
+          if (err instanceof QuotaExceededError) {
+            access = 'preview';
+            sections = [];
+            sectionsPreview = [];
+            unlockInfo = {
+              reason: 'community_quota_exceeded',
+              planCode,
+              remainingViews: 0,
+            };
+            await recordAnalytics('community_preview_view', 'preview');
+          } else {
+            throw err;
+          }
+        }
+      }
+    }
+
     return {
       id: lesson.id,
       level: lesson.level,
       title: lesson.title ?? null,
       createdAt: lesson.createdAt.toISOString(),
-      sections: lesson.sections.map((s) => ({
-        id: s.id,
-        sectionType: s.sectionType,
-        content: s.content,
-      })),
+      sections,
+      sectionsPreview,
       finished: (lesson as any).finished,
+      access,
+      unlockInfo,
     };
   }
 
