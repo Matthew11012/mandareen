@@ -489,14 +489,10 @@ export default function LessonViewerPage() {
 
   const accessBanner = useMemo(() => {
     if (access === "full") return null;
-    const remaining =
-      typeof unlockInfo?.remainingViews === "number"
-        ? unlockInfo.remainingViews
-        : null;
     const message =
-      unlockInfo?.reason === "plan_restricted"
-        ? "This lesson is preview-only on your current plan."
-        : "You've used your free community lesson views for this monthly period";
+      unlockInfo?.reason === "community_quota_exceeded"
+        ? "You've used your 10 free full community lessons for this period. You're seeing a preview of this lesson."
+        : "This community lesson is preview-only on your current plan.";
 
     return (
       <div
@@ -506,18 +502,17 @@ export default function LessonViewerPage() {
       >
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="mt-1 text-amber-50/90">{message}</p>
-            {remaining !== null && remaining >= 0 ? (
-              <p className="mt-1 text-amber-50/70">
-                Remaining free full views this month: {remaining}
-              </p>
-            ) : null}
+            <p className="font-semibold text-amber-50/90">{message}</p>
+            <p className="mt-1 text-amber-100/80 text-sm">
+              Upgrade to Basic or Premium for full access to all user-generated
+              lessons (all HSK levels).
+            </p>
           </div>
           <Link
             href="/pricing"
             className="inline-flex items-center justify-center rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-black shadow hover:bg-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0e13]"
           >
-            Upgrade for full access
+            View plans
           </Link>
         </div>
       </div>

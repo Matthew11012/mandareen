@@ -432,10 +432,14 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
                     <p className="font-semibold">Preview lesson</p>
-                    <p className="mt-1 text-amber-100/80">
+                    <p className="mt-1 text-amber-100/80 text-sm">
                       {unlockInfo?.reason === "curriculum_quota_exceeded"
-                        ? "You’ve used your free full curriculum unit this period. Upgrade to keep learning."
-                        : "This lesson is preview-only on your current plan. Upgrade to unlock all practice activities."}
+                        ? "You've used your free full curriculum unit for this period. You're seeing a preview of this lesson."
+                        : "This lesson is preview-only on your current plan."}
+                    </p>
+                    <p className="mt-1 text-amber-100/80 text-sm">
+                      Upgrade to Basic or Premium for full access to all
+                      curriculum units, lessons, and quizzes.
                     </p>
                   </div>
                   <Link
@@ -480,53 +484,53 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
               !isPreviewLesson &&
               lessonData &&
               activities.length === 0 && (
-                <div className="rounded-2xl border border-white/10 bg-[#16181d] p-4 sm:p-6">
-                  <p className="text-white/80 font-inter text-sm sm:text-base">
-                    No content yet. Generate the lesson activities.
-                  </p>
-                  <div className="mt-3">
-                    {(() => {
-                      const tooltipMessage = getTooltipMessage();
-                      const button = (
-                        <button
-                          onClick={onGenerate}
+              <div className="rounded-2xl border border-white/10 bg-[#16181d] p-4 sm:p-6">
+                <p className="text-white/80 font-inter text-sm sm:text-base">
+                  No content yet. Generate the lesson activities.
+                </p>
+                <div className="mt-3">
+                  {(() => {
+                    const tooltipMessage = getTooltipMessage();
+                    const button = (
+                      <button
+                        onClick={onGenerate}
                           disabled={
                             generating || isQuotaExceeded || usageLoading
                           }
-                          className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm sm:text-base min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d]"
+                        className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 font-inter text-white transition-colors duration-200 hover:bg-white/15 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm sm:text-base min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d]"
+                      >
+                        {generating ? (
+                          <>
+                            <Loader2 className="h-5 w-5 sm:h-4 sm:w-4 animate-spin flex-shrink-0" />
+                            <span className="hidden sm:inline">
+                              Generating lesson (this may take 1-2 minutes)…
+                            </span>
+                            <span className="sm:hidden">Generating…</span>
+                          </>
+                        ) : (
+                          "Generate lesson"
+                        )}
+                      </button>
+                    );
+
+                    // Wrap with tooltip if quota exceeded
+                    if (isQuotaExceeded && tooltipMessage) {
+                      return (
+                        <Tooltip
+                          content={tooltipMessage}
+                          position="top"
+                          delay={0}
                         >
-                          {generating ? (
-                            <>
-                              <Loader2 className="h-5 w-5 sm:h-4 sm:w-4 animate-spin flex-shrink-0" />
-                              <span className="hidden sm:inline">
-                                Generating lesson (this may take 1-2 minutes)…
-                              </span>
-                              <span className="sm:hidden">Generating…</span>
-                            </>
-                          ) : (
-                            "Generate lesson"
-                          )}
-                        </button>
+                          {button}
+                        </Tooltip>
                       );
+                    }
 
-                      // Wrap with tooltip if quota exceeded
-                      if (isQuotaExceeded && tooltipMessage) {
-                        return (
-                          <Tooltip
-                            content={tooltipMessage}
-                            position="top"
-                            delay={0}
-                          >
-                            {button}
-                          </Tooltip>
-                        );
-                      }
-
-                      return button;
-                    })()}
-                  </div>
+                    return button;
+                  })()}
                 </div>
-              )}
+              </div>
+            )}
 
             {isPreviewLesson && (
               <div className="rounded-2xl border border-amber-500/30 bg-[#16181d] p-6 text-center">

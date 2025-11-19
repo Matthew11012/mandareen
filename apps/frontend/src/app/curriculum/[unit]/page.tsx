@@ -243,9 +243,10 @@ export default function UnitDetailPage({
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="font-semibold">Preview unit</p>
-            <p className="mt-1 text-amber-100/80">
-              Upgrade to Basic or Premium to unlock all lessons and practice
-              activities in this unit.
+            <p className="mt-1 text-amber-100/80 text-sm">
+              You&apos;re viewing a preview of this curriculum unit. Free users
+              get limited full units; upgrade to Basic or Premium for full
+              access to all units and lessons.
             </p>
           </div>
           <Link

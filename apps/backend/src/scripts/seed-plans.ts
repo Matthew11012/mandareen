@@ -79,17 +79,6 @@ const PLANS: PlanConfig[] = [
     polarPriceId: 'polar_price_free_monthly', // Placeholder
     limits: [
       {
-        resource: RESOURCES.CONVO_MESSAGE_TEXT,
-        monthlyCap: 60,
-        rpm: 12,
-        burst: 24,
-      },
-      {
-        resource: RESOURCES.CONVO_MESSAGE_AUDIO,
-        monthlyCap: 20,
-        rpm: 30,
-      },
-      {
         resource: RESOURCES.CONVO_TTS_SECONDS,
         monthlyCap: 60, // 1 minutes
         rpm: 30,
@@ -141,19 +130,8 @@ const PLANS: PlanConfig[] = [
     polarPriceId: 'polar_price_basic_monthly', // Placeholder
     limits: [
       {
-        resource: RESOURCES.CONVO_MESSAGE_TEXT,
-        monthlyCap: 400,
-        rpm: 24,
-        burst: 48,
-      },
-      {
-        resource: RESOURCES.CONVO_MESSAGE_AUDIO,
-        monthlyCap: 150,
-        rpm: 30,
-      },
-      {
         resource: RESOURCES.CONVO_TTS_SECONDS,
-        monthlyCap: 9000, // 120 minutes
+        monthlyCap: 9000, // 150 minutes
         rpm: 30,
       },
       {
@@ -163,7 +141,7 @@ const PLANS: PlanConfig[] = [
       },
       {
         resource: RESOURCES.CURRICULUM_GENERATED,
-        monthlyCap: 30,
+        monthlyCap: 50,
         rpm: 8,
       },
       {
@@ -202,17 +180,6 @@ const PLANS: PlanConfig[] = [
     displayPriceCents: 1499, // $14.99
     polarPriceId: 'polar_price_premium_monthly', // Placeholder
     limits: [
-      {
-        resource: RESOURCES.CONVO_MESSAGE_TEXT,
-        monthlyCap: 2000,
-        rpm: 48,
-        burst: 96,
-      },
-      {
-        resource: RESOURCES.CONVO_MESSAGE_AUDIO,
-        monthlyCap: 600,
-        rpm: 30,
-      },
       {
         resource: RESOURCES.CONVO_TTS_SECONDS,
         monthlyCap: 18000, // 300 minutes
