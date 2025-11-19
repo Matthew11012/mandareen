@@ -59,7 +59,7 @@ export function MessageView({
   return (
     <div
       ref={scrollRef}
-      className="flex-1 overflow-y-auto space-y-3 sm:bg-[#20242b] sm:border sm:border-[#2e2f36] rounded-xl sm:p-4 relative"
+      className="flex-1 overflow-y-auto space-y-3 sm:bg-[#20242b] sm:border sm:border-[#2e2f36] rounded-xl sm:p-4 relative pr-2"
       aria-live="polite"
       aria-relevant="additions text"
       role="log"

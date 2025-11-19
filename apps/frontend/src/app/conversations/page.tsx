@@ -13,7 +13,6 @@ import {
   useConversationsList,
   useMessages,
   useStartConversation,
-  useSendMessage,
   useDeleteConversation,
   useSendAudio,
   useUpdateMessagesCache,
@@ -42,7 +41,6 @@ import { shouldDisplayResource } from "@/lib/constants/usage-resources";
 
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
-  const [input, setInput] = useState("");
   const [aiShowPinyin, setAiShowPinyin] = useState<Record<number, boolean>>({});
   const [aiShowTrans, setAiShowTrans] = useState<Record<number, boolean>>({});
   const [aiShowNotes, setAiShowNotes] = useState<Record<number, boolean>>({});
@@ -366,13 +364,12 @@ export default function ConversationsPage() {
   }, []);
 
   // Hooks
-  const { streamText, streamAudio } = useConversationStream();
+  const { streamAudio } = useConversationStream();
   const { data: conversationsList, refetch: refetchConversations } =
     useConversationsList();
   const { data: messagesData, refetch: refetchMessages } =
     useMessages(conversationId);
   const startConversationMutation = useStartConversation();
-  const sendMessageMutation = useSendMessage();
   const deleteConversationMutation = useDeleteConversation();
   const sendAudioMutation = useSendAudio();
   const updateMessagesCache = useUpdateMessagesCache();
@@ -1113,35 +1110,6 @@ export default function ConversationsPage() {
     setShowConversationsSidebar(!showConversationsSidebar);
   };
 
-  const sendText = async () => {
-    if (sendDisabled) {
-      errorBannerRef.current?.focus();
-      return;
-    }
-    if (!conversationId || !input.trim()) return;
-    const text = input.trim();
-    setInput("");
-    try {
-      // Mutation handles optimistic user message and replaces with server response
-      await sendMessageMutation.mutateAsync({
-        id: conversationId,
-        hanzi: text,
-      });
-      // Start SSE stream using hook
-      const aiMsgId = Date.now() + 1;
-      await streamText(
-        { conversationId, text },
-        createStreamCallbacks(aiMsgId)
-      );
-      setConversationError(null);
-    } catch (err) {
-      setInput(text);
-      if (!handleConversationError(err)) {
-        toast.error("Failed to send message");
-      }
-    }
-  };
-
   // Note: if needed, we can add an "Add to Flashcards" inline action in the popup later.
 
   return (
@@ -1198,7 +1166,7 @@ export default function ConversationsPage() {
             className={`fixed z-30 p-3 rounded-lg transition-all duration-200 cursor-pointer md:hidden ${
               showConversationsSidebar
                 ? "bottom-16 right-2 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
-                : "bottom-16 right-2 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
+                : "bottom-19 right-2 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
             }`}
             style={{ touchAction: "manipulation" }}
             title={
@@ -1282,9 +1250,6 @@ export default function ConversationsPage() {
           />
 
           <MessageInput
-            input={input}
-            onInputChange={setInput}
-            onSend={sendText}
             recording={recording}
             recPrompt={recPrompt}
             uploadingAudio={uploadingAudio}
