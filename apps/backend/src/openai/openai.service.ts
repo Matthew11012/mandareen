@@ -226,57 +226,6 @@ export class OpenAIService {
     };
     return map[ext.toLowerCase()];
   }
-  async annotateChinese(text: string): Promise<
-    Array<{
-      text: string;
-      pinyin?: string;
-      definition?: string;
-      hskLevel?: number;
-    }>
-  > {
-    // Disabled via configuration (default OFF). Return no extra vocab to rely on DB segmentation only.
-    const flag = (process.env.ENABLE_ANNOTATE_CHINESE || '').toLowerCase();
-    if (
-      flag === '' ||
-      flag === '0' ||
-      flag === 'false' ||
-      flag === 'off' ||
-      flag === 'disabled'
-    ) {
-      return [];
-    }
-    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-    const completion = await this.openai.chat.completions.create({
-      model,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a Mandarin lexical annotator. Given the user Chinese text, extract a small list (10–25) of important words and short phrases (multi-character collocations where appropriate). For each, include exact substring matching the text, its pinyin, and a concise English definition. Return STRICT JSON: {"vocabulary":[{"text":"...","pinyin":"...","definition":"..."}]}. No commentary. Only include items that appear verbatim in the text.',
-        },
-        { role: 'user', content: text },
-      ],
-      response_format: { type: 'json_object' },
-    } as any);
-    const content = completion.choices?.[0]?.message?.content;
-    if (!content) return [];
-    try {
-      const data = JSON.parse(content);
-      const vocab = Array.isArray(data?.vocabulary) ? data.vocabulary : [];
-      return vocab
-        .filter(
-          (v: any) => typeof v?.text === 'string' && v.text.trim().length > 0,
-        )
-        .map((v: any) => ({
-          text: v.text,
-          pinyin: (v.pinyin || '').toLowerCase(),
-          definition: v.definition || v.translation || undefined,
-          hskLevel: typeof v.hskLevel === 'number' ? v.hskLevel : undefined,
-        }));
-    } catch {
-      return [];
-    }
-  }
   async chatChineseReplyWithContext(
     messagesIn: Array<{
       role: 'system' | 'user' | 'assistant';

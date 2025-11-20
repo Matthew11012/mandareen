@@ -1916,16 +1916,7 @@ export default function LessonViewerPage() {
                     {popup.data?.pinyin}
                   </div>
                 )}
-                {Array.isArray(popup.data?.definitions) &&
-                (popup.data?.definitions?.length || 0) > 0 ? (
-                  <div className="text-xs text-[color:var(--text-secondary-strong)] mt-2 space-y-1">
-                    {(popup.data?.definitions as string[]).map(
-                      (d: string, i: number) => (
-                        <div key={i}>• {d}</div>
-                      )
-                    )}
-                  </div>
-                ) : popup.data?.definition ? (
+                {popup.data?.definition ? (
                   <div className="text-xs text-[color:var(--text-secondary-strong)] mt-2">
                     {popup.data?.definition}
                   </div>
@@ -2104,7 +2095,7 @@ export default function LessonViewerPage() {
                     damping: 30,
                     duration: 0.3,
                   }}
-                  className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[color:var(--surface-body-95)] backdrop-blur border-b border-[color:var(--border-muted)] p-4"
+                  className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[color:var(--border-muted)] p-4"
                 >
                   <div className="max-w-sm mx-auto">
                     <div className="flex items-center justify-between gap-3 mb-3">
@@ -2126,16 +2117,7 @@ export default function LessonViewerPage() {
                         {popup.data?.pinyin}
                       </div>
                     )}
-                    {Array.isArray(popup.data?.definitions) &&
-                    (popup.data?.definitions?.length || 0) > 0 ? (
-                      <div className="text-xs text-[color:var(--text-secondary-strong)] mb-3 space-y-1">
-                        {(popup.data?.definitions as string[]).map(
-                          (d: string, i: number) => (
-                            <div key={i}>• {d}</div>
-                          )
-                        )}
-                      </div>
-                    ) : popup.data?.definition ? (
+                    {popup.data?.definition ? (
                       <div className="text-xs text-[color:var(--text-secondary-strong)] mb-3">
                         {popup.data?.definition}
                       </div>
@@ -2431,7 +2413,7 @@ export default function LessonViewerPage() {
                     damping: 30,
                     duration: 0.3,
                   }}
-                  className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[color:var(--surface-body-95)] backdrop-blur border-b border-[color:var(--border-muted)] p-4"
+                  className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[color:var(--border-muted)] p-4"
                 >
                   <div className="max-w-sm mx-auto">
                     <div className="flex items-center justify-between gap-3 mb-3">

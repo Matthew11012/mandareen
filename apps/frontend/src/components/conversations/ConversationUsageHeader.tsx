@@ -171,41 +171,41 @@ export function ConversationUsageHeader({
     >
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
+        <button
+          type="button"
+          onClick={() => {
               if (shouldLockExpanded) return;
-              setDisplayMode((mode) => (mode === "chip" ? "expanded" : "chip"));
-            }}
-            aria-expanded={isExpanded}
-            aria-controls="conversation-usage-details"
+            setDisplayMode((mode) => (mode === "chip" ? "expanded" : "chip"));
+          }}
+          aria-expanded={isExpanded}
+          aria-controls="conversation-usage-details"
             aria-disabled={shouldLockExpanded}
-            className={cn(
-              "inline-flex items-center gap-2 rounded-full border border-[#2e323a] bg-[#1b1f26]/80 px-3 py-1.5 text-xs font-inter text-[#d1d5db] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4040f2] cursor-pointer",
+          className={cn(
+            "inline-flex items-center gap-2 rounded-full border border-[#2e323a] bg-[#1b1f26]/80 px-3 py-1.5 text-xs font-inter text-[#d1d5db] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4040f2] cursor-pointer",
               shouldLockExpanded
-                ? "cursor-not-allowed border-amber-500/40 bg-amber-500/10 text-amber-200"
-                : "hover:border-[#3c4250] hover:bg-[#1f242c]"
-            )}
-          >
-            <span className="font-semibold text-white">Usage</span>
-            {headerDescription && (
+              ? "cursor-not-allowed border-amber-500/40 bg-amber-500/10 text-amber-200"
+              : "hover:border-[#3c4250] hover:bg-[#1f242c]"
+          )}
+        >
+          <span className="font-semibold text-white">Usage</span>
+          {headerDescription && (
               <span className="text-xs text-[#a6a6a6]">
                 {headerDescription}
               </span>
+          )}
+          {summaryLine && (
+            <span className="hidden sm:inline text-xs text-[#8f9bb3]">
+              {summaryLine}
+            </span>
+          )}
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 text-[#a6a6a6] transition-transform duration-200",
+              isExpanded ? "rotate-180" : "rotate-0"
             )}
-            {summaryLine && (
-              <span className="hidden sm:inline text-xs text-[#8f9bb3]">
-                {summaryLine}
-              </span>
-            )}
-            <ChevronDown
-              className={cn(
-                "h-3.5 w-3.5 text-[#a6a6a6] transition-transform duration-200",
-                isExpanded ? "rotate-180" : "rotate-0"
-              )}
-              aria-hidden="true"
-            />
-          </button>
+            aria-hidden="true"
+          />
+        </button>
 
           {onRefresh && (
             <button
@@ -331,15 +331,15 @@ export function ConversationUsageHeader({
                         </div>
                       </>
                     ) : (
-                      <div
-                        className="text-sm font-inter font-medium text-white tabular-nums"
-                        style={{ fontVariantNumeric: "tabular-nums" }}
-                      >
+                    <div
+                      className="text-sm font-inter font-medium text-white tabular-nums"
+                      style={{ fontVariantNumeric: "tabular-nums" }}
+                    >
                         {formatUsageValue(badge.resource, badge.used)}{" "}
-                        <span className="text-xs font-inter font-normal text-[#a6a6a6]">
+                      <span className="text-xs font-inter font-normal text-[#a6a6a6]">
                           of {formatUsageValue(badge.resource, badge.cap)}
-                        </span>
-                      </div>
+                      </span>
+                    </div>
                     )}
                     {resetsText && (
                       <span className="text-xs font-inter text-[#a6a6a6]">

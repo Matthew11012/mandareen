@@ -511,23 +511,7 @@ export class ConversationsService {
           const charPinyinArray =
             await this.computeSentencePinyinArray(finalHanzi);
 
-          let vocabExtras: Array<{
-            text: string;
-            pinyin?: string;
-            definition?: string;
-            hskLevel?: number;
-          }> = [];
-          try {
-            vocabExtras = await (this.openai as any).annotateChinese(
-              finalHanzi,
-            );
-          } catch {
-            // ignore annotate error and continue with base segmentation
-          }
-          const segs = await this.segmentationService.segmentText(
-            finalHanzi,
-            vocabExtras,
-          );
+          const segs = await this.segmentationService.segmentText(finalHanzi);
           const segments = segs.map((s) => {
             let segPinyin = (s.pinyin || '').toLowerCase();
             if (!segPinyin || segPinyin.trim().length === 0) {
@@ -699,22 +683,8 @@ export class ConversationsService {
             const charPinyinArray =
               await this.computeSentencePinyinArray(finalHanziFallback);
             // Try to enrich fallback with annotated vocabulary as well
-            let vocabExtras2: Array<{
-              text: string;
-              pinyin?: string;
-              definition?: string;
-              hskLevel?: number;
-            }> = [];
-            try {
-              vocabExtras2 = await (this.openai as any).annotateChinese(
-                fallback.hanzi || '',
-              );
-            } catch {
-              // ignore annotate error and continue with base segmentation
-            }
             const segs2 = await this.segmentationService.segmentText(
               fallback.hanzi || '',
-              vocabExtras2,
             );
             const segments2 = segs2.map((s) => {
               let segPinyin = (s.pinyin || '').toLowerCase();

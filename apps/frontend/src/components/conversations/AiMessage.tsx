@@ -13,6 +13,7 @@ import {
 } from "@/lib/utils/flashcards";
 import type { Message } from "@/lib/api/conversations";
 import { usePopup } from "@/hooks/usePopup";
+import { getHSKPillClasses } from "@/lib/constants/hsk";
 
 // Local types for notes rendering
 type SegToken = {
@@ -21,6 +22,7 @@ type SegToken = {
   pinyin?: string;
   definition?: string;
   definitions?: string[];
+  hskLevel?: number;
 };
 type Tip = { zh: string; pinyin?: string; en?: string; segments?: SegToken[] };
 type GrammarNote = {
@@ -60,6 +62,7 @@ type PopupData = {
   definition?: string;
   definitions?: string[];
   tokenIndex?: number;
+  hskLevel?: number;
 };
 
 export function AiMessage({
@@ -96,6 +99,7 @@ export function AiMessage({
             pinyin?: string;
             definition?: string;
             definitions?: string[];
+            hskLevel?: number;
           }
         | undefined;
 
@@ -117,6 +121,7 @@ export function AiMessage({
         definition: tokenData?.definition,
         definitions: tokenData?.definitions,
         tokenIndex,
+        hskLevel: tokenData?.hskLevel,
       });
     },
     [message.segments, openPopupFromElement]
@@ -165,15 +170,7 @@ export function AiMessage({
 
   // Render segments with popup for notes (uses AiMessage popup state)
   const renderSegmentsWithPopup = (
-    segments:
-      | Array<{
-          text: string;
-          isWord?: boolean;
-          pinyin?: string;
-          definition?: string;
-          definitions?: string[];
-        }>
-      | undefined,
+    segments: SegToken[] | undefined,
     baseHanzi?: string,
     baseTranslation?: string,
     showPinyinState: boolean = true
@@ -213,6 +210,7 @@ export function AiMessage({
                       definition: seg.definition,
                       definitions: seg.definitions,
                       tokenIndex: undefined, // Notes segments don't have token index
+                      hskLevel: seg.hskLevel,
                     },
                   });
                 }}
@@ -481,46 +479,50 @@ export function AiMessage({
                 ? "none"
                 : "translate(-50%, calc(-100% - 8px))",
             }}
-            className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
+            className="hidden sm:block bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-xl shadow-2xl p-4 w-64"
           >
-          <div className="font-bold text-white text-lg truncate">
-            {popup.data?.word}
-          </div>
-          {popup.data?.pinyin && (
-            <div className="text-[#c6ceff] text-sm font-medium truncate">
-              {popup.data.pinyin}
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-bold text-white text-lg truncate">
+                {popup.data?.word}
+              </div>
+              {typeof popup.data?.hskLevel === "number" && (
+                <span
+                  className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                    popup.data?.hskLevel
+                  )}`}
+                  aria-label={`HSK level ${popup.data?.hskLevel}`}
+                >
+                  HSK {popup.data?.hskLevel}
+                </span>
+              )}
             </div>
-          )}
-          {Array.isArray(popup.data?.definitions) &&
-          (popup.data?.definitions?.length || 0) > 0 ? (
-            <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
-              {(popup.data.definitions as string[]).map((d, i) => (
-                <div key={i}>• {d}</div>
-              ))}
+            {popup.data?.pinyin && (
+              <div className="text-[color:var(--text-highlight)] text-sm font-medium truncate mt-1">
+                {popup.data.pinyin}
+              </div>
+            )}
+            {popup.data?.definition ? (
+              <div className="text-xs text-[color:var(--text-secondary-strong)] mt-2">
+                {popup.data.definition}
+              </div>
+            ) : null}
+            <div className="mt-3 pt-3 border-t border-[color:var(--border-strong)]">
+              <button
+                onClick={() => {
+                  const tokenIndex = popup.data?.tokenIndex ?? -1;
+                  const ctx =
+                    tokenIndex >= 0
+                      ? getSentenceContext(message, tokenIndex)
+                      : undefined;
+                  void addSingleToFlashcards(popup.data?.word || "", ctx);
+                  closePopup();
+                }}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[var(--color-accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-strong)] transition-colors duration-200 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="text-sm font-inter">Add to Flashcards</span>
+              </button>
             </div>
-          ) : popup.data?.definition ? (
-            <div className="text-xs text-[#a6a6a6] mt-2">
-              {popup.data.definition}
-            </div>
-          ) : null}
-          <div className="mt-3 pt-3 border-t border-[#404040]">
-            <button
-              onClick={() => {
-                // Build sentence-level context using segments and token index
-                const tokenIndex = popup.data?.tokenIndex ?? -1;
-                const ctx =
-                  tokenIndex >= 0
-                    ? getSentenceContext(message, tokenIndex)
-                    : undefined;
-                void addSingleToFlashcards(popup.data?.word || "", ctx);
-                closePopup();
-              }}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="text-sm font-inter">Add to Flashcards</span>
-            </button>
-          </div>
           </div>,
           containerRef.current
         )}
@@ -539,28 +541,30 @@ export function AiMessage({
               damping: 30,
               duration: 0.3,
             }}
-            className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
+            className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95  backdrop-blur border-b border-[color:var(--border-muted)] p-4"
           >
             <div className="max-w-sm mx-auto">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="font-bold text-white text-lg truncate">
                   {popup.data?.word}
                 </div>
+                {typeof popup.data?.hskLevel === "number" && (
+                  <span
+                    className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                      popup.data?.hskLevel
+                    )}`}
+                  >
+                    HSK {popup.data?.hskLevel}
+                  </span>
+                )}
               </div>
               {popup.data?.pinyin && (
-                <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
+                <div className="text-[color:var(--text-highlight)] text-sm font-medium truncate mb-2">
                   {popup.data.pinyin}
                 </div>
               )}
-              {Array.isArray(popup.data?.definitions) &&
-              (popup.data?.definitions?.length || 0) > 0 ? (
-                <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
-                  {(popup.data.definitions as string[]).map((d, i) => (
-                    <div key={i}>• {d}</div>
-                  ))}
-                </div>
-              ) : popup.data?.definition ? (
-                <div className="text-xs text-[#a6a6a6] mb-3">
+              {popup.data?.definition ? (
+                <div className="text-xs text-[color:var(--text-secondary-strong)] mb-3">
                   {popup.data.definition}
                 </div>
               ) : null}
@@ -569,13 +573,12 @@ export function AiMessage({
                   onClick={() => {
                     closePopup();
                   }}
-                  className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
+                  className="px-3 py-2 bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-lg hover:border-[color:var(--color-accent-blue)] text-[color:var(--text-secondary-strong)] cursor-pointer text-sm"
                 >
                   Close
                 </button>
                 <button
                   onClick={async () => {
-                    // Build sentence-level context using segments and token index
                     const tokenIndex = popup.data?.tokenIndex ?? -1;
                     const ctx =
                       tokenIndex >= 0
@@ -584,7 +587,7 @@ export function AiMessage({
                     await addSingleToFlashcards(popup.data?.word || "", ctx);
                     closePopup();
                   }}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[var(--color-accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-strong)] transition-colors duration-200 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span className="text-sm font-inter">Add to Flashcards</span>
