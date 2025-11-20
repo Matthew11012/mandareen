@@ -21,6 +21,7 @@ type UserUpdatePayload = {
 };
 
 type FinalPayload = {
+  id?: number;
   hanzi?: string;
   pinyin?: string;
   translation?: string;
@@ -171,6 +172,7 @@ export function useConversationStream() {
                 }
               : undefined;
             cb.onFinal?.({
+              id: typeof data.id === "number" ? data.id : undefined,
               hanzi: data.hanzi,
               pinyin: data.pinyin,
               translation: data.translation,

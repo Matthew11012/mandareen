@@ -294,9 +294,23 @@ export class ConversationsController {
     const userId = req.user.id;
     const convId = Number(conversationId);
     const msgId = Number(messageId);
+    const INT32_MAX = 2_147_483_647;
 
     if (!Number.isFinite(convId) || !Number.isFinite(msgId)) {
       throw new BadRequestException('Invalid conversationId or messageId');
+    }
+
+    if (
+      !Number.isSafeInteger(convId) ||
+      !Number.isSafeInteger(msgId) ||
+      convId <= 0 ||
+      msgId <= 0 ||
+      convId > INT32_MAX ||
+      msgId > INT32_MAX
+    ) {
+      throw new BadRequestException(
+        'This message is still saving. Please wait for the AI reply to finish before generating notes.',
+      );
     }
 
     // 1) Verify conversation/message ownership and get message content

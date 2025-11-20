@@ -5,6 +5,10 @@ import { Volume2, Loader2, Sparkles } from "lucide-react";
 import { AiMessage } from "./AiMessage";
 import type { Message, MessageNotes } from "@/lib/api/conversations";
 
+const INT32_MAX = 2147483647;
+const isPersistedMessageId = (id: number) =>
+  Number.isFinite(id) && Math.abs(id) <= INT32_MAX;
+
 interface MessageViewProps {
   messages: Message[];
   aiShowPinyin: Record<number, boolean>;
@@ -16,8 +20,9 @@ interface MessageViewProps {
   onToggleNotes: (messageId: number) => void;
   onToggleAudio: (
     messageId: number,
-    audioElement: HTMLAudioElement | null
-  ) => void;
+    audioElement: HTMLAudioElement | null,
+    source?: "manual" | "auto"
+  ) => void | Promise<boolean>;
   onOpenNotesModal: (message: Message) => void;
   onGenerateNotes?: (messageId: number) => Promise<void>;
   conversationId: number | null;
@@ -58,16 +63,20 @@ export function MessageView({
   return (
     <div
       ref={scrollRef}
-      className="flex-1 overflow-y-auto space-y-3 sm:bg-[#20242b] sm:border sm:border-[#2e2f36] rounded-xl sm:p-4 relative"
+      className="flex-1 overflow-y-auto space-y-3 sm:bg-[#20242b] sm:border sm:border-[#2e2f36] rounded-xl sm:p-4 relative pr-2"
       aria-live="polite"
       aria-relevant="additions text"
       role="log"
     >
-      {messages.map((m) => (
-        <div
-          key={`${m.id}-${m.role}`}
-          className={m.role === "user" ? "ml-auto" : "mr-auto"}
-        >
+      {messages.map((m) => {
+        const messageIsPersisted =
+          m._persisted ||
+          (typeof m.id === "number" && isPersistedMessageId(m.id));
+        return (
+          <div
+            key={`${m.id}-${m.role}`}
+            className={m.role === "user" ? "ml-auto" : "mr-auto"}
+          >
           <div
             className={`mb-1 flex gap-2 w-fit ${
               m.role === "user" ? "ml-auto" : ""
@@ -77,7 +86,7 @@ export function MessageView({
               <audio
                 id={`audio-${m.id}`}
                 src={resolveMediaUrl(m.audioUrl) || ""}
-                preload="none"
+                preload="metadata"
               />
             ) : null}
             {/* Always show toggles, disable + spinner if loading */}
@@ -92,7 +101,7 @@ export function MessageView({
                       const el = document.getElementById(
                         `audio-${m.id}`
                       ) as HTMLAudioElement | null;
-                      onToggleAudio(m.id, el);
+                      void onToggleAudio(m.id, el, "manual");
                     }
                   }}
                   className={`px-2 py-1 text-xs rounded border cursor-pointer ${
@@ -228,19 +237,24 @@ export function MessageView({
                     conversationId && (
                       <button
                         type="button"
-                        disabled={generatingNotes[m.id]}
+                        disabled={
+                          generatingNotes[m.id] || !messageIsPersisted
+                        }
                         onClick={async () => {
-                          if (generatingNotes[m.id] || !onGenerateNotes) return;
+                          if (
+                            generatingNotes[m.id] ||
+                            !onGenerateNotes ||
+                            !messageIsPersisted
+                          ) {
+                            return;
+                          }
                           setGeneratingNotes((prev) => ({
                             ...prev,
                             [m.id]: true,
                           }));
                           try {
                             await onGenerateNotes(m.id);
-                            // Modal will be opened by the parent component after generation
                           } catch (err) {
-                            // Error handling is done in the parent component (toast shown)
-                            // Just log for debugging
                             console.error("Failed to generate notes:", err);
                           } finally {
                             setGeneratingNotes((prev) => {
@@ -251,10 +265,15 @@ export function MessageView({
                           }
                         }}
                         className={`px-2 py-1 text-xs rounded border ${
-                          generatingNotes[m.id]
+                          generatingNotes[m.id] || !messageIsPersisted
                             ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
                             : "border-blue-500/40 text-blue-400 bg-blue-500/10"
                         } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 focus-visible:ring-offset-[#20242b]`}
+                        title={
+                          messageIsPersisted
+                            ? undefined
+                            : "Available once this reply finishes saving"
+                        }
                         aria-label={
                           generatingNotes[m.id]
                             ? "Generating notes..."
@@ -300,7 +319,8 @@ export function MessageView({
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
