@@ -39,6 +39,10 @@ import {
 import { ConversationUsageToast } from "@/components/conversations/ConversationUsageToast";
 import { shouldDisplayResource } from "@/lib/constants/usage-resources";
 
+const INT32_MAX = 2147483647;
+const isPersistedMessageId = (id: number | null | undefined) =>
+  typeof id === "number" && Number.isFinite(id) && Math.abs(id) <= INT32_MAX;
+
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [aiShowPinyin, setAiShowPinyin] = useState<Record<number, boolean>>({});
@@ -57,6 +61,16 @@ export default function ConversationsPage() {
   // Handler to generate notes for a message
   const handleGenerateNotes = async (messageId: number) => {
     if (!conversationId) return;
+    const targetMessage = messages.find(
+      (m) => m.id === messageId && m.role === "ai"
+    ) as (Message & { _persisted?: boolean }) | undefined;
+    const messagePersisted =
+      targetMessage?._persisted ||
+      (typeof messageId === "number" && isPersistedMessageId(messageId));
+    if (!messagePersisted) {
+      toast.info("Notes will be available once this reply finishes saving.");
+      return;
+    }
     try {
       const res = await conversationsApi.generateManualNotes(
         conversationId,
@@ -73,15 +87,7 @@ export default function ConversationsPage() {
             : m
         )
       );
-      // Refetch messages to ensure we have the latest data
-      const { data: updatedMessages } = await refetchMessages();
-      // Find the updated message and open modal
-      const updatedMessage = updatedMessages?.find(
-        (m) => m.id === messageId && m.role === "ai"
-      );
-      if (updatedMessage) {
-        openNotesModal(updatedMessage);
-      }
+      toast.success("Notes generated. Open Notes to review them.");
     } catch (err: unknown) {
       // Extract error message for user feedback
       const errorMessage =
@@ -421,6 +427,7 @@ export default function ConversationsPage() {
               _loadingTranslation: true,
               _loadingAudio: true,
               _loadingNotes: true,
+              _persisted: false,
             } as Message,
           ]);
         },
@@ -531,6 +538,7 @@ export default function ConversationsPage() {
           );
         },
         onFinal: (final: {
+          id?: number;
           hanzi?: string;
           pinyin?: string;
           translation?: string;
@@ -538,6 +546,21 @@ export default function ConversationsPage() {
           segments?: Message["segments"];
           notes?: unknown;
         }) => {
+          if (typeof final.id === "number" && final.id !== targetId) {
+            const persistedId = final.id;
+            updateMessagesCache(conversationId, (prev) =>
+              prev.map((m) =>
+                m.id === targetId
+                  ? {
+                      ...m,
+                      id: persistedId,
+                      _persisted: true,
+                    }
+                  : m
+              )
+            );
+            targetId = persistedId;
+          }
           // Normalize notes from FinalPayload (NotesPayload) to Message["notes"]
           let normalizedNotes: Message["notes"] | undefined = undefined;
           if (final.notes && typeof final.notes === "object") {
@@ -576,6 +599,10 @@ export default function ConversationsPage() {
                     _loadingTranslation: false,
                     _loadingAudio: false,
                     _loadingNotes: false,
+                    _persisted:
+                      typeof final.id === "number"
+                        ? isPersistedMessageId(final.id)
+                        : true,
                   }
                 : m
             )

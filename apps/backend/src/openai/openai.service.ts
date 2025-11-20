@@ -56,7 +56,7 @@ export class OpenAIService {
           content: [
             {
               type: 'input_text',
-              text: 'You are an English translator for Mandarin sentences. For each entry provided, output ONLY the English translation. Mirror the sentence order and punctuation in natural English. If the entry is empty or not Chinese, return an empty string for that role.Always return STRICT JSON with keys "user" and "ai". Example response: {"user":<english translation of user entry>,"ai":<english translation of ai entry>}',
+              text: 'You are an English translator for Mandarin sentences. For each entry provided, output ONLY in English, the English translation - never repeat the Chinese characters of the User or AI input. Mirror the sentence order and punctuation in natural English. If the entry is empty or not Chinese, return an empty string for that role. Always return STRICT JSON with keys "user" and "ai". Example response: {"user":<english translation of user entry>,"ai":<english translation of ai entry>}',
             },
           ],
         },

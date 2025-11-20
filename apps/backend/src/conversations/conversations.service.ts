@@ -283,6 +283,12 @@ export class ConversationsService {
           definitions?: string[];
         }> | null = null;
         let latestUserPinyin = '';
+        const emitFinalEvent = (payload: Record<string, unknown>) => {
+          const jsonPayload = JSON.stringify(payload);
+          const envelope = JSON.stringify({ type: 'final', data: jsonPayload });
+          subscriber.next({ data: envelope });
+          subscriber.next({ event: 'final', data: jsonPayload });
+        };
         try {
           let convo = await this.prisma.conversation.findFirst({
             where: { id: conversationId, userId },
@@ -658,12 +664,14 @@ export class ConversationsService {
 
           // Wait for audio generation, then emit final
           await Promise.all([audioPromise]);
-          subscriber.next({
-            data: JSON.stringify({
-              type: 'final',
-              conversationId,
-              complete: true,
-            }),
+          emitFinalEvent({
+            id: aiMsg.id,
+            conversationId,
+            hanzi: finalHanzi,
+            pinyin: pinyinPerChar || '',
+            translation: assistantTranslation,
+            segments,
+            complete: true,
           });
           subscriber.complete();
         } catch (e) {
@@ -843,12 +851,14 @@ export class ConversationsService {
 
             // Wait for audio generation, then emit final
             await Promise.all([audioPromise2]);
-            subscriber.next({
-              data: JSON.stringify({
-                type: 'final',
-                conversationId,
-                complete: true,
-              }),
+            emitFinalEvent({
+              id: aiMsg.id,
+              conversationId,
+              hanzi: finalHanziFallback,
+              pinyin: pinyinPerChar || '',
+              translation: fallbackAssistantTranslation,
+              segments: segments2,
+              complete: true,
             });
             subscriber.complete();
           } catch (inner) {
@@ -879,11 +889,14 @@ export class ConversationsService {
                   'Sorry, I could not generate a reply right now. Please try again later.',
               },
             });
-            const errPayload = JSON.stringify(aiMsg);
-            subscriber.next({
-              data: JSON.stringify({ type: 'final', data: errPayload }),
+            emitFinalEvent({
+              id: aiMsg.id,
+              conversationId,
+              hanzi: aiMsg.hanzi,
+              pinyin: aiMsg.pinyin,
+              translation: aiMsg.translation,
+              complete: true,
             });
-            subscriber.next({ event: 'final', data: errPayload });
             subscriber.complete();
           }
         }
