@@ -41,29 +41,83 @@ export class OpenAIService {
     text: string,
   ): Promise<{ pinyin: string; translation: string }> {
     const model = process.env.OPENAI_MODEL_TRANSLATE || 'gpt-5-nano';
-    const completion = await this.openai.chat.completions.create({
+    const response = await (this.openai as any).responses.create({
       model,
-      messages: [
+      reasoning: { effort: 'minimal' },
+      input: [
         {
           role: 'system',
-          content:
-            'You are an English to Mandarin translator. For the given text from the user (which may or may not be Chinese), if it is Chinese, return STRICT JSON with keys translation for the exact input; {"translation":"<english translation of the user given text>"}. Preserve original sentence boundaries and punctuation: translate sentence-by-sentence without merging or reflowing, and keep the same order and number of sentences as the source. If it is not Chinese, return {"translation":""}. No commentary.',
+          content: [
+            {
+              type: 'input_text',
+              text: 'You are an English translator for Mandarin text. For the given text (which may or may not be Chinese), if it is Chinese, return STRICT JSON {"translation":"<english translation>"} that mirrors the sentence order and punctuation of the input. If it is not Chinese, output {"translation":""}. No commentary.',
+            },
+          ],
         },
-        { role: 'user', content: text },
+        {
+          role: 'user',
+          content: [{ type: 'input_text', text }],
+        },
       ],
-      response_format: { type: 'json_object' },
-    } as any);
-    const content = completion.choices?.[0]?.message?.content;
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'TranslationResponse',
+          schema: {
+            type: 'object',
+            properties: {
+              translation: { type: 'string' },
+            },
+            required: ['translation'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+
+    const content = this.extractResponseText(response);
     if (!content) return { pinyin: '', translation: '' };
     try {
       const data = JSON.parse(content);
       return {
-        pinyin: (data.pinyin || '').toLowerCase(),
+        pinyin: '',
         translation: data.translation || '',
       };
     } catch {
       return { pinyin: '', translation: '' };
     }
+  }
+
+  private extractResponseText(resp: any): string {
+    if (!resp) return '';
+    if (typeof resp.output_text === 'function') {
+      try {
+        return resp.output_text.join('');
+      } catch {
+        // fall through to manual extraction
+      }
+    }
+    const output = resp?.output;
+    if (!Array.isArray(output)) return '';
+    const chunks: string[] = [];
+    for (const item of output) {
+      if (item?.content && Array.isArray(item.content)) {
+        for (const block of item.content) {
+          if (
+            (block.type === 'output_text' || block.type === 'text') &&
+            typeof block.text === 'string'
+          ) {
+            chunks.push(block.text);
+          }
+        }
+      } else if (
+        (item?.type === 'output_text' || item?.type === 'text') &&
+        typeof item?.text === 'string'
+      ) {
+        chunks.push(item.text);
+      }
+    }
+    return chunks.join('');
   }
   /**
    * Transcribe an audio buffer into Mandarin text using OpenAI STT.

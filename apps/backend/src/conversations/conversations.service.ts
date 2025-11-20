@@ -284,12 +284,13 @@ export class ConversationsService {
           // Minimal reasoning prompt already configured in OpenAIService; use streaming
           const client = (this.openai as any)
             .openai as import('openai').default;
-          const model = process.env.OPENAI_MODEL_CONVERSATION_REPLY || 'gpt-4o-mini';
+          const model =
+            process.env.OPENAI_MODEL_CONVERSATION_REPLY || 'gpt-4o-mini';
           // Include brief context (last 5 messages + current user) for improved continuity
           const prev = await this.prisma.message.findMany({
             where: { conversationId },
             orderBy: { createdAt: 'desc' },
-            take: 10,
+            take: 5,
           });
           const history = prev.reverse().map((m) => ({
             role:
@@ -297,14 +298,13 @@ export class ConversationsService {
             content: m.hanzi,
           }));
           // Do not push the same user content twice; latest user message is already included
-          const stream = await client.chat.completions.create({
-            model,
-            stream: true,
-            messages: [
-              {
-                role: 'system',
-                content:
-                  `Respond as a native Mandarin speaker engaging in friendly daily conversation practice. Make your replies sound as natural and casual as possible, as if chatting with a close friend. Replies should be concise and brief—no longer than 1-2 short sentences(10-30 Chinese characters)—to mirror real, day-to-day exchanges and help conserve audio usage. Add small touches of humor, fun facts, cultural things or relatable details if they naturally fit the flow of conversation. If the user types in Traditional Chinese characters, always convert them to Simplified in your response. Do NOT provide pinyin, translation, or any additional explanations—just output your reply in Simplified Chinese characters, nothing else.
+          const responseInput = [
+            {
+              role: 'system',
+              content: [
+                {
+                  type: 'input_text',
+                  text: `Respond as a native Mandarin speaker engaging in friendly daily conversation practice. Make your replies sound as natural and casual as possible, as if chatting with a close friend. Replies should be concise and brief—no longer than 1-2 short sentences(10-30 Chinese characters)—to mirror real, day-to-day exchanges and help conserve audio usage. Add small touches of humor, fun facts, cultural things or relatable details if they naturally fit the flow of conversation. If the user types in Traditional Chinese characters, always convert them to Simplified in your response. Do NOT provide pinyin, translation, or any additional explanations—just output your reply in Simplified Chinese characters, nothing else.
                   
                   - Reason step-by-step internally about the most natural, friendly, and context-appropriate way to reply before generating your response.
                   - Persist in this manner throughout the session.
@@ -352,32 +352,63 @@ export class ConversationsService {
                   **REMINDER:**
                   Your goal is to reply in a friendly, concise, natural way in Simplified Chinese—just like a real Mandarin-speaking friend would in a brief chat. No pinyin or translations.
                   `,
-              },
-              ...history,
-            ],
+                },
+              ],
+            },
+            ...history.map((m) => ({
+              role: m.role,
+              content: [
+                {
+                  type: m.role === 'assistant' ? 'output_text' : 'input_text',
+                  text: m.content,
+                },
+              ],
+            })),
+          ];
+
+          const stream = await client.responses.stream({
+            model,
+            input: responseInput,
+            metadata: {
+              conversationId: conversationId.toString(),
+            },
+            reasoning: {
+              effort: 'minimal',
+            },
           } as any);
 
           let fullText = '';
-          for await (const part of stream as any) {
-            let delta = part?.choices?.[0]?.delta?.content as
-              | string
-              | undefined;
-            if (!delta) continue;
-            // If the model accidentally emits JSON, extract text
-            if (delta.trim().startsWith('{')) {
-              try {
-                const maybe = JSON.parse(delta);
-                if (typeof maybe?.hanziDelta === 'string') {
-                  delta = maybe.hanziDelta;
-                } else if (typeof maybe?.hanzi === 'string') {
-                  delta = maybe.hanzi;
-                }
-              } catch {
-                // ignore
-              }
+          let completedResponse: any = null;
+
+          for await (const event of stream as any) {
+            if (!event || typeof event !== 'object') continue;
+            const type = event.type as string | undefined;
+            if (type === 'response.output_text.delta') {
+              const delta = (event.delta as string) || '';
+              if (!delta) continue;
+              fullText += delta;
+              subscriber.next({ data: JSON.stringify({ hanziDelta: delta }) });
+            } else if (type === 'response.completed') {
+              completedResponse = event.response;
+            } else if (type === 'response.error') {
+              const message =
+                event?.error?.message || 'OpenAI response stream error';
+              throw new Error(message);
             }
-            fullText += delta;
-            subscriber.next({ data: JSON.stringify({ hanziDelta: delta }) });
+          }
+
+          if (!completedResponse) {
+            try {
+              completedResponse = await stream.finalResponse();
+            } catch {
+              // ignore inability to fetch final response; rely on accumulated text
+            }
+          }
+
+          if (!fullText && completedResponse) {
+            fullText = this.extractTextFromResponseOutput(
+              completedResponse?.output,
+            );
           }
 
           // User message enrichment (pinyin/translation + segments)
@@ -392,8 +423,9 @@ export class ConversationsService {
                 this.openai as any
               ).analyzeChineseSentence(text);
               const segs = await this.segmentationService.segmentText(text);
-              // Build char-level pinyin array from analyzed pinyin for fallback filling
-              const charPinyinArray = (analyzed.pinyin || '')
+              const perCharPinyin =
+                await this.computeSentencePinyinPerCharacter(text);
+              const charPinyinArray = perCharPinyin
                 .split(/\s+/)
                 .map((s: string) => s.trim())
                 .filter((s: string) => s.length > 0);
@@ -430,7 +462,7 @@ export class ConversationsService {
                 await this.prisma.message.update({
                   where: { id: latestUser.id },
                   data: {
-                    pinyin: toToneMarks(analyzed.pinyin) || '',
+                    pinyin: perCharPinyin || '',
                     translation: analyzed.translation || '',
                   },
                 });
@@ -438,7 +470,7 @@ export class ConversationsService {
                 const userUpdatePayload = JSON.stringify({
                   id: latestUser.id,
                   segments,
-                  pinyin: toToneMarks(analyzed.pinyin) || '',
+                  pinyin: perCharPinyin || '',
                   translation: analyzed.translation || '',
                 });
                 // Default event for onmessage handlers
@@ -998,5 +1030,28 @@ export class ConversationsService {
     });
 
     return enrichedNotes;
+  }
+
+  private extractTextFromResponseOutput(output: any): string {
+    if (!Array.isArray(output)) return '';
+    const chunks: string[] = [];
+    for (const item of output) {
+      if (item?.type === 'message' && Array.isArray(item?.content)) {
+        for (const contentItem of item.content) {
+          if (
+            contentItem?.type === 'output_text' &&
+            typeof contentItem.text === 'string'
+          ) {
+            chunks.push(contentItem.text);
+          }
+        }
+      } else if (
+        item?.type === 'output_text' &&
+        typeof item?.text === 'string'
+      ) {
+        chunks.push(item.text);
+      }
+    }
+    return chunks.join('');
   }
 }
