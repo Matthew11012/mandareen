@@ -106,16 +106,34 @@ export function useLessonGenerationStream() {
         }
       };
 
+      const maybeHandleComplete = (raw: unknown) => {
+        const data = parsePayload(raw);
+        if (!data) return false;
+        const candidate =
+          typeof data.id === "number"
+            ? data
+            : typeof data.data === "object" && data.data
+              ? (data.data as Record<string, unknown>)
+              : null;
+        if (candidate && typeof candidate.id === "number") {
+          void handleCompleteEvent(candidate);
+          return true;
+        }
+        return false;
+      };
+
       es.onmessage = (e) => {
         const raw = (e as MessageEvent).data as unknown;
         handleStepPayload(raw);
+        maybeHandleComplete(raw);
       };
 
       es.addEventListener("queued", () => genStore.setStep("queued"));
       es.addEventListener("started", () => genStore.setStep("started"));
-      es.addEventListener("step", (e: MessageEvent) =>
-        handleStepPayload(e.data)
-      );
+      es.addEventListener("step", (e: MessageEvent) => {
+        handleStepPayload(e.data);
+        maybeHandleComplete(e.data);
+      });
       es.addEventListener("heartbeat", () => {});
       const handleCompleteEvent = async (raw: unknown) => {
         if (streamFinished) return;
