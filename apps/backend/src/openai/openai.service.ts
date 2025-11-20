@@ -37,10 +37,16 @@ export class OpenAIService {
     return vectors;
   }
 
-  async analyzeChineseSentence(
-    text: string,
-  ): Promise<{ pinyin: string; translation: string }> {
+  async translateConversationEntries(
+    entries: Array<{ role: 'user' | 'ai'; text: string }>,
+  ): Promise<{ user?: string; ai?: string }> {
     const model = process.env.OPENAI_MODEL_TRANSLATE || 'gpt-5-nano';
+    const userText = entries.find((entry) => entry.role === 'user')?.text ?? '';
+    const aiText = entries.find((entry) => entry.role === 'ai')?.text ?? '';
+    const renderedEntries = [
+      `Entry (role: user): ${userText || '(none provided)'}`,
+      `Entry (role: ai): ${aiText || '(none provided)'}`,
+    ].join('\n\n');
     const response = await (this.openai as any).responses.create({
       model,
       reasoning: { effort: 'minimal' },
@@ -50,25 +56,31 @@ export class OpenAIService {
           content: [
             {
               type: 'input_text',
-              text: 'You are an English translator for Mandarin text. For the given text (which may or may not be Chinese), if it is Chinese, return STRICT JSON {"translation":"<english translation>"} that mirrors the sentence order and punctuation of the input. If it is not Chinese, output {"translation":""}. No commentary.',
+              text: 'You are an English translator for Mandarin sentences. For each entry provided, output ONLY the English translation. Mirror the sentence order and punctuation in natural English. If the entry is empty or not Chinese, return an empty string for that role.Always return STRICT JSON with keys "user" and "ai". Example response: {"user":<english translation of user entry>,"ai":<english translation of ai entry>}',
             },
           ],
         },
         {
           role: 'user',
-          content: [{ type: 'input_text', text }],
+          content: [
+            {
+              type: 'input_text',
+              text: renderedEntries,
+            },
+          ],
         },
       ],
       text: {
         format: {
           type: 'json_schema',
-          name: 'TranslationResponse',
+          name: 'ConversationTurnTranslations',
           schema: {
             type: 'object',
             properties: {
-              translation: { type: 'string' },
+              user: { type: 'string' },
+              ai: { type: 'string' },
             },
-            required: ['translation'],
+            required: ['user', 'ai'],
             additionalProperties: false,
           },
         },
@@ -76,15 +88,15 @@ export class OpenAIService {
     });
 
     const content = this.extractResponseText(response);
-    if (!content) return { pinyin: '', translation: '' };
+    if (!content) return {};
     try {
       const data = JSON.parse(content);
-      return {
-        pinyin: '',
-        translation: data.translation || '',
-      };
+      const result: { user?: string; ai?: string } = {};
+      if (typeof data.user === 'string') result.user = data.user;
+      if (typeof data.ai === 'string') result.ai = data.ai;
+      return result;
     } catch {
-      return { pinyin: '', translation: '' };
+      return {};
     }
   }
 

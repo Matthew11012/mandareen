@@ -271,6 +271,18 @@ export class ConversationsService {
   }): Observable<{ data: string } | { event: string; data: any }> {
     return new Observable((subscriber) => {
       (async () => {
+        let latestUserMessageId: number | null = null;
+        let latestUserSegments: Array<{
+          text: string;
+          startIndex: number;
+          endIndex: number;
+          isWord: boolean;
+          hskLevel?: number;
+          pinyin?: string;
+          definition?: string;
+          definitions?: string[];
+        }> | null = null;
+        let latestUserPinyin = '';
         try {
           let convo = await this.prisma.conversation.findFirst({
             where: { id: conversationId, userId },
@@ -290,7 +302,7 @@ export class ConversationsService {
           const prev = await this.prisma.message.findMany({
             where: { conversationId },
             orderBy: { createdAt: 'desc' },
-            take: 5,
+            take: 10,
           });
           const history = prev.reverse().map((m) => ({
             role:
@@ -306,15 +318,13 @@ export class ConversationsService {
                   type: 'input_text',
                   text: `Respond as a native Mandarin speaker engaging in friendly daily conversation practice. Make your replies sound as natural and casual as possible, as if chatting with a close friend. Replies should be concise and brief—no longer than 1-2 short sentences(10-30 Chinese characters)—to mirror real, day-to-day exchanges and help conserve audio usage. Add small touches of humor, fun facts, cultural things or relatable details if they naturally fit the flow of conversation. If the user types in Traditional Chinese characters, always convert them to Simplified in your response. Do NOT provide pinyin, translation, or any additional explanations—just output your reply in Simplified Chinese characters, nothing else.
                   
-                  - Reason step-by-step internally about the most natural, friendly, and context-appropriate way to reply before generating your response.
-                  - Persist in this manner throughout the session.
+                  Reason step-by-step internally about the most natural, friendly, and context-appropriate way to reply before generating your response.
+                  Persist in this manner throughout the session.
 
                   **Output instructions:**
                   - Output ONLY Simplified Chinese characters in a short, natural sentence.
                   - Do not include pinyin, translation, or formatting.
                   - Keep each reply to no more than 1-2 concise natural-sounding sentences.
-
-                  ---
 
                   **Examples**
 
@@ -338,16 +348,12 @@ export class ConversationsService {
 
                   (For real interactions, make sure to keep responses this concise and context-appropriate, adapting humor/fun facts naturally when possible.)
 
-                  ---
-
                   **Important reminders:**  
                   - Respond only in Simplified Chinese characters.
                   - Replies must be brief, natural, and casual, like two friends chatting.
                   - If Traditional Chinese is used, convert to Simplified in your reply.
                   - Do not include pinyin, translation, or explanations.
                   - Reason internally before answering to ensure authentic, friend-like replies.
-
-                  ---
 
                   **REMINDER:**
                   Your goal is to reply in a friendly, concise, natural way in Simplified Chinese—just like a real Mandarin-speaking friend would in a brief chat. No pinyin or translations.
@@ -411,7 +417,7 @@ export class ConversationsService {
             );
           }
 
-          // User message enrichment (pinyin/translation + segments)
+          // User message enrichment (pinyin + segments; translation filled after AI reply)
           // Ensure this emits before we send 'final' so the client doesn't miss it
           try {
             const text = hanzi;
@@ -419,9 +425,6 @@ export class ConversationsService {
               this.isChineseChar(ch as any),
             );
             if (hasChinese) {
-              const analyzed = await (
-                this.openai as any
-              ).analyzeChineseSentence(text);
               const segs = await this.segmentationService.segmentText(text);
               const perCharPinyin =
                 await this.computeSentencePinyinPerCharacter(text);
@@ -463,15 +466,18 @@ export class ConversationsService {
                   where: { id: latestUser.id },
                   data: {
                     pinyin: perCharPinyin || '',
-                    translation: analyzed.translation || '',
+                    translation: '',
                   },
                 });
+                latestUserMessageId = latestUser.id;
+                latestUserSegments = segments;
+                latestUserPinyin = perCharPinyin || '';
                 // Emit a user-update event so frontend can show toggles immediately
                 const userUpdatePayload = JSON.stringify({
                   id: latestUser.id,
                   segments,
                   pinyin: perCharPinyin || '',
-                  translation: analyzed.translation || '',
+                  translation: '',
                 });
                 // Default event for onmessage handlers
                 subscriber.next({
@@ -551,13 +557,58 @@ export class ConversationsService {
           });
 
           let assistantTranslation = '';
+          let userTranslationFromBatch: string | undefined = undefined;
           try {
-            const analyzedAssistant = await (
-              this.openai as any
-            ).analyzeChineseSentence(finalHanzi);
-            assistantTranslation = analyzedAssistant?.translation || '';
-          } catch {
+            const translationEntries: Array<{
+              role: 'user' | 'ai';
+              text: string;
+            }> = [];
+            if (latestUserMessageId && hanzi) {
+              translationEntries.push({ role: 'user', text: hanzi });
+            }
+            if (finalHanzi) {
+              translationEntries.push({ role: 'ai', text: finalHanzi });
+            }
+            if (translationEntries.length > 0) {
+              const translations = await (
+                this.openai as any
+              ).translateConversationEntries(translationEntries);
+              assistantTranslation = translations.ai || '';
+              userTranslationFromBatch = translations.user;
+            }
+          } catch (err) {
+            this.logger.warn(
+              'Batch translation failed; proceeding without translations',
+              err as any,
+            );
             assistantTranslation = '';
+            userTranslationFromBatch = undefined;
+          }
+
+          if (
+            latestUserMessageId &&
+            typeof userTranslationFromBatch === 'string'
+          ) {
+            await this.prisma.message.update({
+              where: { id: latestUserMessageId },
+              data: { translation: userTranslationFromBatch },
+            });
+            const userUpdatePayload = JSON.stringify({
+              id: latestUserMessageId,
+              segments: latestUserSegments ?? undefined,
+              pinyin: latestUserPinyin,
+              translation: userTranslationFromBatch,
+            });
+            subscriber.next({
+              data: JSON.stringify({
+                type: 'user-update',
+                data: userUpdatePayload,
+              }),
+            });
+            subscriber.next({
+              event: 'user-update',
+              data: userUpdatePayload,
+            });
           }
 
           subscriber.next({
@@ -681,13 +732,72 @@ export class ConversationsService {
                 definitions: s.definitions,
               };
             });
+            let fallbackAssistantTranslation = fallback.translation || '';
+            let userTranslationFromBatchFallback: string | undefined =
+              undefined;
+            try {
+              const translationEntries: Array<{
+                role: 'user' | 'ai';
+                text: string;
+              }> = [];
+              if (latestUserMessageId && hanzi) {
+                translationEntries.push({ role: 'user', text: hanzi });
+              }
+              if (finalHanziFallback) {
+                translationEntries.push({
+                  role: 'ai',
+                  text: finalHanziFallback,
+                });
+              }
+              if (translationEntries.length > 0) {
+                const translations = await (
+                  this.openai as any
+                ).translateConversationEntries(translationEntries);
+                if (translations.ai) {
+                  fallbackAssistantTranslation = translations.ai;
+                }
+                userTranslationFromBatchFallback = translations.user;
+              }
+            } catch (err) {
+              this.logger.warn(
+                'Fallback batch translation failed; using single-shot result',
+                err as any,
+              );
+            }
+
+            if (
+              latestUserMessageId &&
+              typeof userTranslationFromBatchFallback === 'string'
+            ) {
+              await this.prisma.message.update({
+                where: { id: latestUserMessageId },
+                data: { translation: userTranslationFromBatchFallback },
+              });
+              const userUpdatePayload = JSON.stringify({
+                id: latestUserMessageId,
+                segments: latestUserSegments ?? undefined,
+                pinyin: latestUserPinyin,
+                translation: userTranslationFromBatchFallback,
+              });
+              subscriber.next({
+                data: JSON.stringify({
+                  type: 'user-update',
+                  data: userUpdatePayload,
+                }),
+              });
+              subscriber.next({
+                event: 'user-update',
+                data: userUpdatePayload,
+              });
+            }
+
             const aiMsg = await this.prisma.message.create({
               data: {
                 conversationId,
                 role: 'ai',
                 hanzi: finalHanziFallback,
                 pinyin: pinyinPerChar || '',
-                translation: fallback.translation || '',
+                translation: fallbackAssistantTranslation,
               },
             });
 
@@ -704,7 +814,7 @@ export class ConversationsService {
               data: JSON.stringify({
                 type: 'ai-translation',
                 conversationId,
-                translation: fallback.translation || '',
+                translation: fallbackAssistantTranslation,
               }),
             });
 
