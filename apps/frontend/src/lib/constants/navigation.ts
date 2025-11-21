@@ -96,7 +96,7 @@ export const NAVIGATION_DATA: NavigationData = [
         id: "usage",
         label: "Usage",
         href: "/account/usage",
-        icon: "Activity",
+        icon: "ChartNoAxesColumn",
         isComingSoon: false,
         description: "View your usage and limits",
       },
