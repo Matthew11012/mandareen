@@ -16,6 +16,15 @@ export interface MessageNotes {
   citations?: Array<{ key?: string; chunkId?: number }>;
 }
 
+export type ConversationHskLevel =
+  | "hsk1"
+  | "hsk2"
+  | "hsk3"
+  | "hsk4"
+  | "hsk5"
+  | "hsk6"
+  | "hsk7_9";
+
 export interface Message {
   id: number;
   role: "user" | "ai";
@@ -59,8 +68,15 @@ export const conversationsApi = {
     return get<Message[]>(`conversations/${id}/messages`);
   },
 
-  async send(id: number, hanzi: string): Promise<{ user: Message }> {
-    return post<{ user: Message }>(`conversations/${id}/messages`, { hanzi });
+  async send(
+    id: number,
+    hanzi: string,
+    targetHskLevel?: ConversationHskLevel
+  ): Promise<{ user: Message }> {
+    return post<{ user: Message }>(`conversations/${id}/messages`, {
+      hanzi,
+      targetHskLevel,
+    });
   },
   async sendAudio(id: number, audio: Blob): Promise<{ user: Message }> {
     const form = new FormData();
@@ -75,9 +91,16 @@ export const conversationsApi = {
     if (!res.ok) throw new Error("Audio upload failed");
     return res.json();
   },
-  streamUrl(id: number, hanzi: string): string {
+  streamUrl(
+    id: number,
+    {
+      hanzi,
+      targetHskLevel,
+    }: { hanzi?: string; targetHskLevel?: ConversationHskLevel | null } = {}
+  ): string {
     const params = new URLSearchParams();
     if (hanzi) params.set("hanzi", hanzi);
+    if (targetHskLevel) params.set("targetHskLevel", targetHskLevel);
     // Build absolute backend URL to avoid Next.js proxy buffering and ensure cookies are sent
     const rawBase =
       process.env.NEXT_PUBLIC_BACKEND_URL ||
@@ -85,7 +108,9 @@ export const conversationsApi = {
       "http://localhost:3000";
     const trimmed = rawBase.replace(/\/$/, "");
     const apiBase = trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
-    return `${apiBase}/conversations/${id}/stream?${params.toString()}`;
+    const query = params.toString();
+    const baseUrl = `${apiBase}/conversations/${id}/stream`;
+    return query ? `${baseUrl}?${query}` : baseUrl;
   },
 
   async delete(id: number): Promise<{ deleted: boolean }> {

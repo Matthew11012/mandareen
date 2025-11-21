@@ -10,6 +10,55 @@ import { BillingPlanService } from '../billing/billing-plan.service';
 import { BILLING_RESOURCES } from '../billing/billing-resources.constants';
 import * as mm from 'music-metadata';
 
+const HSK_PROMPT_APPENDERS = {
+  hsk1: 'Constrain vocabulary to HSK1 (~150 high-frequency words). Replies should use only very short SVO phrases or one-line answers; do not use subordinate clauses or idioms. Responses may simplify further depending on the user’s input or confidence.',
+  hsk2: 'Constrain vocabulary to HSK2 (~300 words). Replies may range from single phrases to short compound sentences (≤2 clauses) with simple connectors (和、但是、因为); simplify or expand within this band according to conversational context.',
+  hsk3: 'Constrain vocabulary to HSK3 (~600 words). Replies may range from short phrases to 1–2 sentence paragraphs using basic subordinate clauses (因为/如果/所以); scale complexity up or down within this band based on the user’s engagement.',
+  hsk4: 'Constrain vocabulary to HSK4 (~1,200 words). Replies may scale up to natural multi-clause sentences and occasional concise idiomatic turns, but may be simpler for light conversation or when the user shows difficulty; adapt within the HSK4 band.',
+  hsk5: 'Constrain vocabulary to HSK5 (~2,500 words). Replies may use fluent, idiomatic phrasing and varied structures up to HSK5 complexity, while simplifying when the conversation is casual or the user requests easier language.',
+  hsk6: 'Constrain vocabulary to HSK6 (~5,000 words). Replies may employ near-native phrasing, nuanced expressions, and sophisticated connectors up to HSK6 complexity, but should adapt to simpler forms when appropriate.',
+  hsk7_9:
+    'Constrain vocabulary to the advanced band (HSK7–9). Replies may use academic, professional, or research-level lexical choices and concise advanced idioms condensed into short answers; simplify register if the user’s input indicates a need.',
+} as const;
+
+type HskPromptKey = keyof typeof HSK_PROMPT_APPENDERS;
+
+const HSK_ALIAS_MAP: Record<string, HskPromptKey> = {
+  hsk1: 'hsk1',
+  '1': 'hsk1',
+  hsk2: 'hsk2',
+  '2': 'hsk2',
+  hsk3: 'hsk3',
+  '3': 'hsk3',
+  hsk4: 'hsk4',
+  '4': 'hsk4',
+  hsk5: 'hsk5',
+  '5': 'hsk5',
+  hsk6: 'hsk6',
+  '6': 'hsk6',
+  hsk7: 'hsk7_9',
+  hsk8: 'hsk7_9',
+  hsk9: 'hsk7_9',
+  hsk7_9: 'hsk7_9',
+  'hsk7-9': 'hsk7_9',
+  '7-9': 'hsk7_9',
+  '7_9': 'hsk7_9',
+  '7': 'hsk7_9',
+  '8': 'hsk7_9',
+  '9': 'hsk7_9',
+  advanced: 'hsk7_9',
+  advancedband: 'hsk7_9',
+};
+
+const normalizeHskSelection = (value?: string | null): HskPromptKey | null => {
+  if (!value) return null;
+  const normalized = value
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[–—−]/g, '-');
+  return HSK_ALIAS_MAP[normalized] ?? null;
+};
+
 export type MessageNotes = {
   grammarNotes?: any;
   tips?: string[];
@@ -264,10 +313,12 @@ export class ConversationsService {
     conversationId,
     userId,
     hanzi,
+    targetHskLevel,
   }: {
     conversationId: number;
     userId: number;
     hanzi: string;
+    targetHskLevel?: string | null;
   }): Observable<{ data: string } | { event: string; data: any }> {
     return new Observable((subscriber) => {
       (async () => {
@@ -316,56 +367,68 @@ export class ConversationsService {
             content: m.hanzi,
           }));
           // Do not push the same user content twice; latest user message is already included
+          const systemPromptContent: Array<{
+            type: 'input_text';
+            text: string;
+          }> = [
+            {
+              type: 'input_text',
+              text: `Respond as a native Mandarin speaker engaging in friendly daily conversation practice. Make your replies sound as natural and casual as possible, as if chatting with a close friend. Replies should be concise and brief—no longer than 1-2 short sentences(10-30 Chinese characters)—to mirror real, day-to-day exchanges and help conserve audio usage. Add small touches of humor, fun facts, cultural things or relatable details if they naturally fit the flow of conversation. If the user types in Traditional Chinese characters, always convert them to Simplified in your response. Do NOT provide pinyin, translation, or any additional explanations—just output your reply in Simplified Chinese characters, nothing else.
+                  
+              Reason step-by-step internally about the most natural, friendly, and context-appropriate way to reply before generating your response.
+              Persist in this manner throughout the session.
+
+              **Output instructions:**
+              - Output ONLY Simplified Chinese characters in a short, natural sentence.
+              - Do not include pinyin, translation, or formatting.
+              - Keep each reply to no more than 1-2 concise natural-sounding sentences.
+
+              **Examples**
+
+              *Example 1*
+
+              User: 你今天过得怎么样？
+              Assistant internal reasoning: The user is asking how my day was. Friends often reply with a brief, light tone, maybe mention something ordinary and add a bit of humor.
+              Assistant output: 还不错，就是早上又忘了带伞，差点变成“落汤鸡”！
+
+              *Example 2*
+
+              User: 最近有什么新鲜事吗？
+              Assistant internal reasoning: The user is asking about recent news. A friend might mention something personal or a fun detail.
+              Assistant output: 昨天试了家新开的奶茶店，居然送了我一只小熊杯垫！
+
+              *Example 3*
+
+              User: 明天有空吗？要不要一起吃饭？
+              Assistant internal reasoning: The friend is inviting me to eat. I can accept, making it friendly and concise.
+              Assistant output: 有空啊！去哪儿吃好呢？
+
+              (For real interactions, make sure to keep responses this concise and context-appropriate, adapting humor/fun facts naturally when possible.)
+
+              **Important reminders:**  
+              - Respond only in Simplified Chinese characters.
+              - Replies must be brief, natural, and casual, like two friends chatting.
+              - If Traditional Chinese is used, convert to Simplified in your reply.
+              - Do not include pinyin, translation, or explanations.
+              - Reason internally before answering to ensure authentic, friend-like replies.
+
+              **REMINDER:**
+              Your goal is to reply in a friendly, concise, natural way in Simplified Chinese—just like a real Mandarin-speaking friend would in a brief chat. No pinyin or translations.
+                  `,
+            },
+          ];
+          const normalizedHskPrompt = normalizeHskSelection(targetHskLevel);
+          if (normalizedHskPrompt) {
+            systemPromptContent.push({
+              type: 'input_text',
+              text: HSK_PROMPT_APPENDERS[normalizedHskPrompt],
+            });
+          }
+
           const responseInput = [
             {
               role: 'system',
-              content: [
-                {
-                  type: 'input_text',
-                  text: `Respond as a native Mandarin speaker engaging in friendly daily conversation practice. Make your replies sound as natural and casual as possible, as if chatting with a close friend. Replies should be concise and brief—no longer than 1-2 short sentences(10-30 Chinese characters)—to mirror real, day-to-day exchanges and help conserve audio usage. Add small touches of humor, fun facts, cultural things or relatable details if they naturally fit the flow of conversation. If the user types in Traditional Chinese characters, always convert them to Simplified in your response. Do NOT provide pinyin, translation, or any additional explanations—just output your reply in Simplified Chinese characters, nothing else.
-                  
-                  Reason step-by-step internally about the most natural, friendly, and context-appropriate way to reply before generating your response.
-                  Persist in this manner throughout the session.
-
-                  **Output instructions:**
-                  - Output ONLY Simplified Chinese characters in a short, natural sentence.
-                  - Do not include pinyin, translation, or formatting.
-                  - Keep each reply to no more than 1-2 concise natural-sounding sentences.
-
-                  **Examples**
-
-                  *Example 1*
-
-                  User: 你今天过得怎么样？
-                  Assistant internal reasoning: The user is asking how my day was. Friends often reply with a brief, light tone, maybe mention something ordinary and add a bit of humor.
-                  Assistant output: 还不错，就是早上又忘了带伞，差点变成“落汤鸡”！
-
-                  *Example 2*
-
-                  User: 最近有什么新鲜事吗？
-                  Assistant internal reasoning: The user is asking about recent news. A friend might mention something personal or a fun detail.
-                  Assistant output: 昨天试了家新开的奶茶店，居然送了我一只小熊杯垫！
-
-                  *Example 3*
-
-                  User: 明天有空吗？要不要一起吃饭？
-                  Assistant internal reasoning: The friend is inviting me to eat. I can accept, making it friendly and concise.
-                  Assistant output: 有空啊！去哪儿吃好呢？
-
-                  (For real interactions, make sure to keep responses this concise and context-appropriate, adapting humor/fun facts naturally when possible.)
-
-                  **Important reminders:**  
-                  - Respond only in Simplified Chinese characters.
-                  - Replies must be brief, natural, and casual, like two friends chatting.
-                  - If Traditional Chinese is used, convert to Simplified in your reply.
-                  - Do not include pinyin, translation, or explanations.
-                  - Reason internally before answering to ensure authentic, friend-like replies.
-
-                  **REMINDER:**
-                  Your goal is to reply in a friendly, concise, natural way in Simplified Chinese—just like a real Mandarin-speaking friend would in a brief chat. No pinyin or translations.
-                  `,
-                },
-              ],
+              content: systemPromptContent,
             },
             ...history.map((m) => ({
               role: m.role,

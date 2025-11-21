@@ -40,6 +40,11 @@ export interface TooltipProps {
    * Delay before showing tooltip (ms). Default: 300ms for first tooltip, 0ms for subsequent.
    */
   delay?: number;
+
+  /**
+   * When true, bypasses touch-device detection (useful for always-on tooltips in hybrid devices).
+   */
+  disableTouchDetection?: boolean;
 }
 
 export function Tooltip({
@@ -48,6 +53,7 @@ export function Tooltip({
   className,
   position = "top",
   delay = 300,
+  disableTouchDetection = false,
 }: TooltipProps) {
   const tooltipId = useId();
   const [isVisible, setIsVisible] = React.useState(false);
@@ -60,6 +66,7 @@ export function Tooltip({
     left: number;
   } | null>(null);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const touchBlocked = !disableTouchDetection && isTouchDevice;
 
   // Detect touch devices to disable tooltips on mobile
   useEffect(() => {
@@ -137,7 +144,7 @@ export function Tooltip({
       : {
           onMouseEnter: (e: React.MouseEvent) => {
             // Don't show tooltips on touch devices (mobile)
-            if (isTouchDevice) {
+            if (touchBlocked) {
               existingOnMouseEnter?.(e);
               return;
             }
@@ -150,7 +157,7 @@ export function Tooltip({
             existingOnMouseEnter?.(e);
           },
           onMouseLeave: (e: React.MouseEvent) => {
-            if (!isTouchDevice) {
+            if (!touchBlocked) {
               hideTooltip();
             }
             existingOnMouseLeave?.(e);
@@ -158,13 +165,13 @@ export function Tooltip({
         }),
     onFocus: (e: React.FocusEvent) => {
       // Don't show tooltips on touch devices (mobile) - they interfere with tap interactions
-      if (!isDisabled && !isTouchDevice) {
+      if (!isDisabled && !touchBlocked) {
         showTooltip();
       }
       existingOnFocus?.(e);
     },
     onBlur: (e: React.FocusEvent) => {
-      if (!isDisabled && !isTouchDevice) {
+      if (!isDisabled && !touchBlocked) {
         hideTooltip();
       }
       existingOnBlur?.(e);
@@ -344,7 +351,7 @@ export function Tooltip({
       onMouseLeave={isDisabled && !isTouchDevice ? hideTooltip : undefined}
     >
       {childWithProps}
-      {!isTouchDevice &&
+      {!touchBlocked &&
         isVisible &&
         tooltipPosition &&
         typeof window !== "undefined" &&
