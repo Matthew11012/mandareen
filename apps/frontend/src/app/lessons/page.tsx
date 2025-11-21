@@ -21,6 +21,7 @@ import { LayoutGroup } from "framer-motion";
 import { notifyLessonReady } from "@/lib/notifications/notify-lesson-ready";
 import { ProgressBanner } from "@/components/lessons/ProgressBanner";
 import { LessonCard } from "@/components/lessons/LessonCard";
+import { LessonCardSkeleton } from "@/components/lessons/LessonCardSkeleton";
 import { Carousel } from "@/components/lessons/Carousel";
 import {
   LessonGenerationErrorBanner,
@@ -894,53 +895,53 @@ function LessonsPageContent() {
 
     // Reset stale generations that exceeded 10 minutes
     if (Date.now() - generationStartedAt > 10 * 60 * 1000) {
-        genStore.reset();
-        setProgressOpen(false);
+      genStore.reset();
+      setProgressOpen(false);
+      return;
+    }
+
+    setProgressOpen(true);
+
+    const poll = async () => {
+      if (cancelled) {
         return;
       }
-
-      setProgressOpen(true);
-
-      const poll = async () => {
-      if (cancelled) {
-          return;
-        }
-        try {
+      try {
         const createdAfter = generationStartedAt - 60_000;
         const type =
           generationParams.type ??
           (generationParams.readTimeMinutes === 10 ? "story" : "dialogue");
-          const mineData = await lessonsApi.listMine();
-          const candidates = mineData
-            .filter((i) => i.lessonType === type)
-            .filter((i) => new Date(i.createdAt).getTime() >= createdAfter)
-            .sort(
-              (a, b) =>
+        const mineData = await lessonsApi.listMine();
+        const candidates = mineData
+          .filter((i) => i.lessonType === type)
+          .filter((i) => new Date(i.createdAt).getTime() >= createdAfter)
+          .sort(
+            (a, b) =>
               new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            );
-          if (candidates.length > 0) {
-            const id = candidates[0].id;
-            if (!notifiedLessonIdsRef.current.has(id)) {
-              genStore.finish();
-              setProgressOpen(false);
-              if (interval) {
-                clearInterval(interval);
-                interval = null;
-              }
-              setGenerating(false);
-              await load();
-              await handleLessonReady({
-                id,
-                type,
-              topic: generationParams.topic ?? undefined,
-              });
+          );
+        if (candidates.length > 0) {
+          const id = candidates[0].id;
+          if (!notifiedLessonIdsRef.current.has(id)) {
+            genStore.finish();
+            setProgressOpen(false);
+            if (interval) {
+              clearInterval(interval);
+              interval = null;
             }
+            setGenerating(false);
+            await load();
+            await handleLessonReady({
+              id,
+              type,
+              topic: generationParams.topic ?? undefined,
+            });
           }
-        } catch {}
-      };
+        }
+      } catch {}
+    };
 
     void poll();
-      interval = setInterval(poll, 5000);
+    interval = setInterval(poll, 5000);
 
     return () => {
       cancelled = true;
@@ -1036,42 +1037,42 @@ function LessonsPageContent() {
               <div className="relative">
                 <textarea
                   ref={topicTextareaRef}
-                id="lesson-topic"
+                  id="lesson-topic"
                   className="w-full bg-transparent border border-[#404040] rounded-lg px-3 py-2 pr-9 text-white placeholder-[#888] focus:outline-none min-h-[44px] resize-none overflow-hidden"
-                placeholder="Type your topic..."
-                value={topic}
+                  placeholder="Type your topic..."
+                  value={topic}
                   onChange={(e) => {
                     const value = e.target.value.slice(0, 500);
                     setTopic(value);
                     e.target.style.height = "auto";
                     e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
                   }}
-                onKeyDown={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       onGenerate();
                     }
-                }}
-                name="lesson-topic"
-                autoComplete="off"
+                  }}
+                  name="lesson-topic"
+                  autoComplete="off"
                   maxLength={500}
                   rows={1}
-              />
-              {topic && (
-                <button
-                  type="button"
+                />
+                {topic && (
+                  <button
+                    type="button"
                     onClick={() => {
                       setTopic("");
                       if (topicTextareaRef.current) {
                         topicTextareaRef.current.style.height = "auto";
                       }
                     }}
-                  aria-label="Clear topic"
+                    aria-label="Clear topic"
                     className="absolute top-2 right-0 px-3 text-[#c9c9c9] hover:text-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[#2e323a]"
-                >
-                  ×
-                </button>
-              )}
+                  >
+                    ×
+                  </button>
+                )}
               </div>
               <div className="text-right">
                 <span className="text-xs text-[#666]">{topic.length}/500</span>
@@ -1373,12 +1374,96 @@ function LessonsPageContent() {
         {error && <p className="text-red-400 font-inter text-sm">{error}</p>}
 
         {loading ? (
-          <div
-            className="flex items-center gap-2 text-[#a6a6a6]"
-            aria-live="polite"
-          >
-            <div className="w-4 h-4 motion-safe:animate-spin rounded-full border-2 border-white border-t-transparent" />
-            <span className="font-inter text-sm">Loading...</span>
+          <div className="space-y-8" aria-live="polite">
+            {/* My Lessons Section Skeleton */}
+            <div className="space-y-3">
+              <div className="flex gap-2 flex-col md:flex-row md:items-center justify-between">
+                <div className="h-6 w-32 bg-[#404040] rounded motion-safe:animate-pulse" />
+                <div className="h-6 w-48 bg-[#404040] rounded motion-safe:animate-pulse" />
+              </div>
+              {/* My Stories Skeleton */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="h-5 w-24 bg-[#404040] rounded motion-safe:animate-pulse" />
+                  <div className="h-7 w-32 bg-[#404040] rounded motion-safe:animate-pulse" />
+                </div>
+                <div className="overflow-hidden py-2">
+                  <div className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide">
+                    <div className="min-w-full snap-start flex items-stretch">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
+                        {Array.from({ length: cardsPerPage }).map((_, i) => (
+                          <LessonCardSkeleton
+                            key={`skeleton-my-stories-${i}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {/* My Dialogues Skeleton */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="h-5 w-28 bg-[#404040] rounded motion-safe:animate-pulse" />
+                  <div className="h-7 w-32 bg-[#404040] rounded motion-safe:animate-pulse" />
+                </div>
+                <div className="overflow-hidden py-2">
+                  <div className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide">
+                    <div className="min-w-full snap-start flex items-stretch">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
+                        {Array.from({ length: cardsPerPage }).map((_, i) => (
+                          <LessonCardSkeleton
+                            key={`skeleton-my-dialogues-${i}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-px bg-[#3a3a3a]" />
+
+            {/* Stories Section Skeleton */}
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="h-6 w-20 bg-[#404040] rounded motion-safe:animate-pulse" />
+                <div className="h-6 w-64 bg-[#404040] rounded motion-safe:animate-pulse" />
+              </div>
+              <div className="overflow-hidden py-2">
+                <div className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide">
+                  <div className="min-w-full snap-start flex items-stretch">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
+                      {Array.from({ length: cardsPerPage }).map((_, i) => (
+                        <LessonCardSkeleton key={`skeleton-stories-${i}`} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-px bg-[#3a3a3a]" />
+
+            {/* Dialogues Section Skeleton */}
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="h-6 w-24 bg-[#404040] rounded motion-safe:animate-pulse" />
+                <div className="h-6 w-64 bg-[#404040] rounded motion-safe:animate-pulse" />
+              </div>
+              <div className="overflow-hidden py-2">
+                <div className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide">
+                  <div className="min-w-full snap-start flex items-stretch">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
+                      {Array.from({ length: cardsPerPage }).map((_, i) => (
+                        <LessonCardSkeleton key={`skeleton-dialogues-${i}`} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         ) : allStories.length === 0 &&
           allDialogues.length === 0 &&

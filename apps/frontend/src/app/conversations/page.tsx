@@ -548,9 +548,10 @@ export default function ConversationsPage() {
         }) => {
           if (typeof final.id === "number" && final.id !== targetId) {
             const persistedId = final.id;
+            const oldTargetId = targetId;
             updateMessagesCache(conversationId, (prev) =>
               prev.map((m) =>
-                m.id === targetId
+                m.id === oldTargetId
                   ? {
                       ...m,
                       id: persistedId,
@@ -559,7 +560,17 @@ export default function ConversationsPage() {
                   : m
               )
             );
+            setPendingAutoPlayMessageId((current) =>
+              current === oldTargetId ? persistedId : current
+            );
             targetId = persistedId;
+          } else if (typeof final.id === "number" && final.id === targetId) {
+            // If ID is already correct, just mark as persisted
+            updateMessagesCache(conversationId, (prev) =>
+              prev.map((m) =>
+                m.id === targetId ? { ...m, _persisted: true } : m
+              )
+            );
           }
           // Normalize notes from FinalPayload (NotesPayload) to Message["notes"]
           let normalizedNotes: Message["notes"] | undefined = undefined;
@@ -647,7 +658,7 @@ export default function ConversationsPage() {
         },
       };
     },
-    [conversationId, updateMessagesCache]
+    [conversationId, updateMessagesCache, setPendingAutoPlayMessageId]
   );
 
   const {

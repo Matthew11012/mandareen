@@ -80,7 +80,7 @@ export const TokenRenderer = React.memo(function TokenRenderer({
   showPinyin,
   hoverClass,
   keyPrefix,
-  textSizeClass = "text-lg",
+  textSizeClass = "text-xl",
   multiSelect,
   selectedWords,
   toggleSelectWord,
@@ -118,7 +118,7 @@ export const TokenRenderer = React.memo(function TokenRenderer({
 
   return (
     <div
-      className={`leading-8 text-white font-light sm:font-normal ${textSizeClass}`}
+      className={`leading-9 sm:leading-8 text-white font-light sm:font-normal ${textSizeClass} sm:text-lg`}
     >
       {segments.map((seg, idx) => {
         const isWord = Boolean(seg.isWord);

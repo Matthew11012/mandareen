@@ -113,6 +113,7 @@ export class SegmentationService {
       const found = await this.prisma.vocabularyItem.findFirst({
         where: { hanzi: token },
         select: {
+          id: true,
           hskLevel: true,
           pinyin: true,
           definition: true,
@@ -120,10 +121,44 @@ export class SegmentationService {
       });
 
       if (found) {
+        let basePinyin = found.pinyin || '';
+        const definitionSet = new Set<string>();
+        if (found.id) {
+          const senses =
+            await (this.prisma as any).vocabularySense?.findMany({
+              where: { vocabularyItemId: found.id },
+              select: { definition: true, pinyin: true },
+            });
+          if (Array.isArray(senses)) {
+            for (const sense of senses) {
+              const senseDef = (sense?.definition || '').trim();
+              if (senseDef.length > 0) {
+                definitionSet.add(senseDef);
+              }
+              if (!basePinyin) {
+                const sensePinyin = (sense?.pinyin || '').trim();
+                if (sensePinyin.length > 0) {
+                  basePinyin = sensePinyin;
+                }
+              }
+            }
+          }
+        }
+        if (
+          definitionSet.size === 0 &&
+          (found.definition || '').trim().length > 0
+        ) {
+          definitionSet.add(found.definition!.trim());
+        }
+        const definitions = Array.from(definitionSet);
         const entry: DictEntry = {
           hskLevel: found.hskLevel ?? undefined,
-          pinyin: (found.pinyin || '').toLowerCase() || undefined,
-          definition: found.definition || undefined,
+          pinyin: (basePinyin || '').toLowerCase() || undefined,
+          definition:
+            definitions.length > 0
+              ? definitions.join('; ')
+              : found.definition || undefined,
+          definitions: definitions.length > 0 ? definitions : undefined,
         };
         this.setInCache(token, entry);
         return entry;
@@ -386,6 +421,10 @@ export class SegmentationService {
 
   // Optionally inject small time-unit lexemes into localDict if missing
   private augmentTimeUnits(localDict: Map<string, DictEntry>): void {
+    if (this.mode === 'db') {
+      // In DB mode we rely on live lookups to avoid overriding real dictionary entries
+      return;
+    }
     for (const timeUnit of this.timeUnits) {
       if (!localDict.has(timeUnit)) {
         localDict.set(timeUnit, {
@@ -431,7 +470,7 @@ export class SegmentationService {
         hskLevel: item.hskLevel ?? undefined,
         pinyin: (item.pinyin || '').toLowerCase() || undefined,
         definition: item.definition || undefined,
-        definitions: item.definition ? [item.definition] : undefined,
+        definitions: undefined,
       });
       this.maxTokenLength = Math.max(this.maxTokenLength, item.hanzi.length);
       this.firstCharSet.add(item.hanzi.charAt(0));
@@ -442,7 +481,7 @@ export class SegmentationService {
           hskLevel: item.hskLevel ?? undefined,
           pinyin: (item.pinyin || '').toLowerCase() || undefined,
           definition: item.definition || undefined,
-          definitions: item.definition ? [item.definition] : undefined,
+          definitions: undefined,
         });
         this.maxTokenLength = Math.max(
           this.maxTokenLength,
@@ -462,7 +501,10 @@ export class SegmentationService {
           const hanzi = idToHanzi.get(s.vocabularyItemId);
           if (!hanzi) continue;
           const existing = this.dictionary.get(hanzi) || {};
-          const defs = new Set<string>((existing as any).definitions || []);
+          const existingDefs = Array.isArray((existing as any).definitions)
+            ? ((existing as any).definitions as string[])
+            : [];
+          const defs = new Set<string>(existingDefs);
           if (s.definition) defs.add(s.definition);
           const combined = Array.from(defs);
           this.dictionary.set(hanzi, {
