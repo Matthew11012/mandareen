@@ -13,7 +13,6 @@ import {
   useConversationsList,
   useMessages,
   useStartConversation,
-  useSendMessage,
   useDeleteConversation,
   useSendAudio,
   useUpdateMessagesCache,
@@ -40,9 +39,12 @@ import {
 import { ConversationUsageToast } from "@/components/conversations/ConversationUsageToast";
 import { shouldDisplayResource } from "@/lib/constants/usage-resources";
 
+const INT32_MAX = 2147483647;
+const isPersistedMessageId = (id: number | null | undefined) =>
+  typeof id === "number" && Number.isFinite(id) && Math.abs(id) <= INT32_MAX;
+
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
-  const [input, setInput] = useState("");
   const [aiShowPinyin, setAiShowPinyin] = useState<Record<number, boolean>>({});
   const [aiShowTrans, setAiShowTrans] = useState<Record<number, boolean>>({});
   const [aiShowNotes, setAiShowNotes] = useState<Record<number, boolean>>({});
@@ -59,6 +61,16 @@ export default function ConversationsPage() {
   // Handler to generate notes for a message
   const handleGenerateNotes = async (messageId: number) => {
     if (!conversationId) return;
+    const targetMessage = messages.find(
+      (m) => m.id === messageId && m.role === "ai"
+    ) as (Message & { _persisted?: boolean }) | undefined;
+    const messagePersisted =
+      targetMessage?._persisted ||
+      (typeof messageId === "number" && isPersistedMessageId(messageId));
+    if (!messagePersisted) {
+      toast.info("Notes will be available once this reply finishes saving.");
+      return;
+    }
     try {
       const res = await conversationsApi.generateManualNotes(
         conversationId,
@@ -75,15 +87,7 @@ export default function ConversationsPage() {
             : m
         )
       );
-      // Refetch messages to ensure we have the latest data
-      const { data: updatedMessages } = await refetchMessages();
-      // Find the updated message and open modal
-      const updatedMessage = updatedMessages?.find(
-        (m) => m.id === messageId && m.role === "ai"
-      );
-      if (updatedMessage) {
-        openNotesModal(updatedMessage);
-      }
+      toast.success("Notes generated. Open Notes to review them.");
     } catch (err: unknown) {
       // Extract error message for user feedback
       const errorMessage =
@@ -134,6 +138,10 @@ export default function ConversationsPage() {
     null
   );
   const autoPlayedAudioRef = useRef<Set<number>>(new Set());
+  const [pendingAutoPlayMessageId, setPendingAutoPlayMessageId] = useState<
+    number | null
+  >(null);
+  const previousConversationIdRef = useRef<number | null>(null);
   const {
     data: usageSummary,
     isLoading: usageLoading,
@@ -362,13 +370,12 @@ export default function ConversationsPage() {
   }, []);
 
   // Hooks
-  const { streamText, streamAudio } = useConversationStream();
+  const { streamAudio } = useConversationStream();
   const { data: conversationsList, refetch: refetchConversations } =
     useConversationsList();
   const { data: messagesData, refetch: refetchMessages } =
     useMessages(conversationId);
   const startConversationMutation = useStartConversation();
-  const sendMessageMutation = useSendMessage();
   const deleteConversationMutation = useDeleteConversation();
   const sendAudioMutation = useSendAudio();
   const updateMessagesCache = useUpdateMessagesCache();
@@ -420,6 +427,7 @@ export default function ConversationsPage() {
               _loadingTranslation: true,
               _loadingAudio: true,
               _loadingNotes: true,
+              _persisted: false,
             } as Message,
           ]);
         },
@@ -530,6 +538,7 @@ export default function ConversationsPage() {
           );
         },
         onFinal: (final: {
+          id?: number;
           hanzi?: string;
           pinyin?: string;
           translation?: string;
@@ -537,6 +546,32 @@ export default function ConversationsPage() {
           segments?: Message["segments"];
           notes?: unknown;
         }) => {
+          if (typeof final.id === "number" && final.id !== targetId) {
+            const persistedId = final.id;
+            const oldTargetId = targetId;
+            updateMessagesCache(conversationId, (prev) =>
+              prev.map((m) =>
+                m.id === oldTargetId
+                  ? {
+                      ...m,
+                      id: persistedId,
+                      _persisted: true,
+                    }
+                  : m
+              )
+            );
+            setPendingAutoPlayMessageId((current) =>
+              current === oldTargetId ? persistedId : current
+            );
+            targetId = persistedId;
+          } else if (typeof final.id === "number" && final.id === targetId) {
+            // If ID is already correct, just mark as persisted
+            updateMessagesCache(conversationId, (prev) =>
+              prev.map((m) =>
+                m.id === targetId ? { ...m, _persisted: true } : m
+              )
+            );
+          }
           // Normalize notes from FinalPayload (NotesPayload) to Message["notes"]
           let normalizedNotes: Message["notes"] | undefined = undefined;
           if (final.notes && typeof final.notes === "object") {
@@ -575,6 +610,10 @@ export default function ConversationsPage() {
                     _loadingTranslation: false,
                     _loadingAudio: false,
                     _loadingNotes: false,
+                    _persisted:
+                      typeof final.id === "number"
+                        ? isPersistedMessageId(final.id)
+                        : true,
                   }
                 : m
             )
@@ -619,7 +658,7 @@ export default function ConversationsPage() {
         },
       };
     },
-    [conversationId, updateMessagesCache]
+    [conversationId, updateMessagesCache, setPendingAutoPlayMessageId]
   );
 
   const {
@@ -648,8 +687,13 @@ export default function ConversationsPage() {
 
         // Wrap onUserUpdate to ensure it matches the correct user message ID
         // The stream should send user-update events with the user message ID from sendAudio
+        const originalOnStart = callbacks.onStart;
         const originalOnUserUpdate = callbacks.onUserUpdate;
         const originalOnFinal = callbacks.onFinal;
+        callbacks.onStart = (payload) => {
+          originalOnStart?.(payload);
+          setPendingAutoPlayMessageId(payload.id);
+        };
         callbacks.onUserUpdate = (update) => {
           // Apply update if ID matches our user message
           // The original handler already handles the update logic correctly
@@ -899,74 +943,106 @@ export default function ConversationsPage() {
 
   // Audio toggle handler
   const handleToggleAudio = useCallback(
-    (messageId: number, audioElement: HTMLAudioElement | null) => {
-      if (!audioElement) return;
+    async (
+      messageId: number,
+      audioElement: HTMLAudioElement | null,
+      _source: "manual" | "auto" = "manual"
+    ): Promise<boolean> => {
+      void _source;
+      if (!audioElement) {
+        return false;
+      }
+
       if (audioElement.paused) {
-        void audioElement.play();
         setPlaying((s) => ({ ...s, [messageId]: true }));
         audioElement.onended = () =>
           setPlaying((s) => ({ ...s, [messageId]: false }));
-      } else {
-        audioElement.pause();
-        setPlaying((s) => ({ ...s, [messageId]: false }));
+
+        try {
+          const playPromise = audioElement.play();
+          if (playPromise) {
+            await playPromise;
+          }
+          return true;
+        } catch (_error) {
+          void _error;
+          setPlaying((s) => ({ ...s, [messageId]: false }));
+          return false;
+        }
       }
+
+      audioElement.pause();
+      setPlaying((s) => ({ ...s, [messageId]: false }));
+      return true;
     },
     []
   );
 
   // Clear auto-play tracking when switching conversations
   useEffect(() => {
+    if (previousConversationIdRef.current === conversationId) return;
+    previousConversationIdRef.current = conversationId;
     autoPlayedAudioRef.current.clear();
-  }, [conversationId]);
+    if (pendingAutoPlayMessageId !== null) {
+      setPendingAutoPlayMessageId(null);
+    }
+  }, [conversationId, pendingAutoPlayMessageId]);
 
   // Auto-play newly received AI audio once it's available
   useEffect(() => {
     if (!messages || messages.length === 0) return;
 
-    const nextMessage = [...messages]
-      .reverse()
-      .find(
-        (m) =>
-          m.role === "ai" &&
-          !!m.audioUrl &&
-          !autoPlayedAudioRef.current.has(m.id)
-      );
+    if (!pendingAutoPlayMessageId) return;
 
-    if (!nextMessage) return;
+    const nextMessage = messages.find(
+      (m) =>
+        m.id === pendingAutoPlayMessageId &&
+        m.role === "ai" &&
+        !!m.audioUrl &&
+        !autoPlayedAudioRef.current.has(m.id)
+    );
+
+    if (!nextMessage) {
+      return;
+    }
 
     let cancelled = false;
     let retryTimeout: ReturnType<typeof setTimeout> | null = null;
     const audioElementId = `audio-${nextMessage.id}`;
+    const maxRetries = 20;
 
-    const attemptPlay = () => {
+    const attemptPlay = (attempt = 0) => {
       if (cancelled) return;
       const audioElement = document.getElementById(
         audioElementId
       ) as HTMLAudioElement | null;
+
       if (!audioElement) {
-        retryTimeout = setTimeout(attemptPlay, 150);
+        if (attempt < maxRetries) {
+          retryTimeout = setTimeout(() => attemptPlay(attempt + 1), 150);
+        } else {
+          setPendingAutoPlayMessageId(null);
+        }
         return;
       }
 
-      const startPlayback = () => {
-        if (cancelled) return;
-        if (!audioElement.paused) {
-          autoPlayedAudioRef.current.add(nextMessage.id);
-          return;
+      if (audioElement.preload === "none") {
+        audioElement.preload = "auto";
+        try {
+          audioElement.load();
+        } catch {
+          // ignore load errors, play will still attempt to fetch
         }
-        handleToggleAudio(nextMessage.id, audioElement);
-        autoPlayedAudioRef.current.add(nextMessage.id);
-      };
-
-      if (audioElement.readyState >= 2) {
-        startPlayback();
-      } else {
-        const handleCanPlay = () => {
-          audioElement.removeEventListener("canplay", handleCanPlay);
-          startPlayback();
-        };
-        audioElement.addEventListener("canplay", handleCanPlay, { once: true });
       }
+
+      void handleToggleAudio(nextMessage.id, audioElement, "auto").then(
+        (started) => {
+          setPendingAutoPlayMessageId(null);
+          if (started) {
+            autoPlayedAudioRef.current.add(nextMessage.id);
+          }
+        }
+      );
     };
 
     attemptPlay();
@@ -977,7 +1053,7 @@ export default function ConversationsPage() {
         clearTimeout(retryTimeout);
       }
     };
-  }, [messages, handleToggleAudio]);
+  }, [messages, handleToggleAudio, pendingAutoPlayMessageId]);
 
   // Mobile detection and sidebar management
   useEffect(() => {
@@ -1072,35 +1148,6 @@ export default function ConversationsPage() {
     setShowConversationsSidebar(!showConversationsSidebar);
   };
 
-  const sendText = async () => {
-    if (sendDisabled) {
-      errorBannerRef.current?.focus();
-      return;
-    }
-    if (!conversationId || !input.trim()) return;
-    const text = input.trim();
-    setInput("");
-    try {
-      // Mutation handles optimistic user message and replaces with server response
-      await sendMessageMutation.mutateAsync({
-        id: conversationId,
-        hanzi: text,
-      });
-      // Start SSE stream using hook
-      const aiMsgId = Date.now() + 1;
-      await streamText(
-        { conversationId, text },
-        createStreamCallbacks(aiMsgId)
-      );
-      setConversationError(null);
-    } catch (err) {
-      setInput(text);
-      if (!handleConversationError(err)) {
-        toast.error("Failed to send message");
-      }
-    }
-  };
-
   // Note: if needed, we can add an "Add to Flashcards" inline action in the popup later.
 
   return (
@@ -1157,7 +1204,7 @@ export default function ConversationsPage() {
             className={`fixed z-30 p-3 rounded-lg transition-all duration-200 cursor-pointer md:hidden ${
               showConversationsSidebar
                 ? "bottom-16 right-2 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
-                : "bottom-16 right-2 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
+                : "bottom-19 right-2 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
             }`}
             style={{ touchAction: "manipulation" }}
             title={
@@ -1241,9 +1288,6 @@ export default function ConversationsPage() {
           />
 
           <MessageInput
-            input={input}
-            onInputChange={setInput}
-            onSend={sendText}
             recording={recording}
             recPrompt={recPrompt}
             uploadingAudio={uploadingAudio}

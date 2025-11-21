@@ -37,33 +37,99 @@ export class OpenAIService {
     return vectors;
   }
 
-  async analyzeChineseSentence(
-    text: string,
-  ): Promise<{ pinyin: string; translation: string }> {
+  async translateConversationEntries(
+    entries: Array<{ role: 'user' | 'ai'; text: string }>,
+  ): Promise<{ user?: string; ai?: string }> {
     const model = process.env.OPENAI_MODEL_TRANSLATE || 'gpt-5-nano';
-    const completion = await this.openai.chat.completions.create({
+    const userText = entries.find((entry) => entry.role === 'user')?.text ?? '';
+    const aiText = entries.find((entry) => entry.role === 'ai')?.text ?? '';
+    const renderedEntries = [
+      `Entry (role: user): ${userText || '(none provided)'}`,
+      `Entry (role: ai): ${aiText || '(none provided)'}`,
+    ].join('\n\n');
+    const response = await (this.openai as any).responses.create({
       model,
-      messages: [
+      reasoning: { effort: 'minimal' },
+      input: [
         {
           role: 'system',
-          content:
-            'You are an English to Mandarin translator. For the given text from the user (which may or may not be Chinese), if it is Chinese, return STRICT JSON with keys translation for the exact input; {"translation":"<english translation of the user given text>"}. Preserve original sentence boundaries and punctuation: translate sentence-by-sentence without merging or reflowing, and keep the same order and number of sentences as the source. If it is not Chinese, return {"translation":""}. No commentary.',
+          content: [
+            {
+              type: 'input_text',
+              text: 'You are an English translator for Mandarin sentences. For each entry provided, output ONLY in English, the English translation - never repeat the Chinese characters of the User or AI input. Mirror the sentence order and punctuation in natural English. If the entry is empty or not Chinese, return an empty string for that role. Always return STRICT JSON with keys "user" and "ai". Example response: {"user":<english translation of user entry>,"ai":<english translation of ai entry>}',
+            },
+          ],
         },
-        { role: 'user', content: text },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: renderedEntries,
+            },
+          ],
+        },
       ],
-      response_format: { type: 'json_object' },
-    } as any);
-    const content = completion.choices?.[0]?.message?.content;
-    if (!content) return { pinyin: '', translation: '' };
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'ConversationTurnTranslations',
+          schema: {
+            type: 'object',
+            properties: {
+              user: { type: 'string' },
+              ai: { type: 'string' },
+            },
+            required: ['user', 'ai'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+
+    const content = this.extractResponseText(response);
+    if (!content) return {};
     try {
       const data = JSON.parse(content);
-      return {
-        pinyin: (data.pinyin || '').toLowerCase(),
-        translation: data.translation || '',
-      };
+      const result: { user?: string; ai?: string } = {};
+      if (typeof data.user === 'string') result.user = data.user;
+      if (typeof data.ai === 'string') result.ai = data.ai;
+      return result;
     } catch {
-      return { pinyin: '', translation: '' };
+      return {};
     }
+  }
+
+  private extractResponseText(resp: any): string {
+    if (!resp) return '';
+    if (typeof resp.output_text === 'function') {
+      try {
+        return resp.output_text.join('');
+      } catch {
+        // fall through to manual extraction
+      }
+    }
+    const output = resp?.output;
+    if (!Array.isArray(output)) return '';
+    const chunks: string[] = [];
+    for (const item of output) {
+      if (item?.content && Array.isArray(item.content)) {
+        for (const block of item.content) {
+          if (
+            (block.type === 'output_text' || block.type === 'text') &&
+            typeof block.text === 'string'
+          ) {
+            chunks.push(block.text);
+          }
+        }
+      } else if (
+        (item?.type === 'output_text' || item?.type === 'text') &&
+        typeof item?.text === 'string'
+      ) {
+        chunks.push(item.text);
+      }
+    }
+    return chunks.join('');
   }
   /**
    * Transcribe an audio buffer into Mandarin text using OpenAI STT.
@@ -159,57 +225,6 @@ export class OpenAIService {
       opus: 'audio/ogg',
     };
     return map[ext.toLowerCase()];
-  }
-  async annotateChinese(text: string): Promise<
-    Array<{
-      text: string;
-      pinyin?: string;
-      definition?: string;
-      hskLevel?: number;
-    }>
-  > {
-    // Disabled via configuration (default OFF). Return no extra vocab to rely on DB segmentation only.
-    const flag = (process.env.ENABLE_ANNOTATE_CHINESE || '').toLowerCase();
-    if (
-      flag === '' ||
-      flag === '0' ||
-      flag === 'false' ||
-      flag === 'off' ||
-      flag === 'disabled'
-    ) {
-      return [];
-    }
-    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-    const completion = await this.openai.chat.completions.create({
-      model,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a Mandarin lexical annotator. Given the user Chinese text, extract a small list (10–25) of important words and short phrases (multi-character collocations where appropriate). For each, include exact substring matching the text, its pinyin, and a concise English definition. Return STRICT JSON: {"vocabulary":[{"text":"...","pinyin":"...","definition":"..."}]}. No commentary. Only include items that appear verbatim in the text.',
-        },
-        { role: 'user', content: text },
-      ],
-      response_format: { type: 'json_object' },
-    } as any);
-    const content = completion.choices?.[0]?.message?.content;
-    if (!content) return [];
-    try {
-      const data = JSON.parse(content);
-      const vocab = Array.isArray(data?.vocabulary) ? data.vocabulary : [];
-      return vocab
-        .filter(
-          (v: any) => typeof v?.text === 'string' && v.text.trim().length > 0,
-        )
-        .map((v: any) => ({
-          text: v.text,
-          pinyin: (v.pinyin || '').toLowerCase(),
-          definition: v.definition || v.translation || undefined,
-          hskLevel: typeof v.hskLevel === 'number' ? v.hskLevel : undefined,
-        }));
-    } catch {
-      return [];
-    }
   }
   async chatChineseReplyWithContext(
     messagesIn: Array<{
