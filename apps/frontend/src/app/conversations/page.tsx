@@ -1479,7 +1479,12 @@ export default function ConversationsPage() {
                       value={option.value}
                       className="text-white hover:bg-[#404040]"
                     >
-                      {option.label}
+                      <div className="flex flex-col text-left">
+                        <span className="font-medium">{option.label}</span>
+                        <span className="text-[11px] text-[#a6a6a6]">
+                          {option.helper}
+                        </span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
