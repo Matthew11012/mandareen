@@ -78,13 +78,13 @@ export class ConversationsController {
     // Apply RPM rate limiting if configured, but do not log usage events
     const limit = await this.billingPlanService.getLimit(userId, resource);
     if (limit?.rpm && limit.rpm > 0) {
-      await this.rateLimitService.acquire({
-        userId,
-        resource,
-        rpm: limit.rpm,
-        burst: limit.burst ?? undefined,
-      });
-    }
+        await this.rateLimitService.acquire({
+          userId,
+          resource,
+          rpm: limit.rpm,
+          burst: limit.burst ?? undefined,
+        });
+      }
 
     return await this._service.sendUserMessage({
       conversationId: Number(id),
@@ -116,13 +116,13 @@ export class ConversationsController {
     // Rate limit check (RPM) for audio message count
     const limit = await this.billingPlanService.getLimit(userId, resource);
     if (limit && limit.rpm && limit.rpm > 0) {
-      await this.rateLimitService.acquire({
-        userId,
-        resource,
-        rpm: limit.rpm,
-        burst: limit.burst ?? undefined,
-      });
-    }
+        await this.rateLimitService.acquire({
+          userId,
+          resource,
+          rpm: limit.rpm,
+          burst: limit.burst ?? undefined,
+        });
+      }
 
     // Check if audio duration quota is already over 100% (reject if so)
     const audioDurationResource = BILLING_RESOURCES.CONVO_TTS_SECONDS;
