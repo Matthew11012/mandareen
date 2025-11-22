@@ -149,8 +149,7 @@ export class LessonsService {
         });
       } catch (err) {
         this.logger.warn(
-          'createMany(vocabularyItem) failed in batchUpsertVocabulary',
-          err as any,
+          `createMany(vocabularyItem) failed in batchUpsertVocabulary: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
@@ -262,7 +261,9 @@ export class LessonsService {
           data: slice,
         });
       } catch (err) {
-        this.logger.warn('createMany(wordInstance) batch failed', err as any);
+        this.logger.warn(
+          `createMany(wordInstance) batch failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
   }
@@ -330,7 +331,9 @@ export class LessonsService {
                 return;
               }
             } catch (err) {
-              this.logger.warn('Idempotency lookup failed', err as any);
+              this.logger.warn(
+                `Idempotency lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
             }
           }
 
@@ -380,9 +383,14 @@ export class LessonsService {
             for (const t of turns) {
               let segs: any[] = [];
               try {
+                const segStartTime = Date.now();
                 segs = await this.segmentationService.segmentText(
                   t.hanzi || '',
                   dedupNamedEntities,
+                );
+                const segDuration = Date.now() - segStartTime;
+                this.logger.debug?.(
+                  `Segmented dialogue turn (${(t.hanzi || '').length} chars) in ${segDuration}ms`,
                 );
               } catch (err) {
                 this.logger.warn(
@@ -487,7 +495,9 @@ export class LessonsService {
                 });
                 return quiz;
               } catch (e) {
-                this.logger.warn('Dialogue quiz generation failed', e as any);
+                this.logger.warn(
+                  `Dialogue quiz generation failed: ${e instanceof Error ? e.message : String(e)}`,
+                );
                 return {};
               }
             })();
@@ -529,7 +539,9 @@ export class LessonsService {
                 quizOut = { items: itemsSeg, passingScore: 100 };
               }
             } catch (e) {
-              this.logger.warn('Segment quiz failed', e as any);
+              this.logger.warn(
+                `Segment quiz failed: ${e instanceof Error ? e.message : String(e)}`,
+              );
             }
 
             // Upsert named entities into vocabulary (dialogue) - batched
@@ -590,8 +602,7 @@ export class LessonsService {
               await this.populateWordInstancesForLesson(created.id);
             } catch (e) {
               this.logger.warn(
-                'populateWordInstancesForLesson failed (stream dialogue)',
-                e as any,
+                `populateWordInstancesForLesson failed (stream dialogue): ${e instanceof Error ? e.message : String(e)}`,
               );
             }
             if (hooks?.onLessonPersisted) {
@@ -639,9 +650,14 @@ export class LessonsService {
                   definition: e.translation || e.definition || undefined,
                 }))
             : [];
+          const segStartTime = Date.now();
           const segs = await this.segmentationService.segmentText(
             mainText,
             namedEntities,
+          );
+          const segDuration = Date.now() - segStartTime;
+          this.logger.debug?.(
+            `Segmented story main text (${mainText.length} chars) in ${segDuration}ms`,
           );
 
           // Upsert named entities into vocabulary (story - streaming) - batched
@@ -733,7 +749,9 @@ export class LessonsService {
               });
               return quiz;
             } catch (e) {
-              this.logger.warn('Story quiz generation failed', e as any);
+              this.logger.warn(
+                `Story quiz generation failed: ${e instanceof Error ? e.message : String(e)}`,
+              );
               return {};
             }
           })();
@@ -775,7 +793,9 @@ export class LessonsService {
               quizOut2 = { items: itemsSeg, passingScore: 100 };
             }
           } catch (e) {
-            this.logger.warn('Segment story quiz failed', e as any);
+            this.logger.warn(
+              `Segment story quiz failed: ${e instanceof Error ? e.message : String(e)}`,
+            );
           }
 
           emit('step', { key: 'persist_lesson' });
@@ -875,7 +895,9 @@ export class LessonsService {
           if (heartbeat) clearInterval(heartbeat);
           subscriber.complete();
         } catch (err) {
-          this.logger.error('Stream generation failed', err as any);
+          this.logger.error(
+            `Stream generation failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
           try {
             subscriber.next({
               event: 'error',
@@ -946,12 +968,19 @@ export class LessonsService {
       });
 
       const turnsWithSegments = [] as any[];
+      let totalSegTime = 0;
       for (const t of turns) {
         let segs: any[] = [];
         try {
+          const segStartTime = Date.now();
           segs = await this.segmentationService.segmentText(
             t.hanzi || '',
             dedupNamedEntities,
+          );
+          const segDuration = Date.now() - segStartTime;
+          totalSegTime += segDuration;
+          this.logger.debug?.(
+            `Segmented dialogue turn (${(t.hanzi || '').length} chars) in ${segDuration}ms`,
           );
         } catch (err) {
           this.logger.warn(
@@ -987,6 +1016,12 @@ export class LessonsService {
           translation: t.translation || '',
           segments: filledSegs,
         });
+      }
+
+      if (totalSegTime > 0) {
+        this.logger.log(
+          `Dialogue lesson segmentation: ${turns.length} turns segmented in ${totalSegTime}ms (avg: ${Math.round(totalSegTime / turns.length)}ms/turn)`,
+        );
       }
 
       // Parallel grammar notes and quiz for dialogue
@@ -1033,7 +1068,9 @@ export class LessonsService {
             : undefined;
           return { grammarNotes, tipsRichOut };
         } catch (err) {
-          this.logger.warn('Grammar notes failed (dialogue)', err as any);
+          this.logger.warn(
+            `Grammar notes failed (dialogue): ${err instanceof Error ? err.message : String(err)}`,
+          );
           return { grammarNotes: undefined, tipsRichOut: undefined };
         }
       })();
@@ -1054,7 +1091,9 @@ export class LessonsService {
           });
           return quiz;
         } catch (e) {
-          this.logger.warn('Dialogue quiz generation failed', e as any);
+          this.logger.warn(
+            `Dialogue quiz generation failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
           return {};
         }
       })();
@@ -1106,7 +1145,9 @@ export class LessonsService {
           quizOut = { items: itemsSeg, passingScore: 100 };
         }
       } catch (e) {
-        this.logger.warn('Segment dialogue quiz failed', e as any);
+        this.logger.warn(
+          `Segment dialogue quiz failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
 
       // Normalize and process tags
@@ -1171,9 +1212,14 @@ export class LessonsService {
         seenNe2.add(e.text);
         return true;
       });
+      const segStartTime = Date.now();
       const segs = await this.segmentationService.segmentText(
         mainText,
         dedupNamedEntities2,
+      );
+      const segDuration = Date.now() - segStartTime;
+      this.logger.log(
+        `Story lesson segmentation: main text (${mainText.length} chars) segmented in ${segDuration}ms`,
       );
 
       // Fill missing pinyin from story.pinyin (fallback per character)
@@ -1241,7 +1287,9 @@ export class LessonsService {
             : undefined;
           return { grammarNotes, tipsRichOut2 };
         } catch (err) {
-          this.logger.warn('Error generating grammar notes', err as any);
+          this.logger.warn(
+            `Error generating grammar notes: ${err instanceof Error ? err.message : String(err)}`,
+          );
           return { grammarNotes: undefined, tipsRichOut2: undefined };
         }
       })();
@@ -1257,7 +1305,9 @@ export class LessonsService {
           });
           return quiz;
         } catch (e) {
-          this.logger.warn('Story quiz generation failed', e as any);
+          this.logger.warn(
+            `Story quiz generation failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
           return {};
         }
       })();
@@ -1313,7 +1363,9 @@ export class LessonsService {
           quizOut2 = { items: itemsSeg, passingScore: 100 };
         }
       } catch (e) {
-        this.logger.warn('Segment story quiz failed', e as any);
+        this.logger.warn(
+          `Segment story quiz failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
 
       // Normalize and process tags
@@ -2282,7 +2334,12 @@ export class LessonsService {
   private async enrichTextWithSegments(text?: string, pinyin?: string) {
     if (!text || !Array.from(text).some((c) => this.isChineseChar(c)))
       return undefined as any[] | undefined;
+    const segStartTime = Date.now();
     const segs = await this.segmentationService.segmentText(text);
+    const segDuration = Date.now() - segStartTime;
+    this.logger.debug?.(
+      `Segmented text for enrichment (${text.length} chars) in ${segDuration}ms`,
+    );
     const charPinyinArray = (pinyin || '')
       .split(/\s+/)
       .map((s) => s.trim())
