@@ -103,7 +103,7 @@ export class SegmentationService {
     {
       行: {
         háng: ['银', '银', '排', '列', '业', '银'], // 银行, 排行, 行列, 行业
-        xíng: ['走', '为', '动', '人', '路', '程'], // 行走, 行为, 行动, 行人, 行路, 行程
+        xíng: ['走', '为', '动', '人', '路', '程', '就', '可', '以', '不', '好', '还', '也', '都'], // 行走, 行为, 行动, 行人, 行路, 行程, 就行, 可以行, 不行, 好行, 还行, 也行, 都行
       },
       长: {
         zhǎng: ['成', '大', '首', '校', '辈', '老'], // 成长, 长大, 首长, 校长, 长辈, 长老
@@ -241,6 +241,15 @@ export class SegmentationService {
         );
         if (leIndex >= 0) {
           return pinyinOptions[leIndex];
+        }
+      }
+      // For 行, prefer xíng (more common in single-character usage meaning "okay/fine") over háng
+      if (hanzi === '行') {
+        const xingIndex = pinyinOptions.findIndex((p) =>
+          this.normalizePinyinForComparison(p).includes('xing'),
+        );
+        if (xingIndex >= 0) {
+          return pinyinOptions[xingIndex];
         }
       }
       // For 地, prefer de (most common) over di

@@ -9,7 +9,6 @@ import { MessageInput } from "@/components/conversations/MessageInput";
 function RateLimitHarness() {
   const [error, setError] =
     useState<ComponentProps<typeof ConversationErrorBanner>["error"]>();
-  const [input, setInput] = useState("");
 
   const sendDisabled = !!(error?.kind === "rate" && error.retrySeconds > 0);
   const disableReason = useMemo(() => {
@@ -51,9 +50,6 @@ function RateLimitHarness() {
         Advance countdown
       </button>
       <MessageInput
-        input={input}
-        onInputChange={setInput}
-        onSend={() => undefined}
         recording={false}
         recPrompt="Hold to speak"
         uploadingAudio={false}
@@ -83,9 +79,11 @@ describe("Conversation flow SSE error handling", () => {
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent(/try again in/i);
 
-    const sendButton = screen.getByRole("button", { name: /send message/i });
-    expect(sendButton).toBeDisabled();
-    expect(sendButton).toHaveAttribute(
+    const recordButton = screen.getByRole("button", {
+      name: /start recording/i,
+    });
+    expect(recordButton).toBeDisabled();
+    expect(recordButton).toHaveAttribute(
       "title",
       expect.stringMatching(/try again/i)
     );
@@ -97,7 +95,7 @@ describe("Conversation flow SSE error handling", () => {
     await user.click(advanceButton);
     await user.click(advanceButton);
 
-    expect(sendButton).not.toBeDisabled();
+    expect(recordButton).not.toBeDisabled();
     expect(alert).toHaveTextContent(/you can send another message now/i);
   });
 });
