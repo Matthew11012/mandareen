@@ -21,6 +21,21 @@ export type MessageNotes = {
   citations?: any[];
 };
 
+/**
+ * Segment type for message text segmentation.
+ * Matches the frontend interface in apps/frontend/src/lib/api/conversations.ts
+ */
+export type MessageSegment = {
+  text: string;
+  startIndex: number;
+  endIndex: number;
+  isWord: boolean;
+  hskLevel?: number;
+  pinyin: string; // Always provided (may be empty string)
+  definition?: string;
+  definitions?: string[];
+};
+
 @Injectable()
 export class ConversationsService {
   private readonly logger = new Logger(ConversationsService.name);
@@ -54,44 +69,45 @@ export class ConversationsService {
       where: { conversationId },
       orderBy: { createdAt: 'asc' },
     });
-    // Attach segmentation for AI messages so frontend can render multi-word clickable tokens
+    // Use stored segments from DB, compute on-demand for old messages (lazy backfill)
     const enriched = await Promise.all(
       msgs.map(async (m) => {
         try {
+          // Check if message has Chinese characters
           const text = m.hanzi || '';
           const hasChinese = Array.from(text).some((ch) =>
             this.isChineseChar(ch),
           );
           if (!hasChinese) return m as any;
-          const segs = await this.segmentationService.segmentText(text);
-          const charPinyinArray = (m.pinyin || '')
-            .split(/\s+/)
-            .map((s) => s.trim())
-            .filter(Boolean);
-          const segments = segs.map((s) => {
-            let segPinyin = (s.pinyin || '').toLowerCase();
-            if (!segPinyin || segPinyin.trim().length === 0) {
-              const hann = text as string;
-              const slice = charPinyinArray
-                .slice(s.startIndex, s.endIndex)
-                .filter((_, idx) =>
-                  this.isChineseChar(hann[s.startIndex + idx]),
-                )
-                .filter((p) => (p || '').trim().length > 0);
-              if (slice.length > 0) segPinyin = slice.join(' ');
-            }
-            const segPinyinTone = toToneMarks(segPinyin);
-            return {
-              text: s.word,
-              startIndex: s.startIndex,
-              endIndex: s.endIndex,
-              isWord: s.isWord,
-              hskLevel: s.hskLevel,
-              pinyin: segPinyinTone,
-              definition: s.definition,
-              definitions: s.definitions,
-            };
-          });
+
+          // Use stored segments if available
+          const msgWithSegments = m as any;
+          if (msgWithSegments.segments) {
+            return { ...msgWithSegments, segments: msgWithSegments.segments };
+          }
+
+          // Fallback: compute for old messages (lazy backfill)
+          const segments = await this.computeAndFormatSegments(
+            text,
+            m.pinyin || undefined,
+          );
+          if (!segments) return m as any;
+
+          // Optionally save computed segments for old messages (lazy backfill)
+          // This improves performance on subsequent calls
+          try {
+            await this.prisma.message.update({
+              where: { id: m.id },
+              data: { segments: segments as any } as any,
+            });
+          } catch (err) {
+            // Ignore update errors (e.g., message deleted concurrently)
+            this.logger.debug(
+              `Failed to backfill segments for message ${m.id}`,
+              err as any,
+            );
+          }
+
           return { ...(m as any), segments };
         } catch {
           return m as any;
@@ -148,6 +164,8 @@ export class ConversationsService {
       // Fallback: create if not found
       convo = await this.prisma.conversation.create({ data: { userId } });
     }
+    // Compute segments before creating message
+    const segments = await this.computeAndFormatSegments(hanzi);
     const userMsg = await this.prisma.message.create({
       data: {
         conversationId,
@@ -155,7 +173,8 @@ export class ConversationsService {
         hanzi,
         pinyin: '',
         translation: '',
-      },
+        segments: segments as any,
+      } as any,
     });
     // Return quickly; AI reply will be produced via SSE stream, and user enrichment will be sent via SSE as well
     return { user: userMsg } as any;
@@ -227,7 +246,8 @@ export class ConversationsService {
       mimeType,
     );
 
-    // 4) Create user message
+    // 4) Create user message with segments
+    const segments = await this.computeAndFormatSegments(hanzi);
     const userMsg = await this.prisma.message.create({
       data: {
         conversationId,
@@ -235,7 +255,8 @@ export class ConversationsService {
         hanzi,
         pinyin: '',
         translation: '',
-      },
+        segments: segments as any,
+      } as any,
     });
 
     // 5) Record audio duration usage after successful STT and message creation
@@ -381,8 +402,8 @@ export class ConversationsService {
           }
 
           const responseInput = [
-              {
-                role: 'system',
+            {
+              role: 'system',
               content: systemPromptContent,
             },
             ...history.map((m) => ({
@@ -404,7 +425,7 @@ export class ConversationsService {
             },
             reasoning: {
               effort: 'minimal',
-              },
+            },
           } as any);
 
           let fullText = '';
@@ -415,7 +436,7 @@ export class ConversationsService {
             const type = event.type as string | undefined;
             if (type === 'response.output_text.delta') {
               const delta = (event.delta as string) || '';
-            if (!delta) continue;
+              if (!delta) continue;
               fullText += delta;
               subscriber.next({ data: JSON.stringify({ hanziDelta: delta }) });
             } else if (type === 'response.completed') {
@@ -430,10 +451,10 @@ export class ConversationsService {
           if (!completedResponse) {
             try {
               completedResponse = await stream.finalResponse();
-              } catch {
+            } catch {
               // ignore inability to fetch final response; rely on accumulated text
-              }
             }
+          }
 
           if (!fullText && completedResponse) {
             fullText = this.extractTextFromResponseOutput(
@@ -449,49 +470,27 @@ export class ConversationsService {
               this.isChineseChar(ch as any),
             );
             if (hasChinese) {
-              const segs = await this.segmentationService.segmentText(text);
+              // Compute pinyin per character first (needed for message update)
               const perCharPinyin =
                 await this.computeSentencePinyinPerCharacter(text);
-              const charPinyinArray = perCharPinyin
-                .split(/\s+/)
-                .map((s: string) => s.trim())
-                .filter((s: string) => s.length > 0);
-              const segments = segs.map((s) => {
-                let segPinyin = (s.pinyin || '').toLowerCase();
-                if (!segPinyin || segPinyin.trim().length === 0) {
-                  const hann = text as string;
-                  const slice = charPinyinArray
-                    .slice(s.startIndex, s.endIndex)
-                    .filter((_, idx) =>
-                      this.isChineseChar(hann[s.startIndex + idx]),
-                    )
-                    .filter((p) => (p || '').trim().length > 0);
-                  if (slice.length > 0) segPinyin = slice.join(' ');
-                }
-                const segPinyinTone = toToneMarks(segPinyin);
-                return {
-                  text: s.word,
-                  startIndex: s.startIndex,
-                  endIndex: s.endIndex,
-                  isWord: s.isWord,
-                  hskLevel: s.hskLevel,
-                  pinyin: segPinyinTone,
-                  definition: s.definition,
-                  definitions: s.definitions,
-                };
-              });
+              // Compute segments using helper (will compute pinyin per char if not provided)
+              const segments = await this.computeAndFormatSegments(
+                text,
+                perCharPinyin,
+              );
               // Update latest user message with tone-mark pinyin
               const latestUser = await this.prisma.message.findFirst({
                 where: { conversationId, role: 'user' },
                 orderBy: { createdAt: 'desc' },
               });
-              if (latestUser) {
+              if (latestUser && segments) {
                 await this.prisma.message.update({
                   where: { id: latestUser.id },
                   data: {
                     pinyin: perCharPinyin || '',
                     translation: '',
-                  },
+                    segments: segments as any,
+                  } as any,
                 });
                 latestUserMessageId = latestUser.id;
                 latestUserSegments = segments;
@@ -525,42 +524,18 @@ export class ConversationsService {
           const finalHanzi = fullText;
           const pinyinPerChar =
             await this.computeSentencePinyinPerCharacter(finalHanzi);
-          // Build per-character array aligned to hanzi for segment pinyin filling
-          const charPinyinArray =
-            await this.computeSentencePinyinArray(finalHanzi);
-
-          const segs = await this.segmentationService.segmentText(finalHanzi);
-          const segments = segs.map((s) => {
-            let segPinyin = (s.pinyin || '').toLowerCase();
-            if (!segPinyin || segPinyin.trim().length === 0) {
-              const hann = finalHanzi as string;
-              const slice = charPinyinArray
-                .slice(s.startIndex, s.endIndex)
-                .filter((_, idx) =>
-                  this.isChineseChar(hann[s.startIndex + idx]),
-                )
-                .filter((p) => (p || '').trim().length > 0);
-              if (slice.length > 0) segPinyin = slice.join(' ');
-            }
-            const segPinyinTone = toToneMarks(segPinyin);
-            return {
-              text: s.word,
-              startIndex: s.startIndex,
-              endIndex: s.endIndex,
-              isWord: s.isWord,
-              hskLevel: s.hskLevel,
-              pinyin: segPinyinTone,
-              definition: s.definition,
-              definitions: s.definitions,
-            };
-          });
+          // Compute segments using helper
+          const segments = await this.computeAndFormatSegments(
+            finalHanzi,
+            pinyinPerChar,
+          );
 
           subscriber.next({
             data: JSON.stringify({
               type: 'ai-enrichment',
               conversationId,
               pinyin: pinyinPerChar,
-              segments,
+              segments: segments || [],
             }),
           });
 
@@ -579,7 +554,7 @@ export class ConversationsService {
             }
             if (translationEntries.length > 0) {
               const translations = await (
-              this.openai as any
+                this.openai as any
               ).translateConversationEntries(translationEntries);
               assistantTranslation = translations.ai || '';
               userTranslationFromBatch = translations.user;
@@ -627,7 +602,7 @@ export class ConversationsService {
             }),
           });
 
-          // Create DB message now (with pinyin + translation, notes pending)
+          // Create DB message now (with pinyin + translation + segments, notes pending)
           const aiMsg = await this.prisma.message.create({
             data: {
               conversationId,
@@ -635,7 +610,8 @@ export class ConversationsService {
               hanzi: finalHanzi,
               pinyin: pinyinPerChar || '',
               translation: assistantTranslation,
-            },
+              segments: segments as any,
+            } as any,
           });
 
           // Emit ai-audio when TTS completes
@@ -668,12 +644,12 @@ export class ConversationsService {
           await Promise.all([audioPromise]);
           emitFinalEvent({
             id: aiMsg.id,
-              conversationId,
+            conversationId,
             hanzi: finalHanzi,
             pinyin: pinyinPerChar || '',
             translation: assistantTranslation,
             segments,
-              complete: true,
+            complete: true,
           });
           subscriber.complete();
         } catch (e) {
@@ -698,36 +674,11 @@ export class ConversationsService {
             const finalHanziFallback = fallback.hanzi || '';
             const pinyinPerChar =
               await this.computeSentencePinyinPerCharacter(finalHanziFallback);
-            const charPinyinArray =
-              await this.computeSentencePinyinArray(finalHanziFallback);
-            // Try to enrich fallback with annotated vocabulary as well
-            const segs2 = await this.segmentationService.segmentText(
-              fallback.hanzi || '',
+            // Compute segments using helper
+            const segments2 = await this.computeAndFormatSegments(
+              finalHanziFallback,
+              pinyinPerChar,
             );
-            const segments2 = segs2.map((s) => {
-              let segPinyin = (s.pinyin || '').toLowerCase();
-              if (!segPinyin || segPinyin.trim().length === 0) {
-                const hann = (fallback.hanzi || '') as string;
-                const slice = charPinyinArray
-                  .slice(s.startIndex, s.endIndex)
-                  .filter((_, idx) =>
-                    this.isChineseChar(hann[s.startIndex + idx]),
-                  )
-                  .filter((p) => (p || '').trim().length > 0);
-                if (slice.length > 0) segPinyin = slice.join(' ');
-              }
-              const segPinyinTone = toToneMarks(segPinyin);
-              return {
-                text: s.word,
-                startIndex: s.startIndex,
-                endIndex: s.endIndex,
-                isWord: s.isWord,
-                hskLevel: s.hskLevel,
-                pinyin: segPinyinTone,
-                definition: s.definition,
-                definitions: s.definitions,
-              };
-            });
             let fallbackAssistantTranslation = fallback.translation || '';
             let userTranslationFromBatchFallback: string | undefined =
               undefined;
@@ -794,7 +745,8 @@ export class ConversationsService {
                 hanzi: finalHanziFallback,
                 pinyin: pinyinPerChar || '',
                 translation: fallbackAssistantTranslation,
-              },
+                segments: segments2 as any,
+              } as any,
             });
 
             subscriber.next({
@@ -802,7 +754,7 @@ export class ConversationsService {
                 type: 'ai-enrichment',
                 conversationId,
                 pinyin: pinyinPerChar,
-                segments: segments2,
+                segments: segments2 || [],
               }),
             });
 
@@ -841,12 +793,12 @@ export class ConversationsService {
             await Promise.all([audioPromise2]);
             emitFinalEvent({
               id: aiMsg.id,
-                conversationId,
+              conversationId,
               hanzi: finalHanziFallback,
               pinyin: pinyinPerChar || '',
               translation: fallbackAssistantTranslation,
               segments: segments2,
-                complete: true,
+              complete: true,
             });
             subscriber.complete();
           } catch (inner) {
@@ -866,16 +818,23 @@ export class ConversationsService {
               );
             }
             // Final fallback: emit an error message entry so UI clears placeholder
+            const errorHanzi = '（抱歉）目前无法生成回复，请稍后再试。';
+            const errorPinyin =
+              '（bàoqiàn） mùqián wúfǎ shēngchéng huífú， qǐng shāohòu zàishì。';
+            const errorSegments = await this.computeAndFormatSegments(
+              errorHanzi,
+              errorPinyin,
+            );
             const aiMsg = await this.prisma.message.create({
               data: {
                 conversationId,
                 role: 'ai',
-                hanzi: '（抱歉）目前无法生成回复，请稍后再试。',
-                pinyin:
-                  '（bàoqiàn） mùqián wúfǎ shēngchéng huífú， qǐng shāohòu zàishì。',
+                hanzi: errorHanzi,
+                pinyin: errorPinyin,
                 translation:
                   'Sorry, I could not generate a reply right now. Please try again later.',
-              },
+                segments: errorSegments as any,
+              } as any,
             });
             emitFinalEvent({
               id: aiMsg.id,
@@ -979,24 +938,52 @@ export class ConversationsService {
     return joined.split(/\s+/);
   }
 
-  private async enrichTextWithSegments(text?: string, pinyin?: string) {
-    if (!text || !Array.from(text).some((c) => this.isChineseChar(c)))
+  /**
+   * Compute and format segments for a given hanzi text.
+   * This is the central helper method to eliminate duplication across the service.
+   *
+   * @param hanzi - The Chinese text to segment
+   * @param pinyin - Optional pinyin string. If not provided, will compute per character.
+   * @returns Array of formatted segments, or undefined if text has no Chinese characters
+   */
+  private async computeAndFormatSegments(
+    hanzi: string,
+    pinyin?: string,
+  ): Promise<MessageSegment[] | undefined> {
+    if (!hanzi || !Array.from(hanzi).some((ch) => this.isChineseChar(ch))) {
       return undefined;
-    const segs = await this.segmentationService.segmentText(text);
-    const charPinyinArray = (pinyin || '')
-      .split(/\s+/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+    }
+
+    // Segment the text
+    const segs = await this.segmentationService.segmentText(hanzi);
+
+    // Get pinyin array: use provided pinyin or compute per character
+    let charPinyinArray: string[];
+    if (pinyin) {
+      // Use provided pinyin string, split into array
+      charPinyinArray = pinyin
+        .split(/\s+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } else {
+      // Compute pinyin per character
+      charPinyinArray = await this.computeSentencePinyinArray(hanzi);
+    }
+
+    // Map segments to formatted output
     const segments = segs.map((s) => {
       let segPinyin = (s.pinyin || '').toLowerCase();
+      // If segment doesn't have pinyin, fill from charPinyinArray
       if (!segPinyin || segPinyin.trim().length === 0) {
         const slice = charPinyinArray
           .slice(s.startIndex, s.endIndex)
-          .filter((_, idx) => this.isChineseChar(text[s.startIndex + idx]))
+          .filter((_, idx) =>
+            this.isChineseChar(hanzi[s.startIndex + idx] as any),
+          )
           .filter((p) => (p || '').trim().length > 0);
         if (slice.length > 0) segPinyin = slice.join(' ');
       }
-      const segPinyinTone = toToneMarks(segPinyin);
+      const segPinyinTone = toToneMarks(segPinyin) || '';
       return {
         text: s.word,
         startIndex: s.startIndex,
@@ -1008,7 +995,13 @@ export class ConversationsService {
         definitions: s.definitions,
       };
     });
+
     return segments;
+  }
+
+  private async enrichTextWithSegments(text?: string, pinyin?: string) {
+    if (!text) return undefined;
+    return await this.computeAndFormatSegments(text, pinyin);
   }
 
   private async enrichNotesWithSegments(notes: any) {
