@@ -119,6 +119,8 @@ export class ConversationsService {
       // Fallback: create if not found
       convo = await this.prisma.conversation.create({ data: { userId } });
     }
+    // Compute segments before creating message
+    const segments = await this.computeAndFormatSegments(hanzi);
     const userMsg = await this.prisma.message.create({
       data: {
         conversationId,
@@ -126,7 +128,8 @@ export class ConversationsService {
         hanzi,
         pinyin: '',
         translation: '',
-      },
+        segments: segments as any,
+      } as any,
     });
     // Return quickly; AI reply will be produced via SSE stream, and user enrichment will be sent via SSE as well
     return { user: userMsg } as any;
@@ -198,7 +201,8 @@ export class ConversationsService {
       mimeType,
     );
 
-    // 4) Create user message
+    // 4) Create user message with segments
+    const segments = await this.computeAndFormatSegments(hanzi);
     const userMsg = await this.prisma.message.create({
       data: {
         conversationId,
@@ -206,7 +210,8 @@ export class ConversationsService {
         hanzi,
         pinyin: '',
         translation: '',
-      },
+        segments: segments as any,
+      } as any,
     });
 
     // 5) Record audio duration usage after successful STT and message creation
@@ -352,8 +357,8 @@ export class ConversationsService {
           }
 
           const responseInput = [
-              {
-                role: 'system',
+            {
+              role: 'system',
               content: systemPromptContent,
             },
             ...history.map((m) => ({
@@ -375,7 +380,7 @@ export class ConversationsService {
             },
             reasoning: {
               effort: 'minimal',
-              },
+            },
           } as any);
 
           let fullText = '';
@@ -386,7 +391,7 @@ export class ConversationsService {
             const type = event.type as string | undefined;
             if (type === 'response.output_text.delta') {
               const delta = (event.delta as string) || '';
-            if (!delta) continue;
+              if (!delta) continue;
               fullText += delta;
               subscriber.next({ data: JSON.stringify({ hanziDelta: delta }) });
             } else if (type === 'response.completed') {
@@ -401,10 +406,10 @@ export class ConversationsService {
           if (!completedResponse) {
             try {
               completedResponse = await stream.finalResponse();
-              } catch {
+            } catch {
               // ignore inability to fetch final response; rely on accumulated text
-              }
             }
+          }
 
           if (!fullText && completedResponse) {
             fullText = this.extractTextFromResponseOutput(
@@ -503,7 +508,7 @@ export class ConversationsService {
             }
             if (translationEntries.length > 0) {
               const translations = await (
-              this.openai as any
+                this.openai as any
               ).translateConversationEntries(translationEntries);
               assistantTranslation = translations.ai || '';
               userTranslationFromBatch = translations.user;
@@ -551,7 +556,7 @@ export class ConversationsService {
             }),
           });
 
-          // Create DB message now (with pinyin + translation, notes pending)
+          // Create DB message now (with pinyin + translation + segments, notes pending)
           const aiMsg = await this.prisma.message.create({
             data: {
               conversationId,
@@ -559,7 +564,8 @@ export class ConversationsService {
               hanzi: finalHanzi,
               pinyin: pinyinPerChar || '',
               translation: assistantTranslation,
-            },
+              segments: segments as any,
+            } as any,
           });
 
           // Emit ai-audio when TTS completes
@@ -592,12 +598,12 @@ export class ConversationsService {
           await Promise.all([audioPromise]);
           emitFinalEvent({
             id: aiMsg.id,
-              conversationId,
+            conversationId,
             hanzi: finalHanzi,
             pinyin: pinyinPerChar || '',
             translation: assistantTranslation,
             segments,
-              complete: true,
+            complete: true,
           });
           subscriber.complete();
         } catch (e) {
@@ -693,7 +699,8 @@ export class ConversationsService {
                 hanzi: finalHanziFallback,
                 pinyin: pinyinPerChar || '',
                 translation: fallbackAssistantTranslation,
-              },
+                segments: segments2 as any,
+              } as any,
             });
 
             subscriber.next({
@@ -740,12 +747,12 @@ export class ConversationsService {
             await Promise.all([audioPromise2]);
             emitFinalEvent({
               id: aiMsg.id,
-                conversationId,
+              conversationId,
               hanzi: finalHanziFallback,
               pinyin: pinyinPerChar || '',
               translation: fallbackAssistantTranslation,
               segments: segments2,
-                complete: true,
+              complete: true,
             });
             subscriber.complete();
           } catch (inner) {
@@ -765,16 +772,23 @@ export class ConversationsService {
               );
             }
             // Final fallback: emit an error message entry so UI clears placeholder
+            const errorHanzi = '（抱歉）目前无法生成回复，请稍后再试。';
+            const errorPinyin =
+              '（bàoqiàn） mùqián wúfǎ shēngchéng huífú， qǐng shāohòu zàishì。';
+            const errorSegments = await this.computeAndFormatSegments(
+              errorHanzi,
+              errorPinyin,
+            );
             const aiMsg = await this.prisma.message.create({
               data: {
                 conversationId,
                 role: 'ai',
-                hanzi: '（抱歉）目前无法生成回复，请稍后再试。',
-                pinyin:
-                  '（bàoqiàn） mùqián wúfǎ shēngchéng huífú， qǐng shāohòu zàishì。',
+                hanzi: errorHanzi,
+                pinyin: errorPinyin,
                 translation:
                   'Sorry, I could not generate a reply right now. Please try again later.',
-              },
+                segments: errorSegments as any,
+              } as any,
             });
             emitFinalEvent({
               id: aiMsg.id,
@@ -890,16 +904,17 @@ export class ConversationsService {
     hanzi: string,
     pinyin?: string,
   ): Promise<
-    Array<{
-      text: string;
-      startIndex: number;
-      endIndex: number;
-      isWord: boolean;
-      hskLevel?: number;
-      pinyin: string;
-      definition?: string;
-      definitions?: string[];
-    }> | undefined
+    | Array<{
+        text: string;
+        startIndex: number;
+        endIndex: number;
+        isWord: boolean;
+        hskLevel?: number;
+        pinyin: string;
+        definition?: string;
+        definitions?: string[];
+      }>
+    | undefined
   > {
     if (!hanzi || !Array.from(hanzi).some((ch) => this.isChineseChar(ch))) {
       return undefined;
@@ -934,7 +949,7 @@ export class ConversationsService {
           .filter((p) => (p || '').trim().length > 0);
         if (slice.length > 0) segPinyin = slice.join(' ');
       }
-      const segPinyinTone = toToneMarks(segPinyin);
+      const segPinyinTone = toToneMarks(segPinyin) || '';
       return {
         text: s.word,
         startIndex: s.startIndex,
