@@ -67,7 +67,7 @@ export class OpenAIService {
               type: 'input_text',
               text: renderedEntries,
             },
-      ],
+          ],
         },
       ],
       text: {
@@ -127,7 +127,7 @@ export class OpenAIService {
         typeof item?.text === 'string'
       ) {
         chunks.push(item.text);
-    }
+      }
     }
     return chunks.join('');
   }
@@ -465,10 +465,9 @@ export class OpenAIService {
     citations?: Array<{ key?: string; chunkId?: number }>;
     drills?: Array<{ instruction: string; input: string; target?: string }>;
   }> {
-    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const model = process.env.OPENAI_MODEL || 'gpt-5-mini';
     const maxPts = Math.min(Math.max(args.maxPoints ?? 3, 3), 7);
-    const sys = `You are a precise Mandarin tutor. Using ONLY the provided context snippets and passage, explain grammar relevant to the topic. Prefer patterns/particles/word order; be concise.
-  For any Chinese you output, include pinyin and a brief English gloss. Avoid speculation. Return STRICT JSON.`;
+    const sys = `You are a precise Mandarin tutor. Using ONLY the provided context snippets and passage, explain grammar relevant to the topic. Prefer patterns/particles/word order; be concise. For any Chinese you output include it's English translation. Avoid speculation. Return STRICT JSON.`;
     const userParts = [
       args?.context
         ? `Grounding context (snippets):\n${args.context}\n`
@@ -480,39 +479,119 @@ export class OpenAIService {
       `Level: HSK-${args.level ?? ''}`,
       args?.themes?.length ? `Themes: ${args.themes.join(', ')}` : undefined,
       `Return JSON EXACTLY like (limit grammarNotes to at most ${maxPts}):\n{
-  "grammarNotes": [
-    {
-      "point": "把字句",
-      "pointPinyin": "bǎ zì jù",
-      "pointEn": "the 'ba' construction",
-      "brief": "用于强调处置宾语；结构：主语 + 把 + 宾语 + 谓语",
-      "briefPinyin": "yòng yú qiángdiào chǔzhì bīnyǔ; jiégòu: zhǔyǔ + bǎ + bīnyǔ + wèiyǔ",
-      "briefEn": "Used to emphasize disposing of the object; structure: S + ba + O + V",
-      "examples": [
-        { "zh": "他把书放在桌子上。", "en": "He put the book on the table.", "pinyin": "tā bǎ shū fàng zài zhuōzi shàng" }
+      "grammarNotes": [
+        {
+          "point": "把字句",
+          "pointEn": "the 'ba' construction",
+          "brief": "用于强调处置宾语；结构：主语 + 把 + 宾语 + 谓语",
+          "briefEn": "Used to emphasize disposing of the object; structure: S + ba + O + V",
+          "examples": [
+            { "zh": "他把书放在桌子上。", "en": "He put the book on the table."}
+          ]
+        }
       ],
-      "sources": [{"key":"S1"}]
-    }
-  ],
-  "tips": [{"zh":"注意受事宾语通常已知。","en":"Note that the object is usually known to both parties."}],
-  "citations": [{"key":"S1"}],
-  "drills": [
-    { "instruction": "Add 了 where appropriate", "input": "他___吃饭。" }
-  ]
-}`,
+      "tips": [{"zh":"注意受事宾语通常已知。","en":"Note that the object is usually known to both parties."}],
+      }`,
     ]
       .filter(Boolean)
       .join('\n\n');
 
-    const completion = await this.openai.chat.completions.create({
+    const response = await (this.openai as any).responses.create({
       model,
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: userParts },
+      reasoning: { effort: 'low' },
+      input: [
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'input_text',
+              text: sys,
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: userParts,
+            },
+          ],
+        },
       ],
-      response_format: { type: 'json_object' },
-    } as any);
-    const content = completion.choices?.[0]?.message?.content;
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'GrammarNotes',
+          schema: {
+            type: 'object',
+            properties: {
+              grammarNotes: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    point: { type: 'string' },
+                    pointEn: { type: 'string' },
+                    brief: { type: 'string' },
+                    briefEn: { type: 'string' },
+                    examples: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          zh: { type: 'string' },
+                          en: { type: 'string' },
+                        },
+                        required: ['zh', 'en'],
+                        additionalProperties: false,
+                      },
+                    },
+                    sources: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          key: { type: 'string' },
+                          chunkId: { type: 'number' },
+                        },
+                        required: ['key', 'chunkId'],
+                        additionalProperties: false,
+                      },
+                    },
+                  },
+                  required: [
+                    'point',
+                    'pointEn',
+                    'brief',
+                    'briefEn',
+                    'examples',
+                    'sources',
+                  ],
+                  additionalProperties: false,
+                },
+              },
+              tips: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    zh: { type: 'string' },
+                    en: { type: 'string' },
+                  },
+                  required: ['zh', 'en'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['grammarNotes', 'tips'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+
+    const content = this.extractResponseText(response);
     if (!content) return {};
     try {
       const data = JSON.parse(content);
@@ -524,7 +603,9 @@ export class OpenAIService {
         return data as any;
       }
     } catch (err) {
-      this.logger.warn('Error parsing grammar notes', err as any);
+      this.logger.warn(
+        `Error parsing grammar notes: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
     return {};
   }
