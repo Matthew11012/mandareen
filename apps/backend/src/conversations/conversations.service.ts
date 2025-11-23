@@ -21,6 +21,21 @@ export type MessageNotes = {
   citations?: any[];
 };
 
+/**
+ * Segment type for message text segmentation.
+ * Matches the frontend interface in apps/frontend/src/lib/api/conversations.ts
+ */
+export type MessageSegment = {
+  text: string;
+  startIndex: number;
+  endIndex: number;
+  isWord: boolean;
+  hskLevel?: number;
+  pinyin: string; // Always provided (may be empty string)
+  definition?: string;
+  definitions?: string[];
+};
+
 @Injectable()
 export class ConversationsService {
   private readonly logger = new Logger(ConversationsService.name);
@@ -934,19 +949,7 @@ export class ConversationsService {
   private async computeAndFormatSegments(
     hanzi: string,
     pinyin?: string,
-  ): Promise<
-    | Array<{
-        text: string;
-        startIndex: number;
-        endIndex: number;
-        isWord: boolean;
-        hskLevel?: number;
-        pinyin: string;
-        definition?: string;
-        definitions?: string[];
-      }>
-    | undefined
-  > {
+  ): Promise<MessageSegment[] | undefined> {
     if (!hanzi || !Array.from(hanzi).some((ch) => this.isChineseChar(ch))) {
       return undefined;
     }
