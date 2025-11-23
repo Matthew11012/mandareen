@@ -547,18 +547,6 @@ export class OpenAIService {
                         additionalProperties: false,
                       },
                     },
-                    sources: {
-                      type: 'array',
-                      items: {
-                        type: 'object',
-                        properties: {
-                          key: { type: 'string' },
-                          chunkId: { type: 'number' },
-                        },
-                        required: ['key', 'chunkId'],
-                        additionalProperties: false,
-                      },
-                    },
                   },
                   required: [
                     'point',
@@ -566,7 +554,6 @@ export class OpenAIService {
                     'brief',
                     'briefEn',
                     'examples',
-                    'sources',
                   ],
                   additionalProperties: false,
                 },
