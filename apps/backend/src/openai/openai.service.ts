@@ -850,20 +850,20 @@ export class OpenAIService {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const n = 3;
     const sys = `You are a precise Mandarin pedagogy expert. Create fair, SHORT multiple-choice questions to test comprehension of a given Chinese story. Keep difficulty appropriate for the target HSK level. Return STRICT JSON.`;
-    const user = `Level: HSK-${args.level}\n
-    Title: ${args.title || ''}\n
+    const user = `Level: HSK-${args.level}
+    \nTitle: ${args.title || ''}
 
-    STORY (Chinese):\n
-    CHINESE:\n
-    ${(args.story?.hanzi || '').slice(0, 8000)}\n
+    \nSTORY (Chinese):
+    \nCHINESE:
+    \n${(args.story?.hanzi || '').slice(0, 8000)}
 
-    Instructions:\n
+    \nInstructions:
     - Produce ${n} items. Each item MUST have exactly 4 options.
     - Questions and options should be SHORT to MEDIUM length, relatively easy, level-appropriate.
     - Output Chinese in 'zh' fields and include English 'translation' for both question and each option.
     - Include 'answerIndex' (0-3) and a brief English 'rationale'.\n
 
-    Return STRICT JSON only:
+    \nReturn STRICT JSON only:
     {
       "items": [
         {
@@ -879,15 +879,77 @@ export class OpenAIService {
         }
       ]
     }`;
-    const completion = await this.openai.chat.completions.create({
+    const response = await (this.openai as any).responses.create({
       model,
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: user },
+      reasoning: { effort: 'low' },
+      input: [
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'input_text',
+              text: sys,
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: user,
+            },
+          ],
+        },
       ],
-      response_format: { type: 'json_object' },
-    } as any);
-    const content = completion.choices?.[0]?.message?.content;
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'StoryQuizItems',
+          schema: {
+            type: 'object',
+            properties: {
+              items: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    question: {
+                      type: 'object',
+                      properties: {
+                        zh: { type: 'string' },
+                        translation: { type: 'string' },
+                      },
+                      required: ['zh', 'translation'],
+                      additionalProperties: false,
+                    },
+                    options: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          zh: { type: 'string' },
+                          translation: { type: 'string' },
+                        },
+                        required: ['zh', 'translation'],
+                        additionalProperties: false,
+                      },
+                    },
+                    answerIndex: { type: 'number' },
+                    rationale: { type: 'string' },
+                  },
+                  required: ['question', 'options', 'answerIndex', 'rationale'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['items'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+    const content = this.extractResponseText(response);
     if (!content) return {};
     try {
       const parsed = JSON.parse(content);
@@ -906,7 +968,9 @@ export class OpenAIService {
   async generateQuizForDialogueLesson(args: {
     level: number;
     title?: string | null;
-    dialogue: { turns: Array<{ hanzi: string; translation?: string }> };
+    dialogue: {
+      turns: Array<{ hanzi: string; translation?: string; speaker?: string }>;
+    };
     numItems?: number; // 3-5
   }): Promise<{
     items?: Array<{
@@ -920,23 +984,26 @@ export class OpenAIService {
     const n = 3;
     const sys = `You are a precise Mandarin pedagogy expert. Create fair, SHORT multiple-choice questions to test comprehension of a given Chinese dialogue. Keep difficulty appropriate for the target HSK level. Return STRICT JSON.`;
     const joinedHanzi = (args.dialogue?.turns || [])
-      .map((t) => `${t.hanzi || ''}`)
+      .map((t, idx) => {
+        const speaker = t.speaker || `Speaker ${idx + 1}`;
+        return `${speaker}: ${t.hanzi || ''}`;
+      })
       .join('\n');
 
-    const user = `Level: HSK-${args.level}\n
-    Title: ${args.title || ''}\n
+    const user = `Level: HSK-${args.level}
+    \nTitle: ${args.title || ''}
 
-    DIALOGUE (Chinese):\n
-    CHINESE TURNS:\n
-    ${joinedHanzi.slice(0, 8000)}\n
+    \nDIALOGUE (Chinese):
+    \nCHINESE TURNS:
+    \n${joinedHanzi.slice(0, 8000)}
 
-    Instructions:\n
+    \nInstructions:
     - Produce ${n} items. Each item MUST have exactly 4 options.
     - Questions and options should be SHORT to MEDIUM length, relatively easy, level-appropriate.
     - Output Chinese in 'zh' fields and include English 'translation' for both question and each option.
     - Include 'answerIndex' (0-3) and a brief English 'rationale'.\n
 
-    Return STRICT JSON only:
+    \nReturn STRICT JSON only:
     {
       "items": [
         {
@@ -952,15 +1019,77 @@ export class OpenAIService {
         }
       ]
     }`;
-    const completion = await this.openai.chat.completions.create({
+    const response = await (this.openai as any).responses.create({
       model,
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: user },
+      reasoning: { effort: 'low' },
+      input: [
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'input_text',
+              text: sys,
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: user,
+            },
+          ],
+        },
       ],
-      response_format: { type: 'json_object' },
-    } as any);
-    const content = completion.choices?.[0]?.message?.content;
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'DialogueQuizItems',
+          schema: {
+            type: 'object',
+            properties: {
+              items: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    question: {
+                      type: 'object',
+                      properties: {
+                        zh: { type: 'string' },
+                        translation: { type: 'string' },
+                      },
+                      required: ['zh', 'translation'],
+                      additionalProperties: false,
+                    },
+                    options: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          zh: { type: 'string' },
+                          translation: { type: 'string' },
+                        },
+                        required: ['zh', 'translation'],
+                        additionalProperties: false,
+                      },
+                    },
+                    answerIndex: { type: 'number' },
+                    rationale: { type: 'string' },
+                  },
+                  required: ['question', 'options', 'answerIndex', 'rationale'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['items'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+    const content = this.extractResponseText(response);
     if (!content) return {};
     try {
       const parsed = JSON.parse(content);
