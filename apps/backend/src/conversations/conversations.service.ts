@@ -444,7 +444,8 @@ export class ConversationsService {
                   data: {
                     pinyin: perCharPinyin || '',
                     translation: '',
-                  },
+                    segments: segments as any,
+                  } as any,
                 });
                 latestUserMessageId = latestUser.id;
                 latestUserSegments = segments;
