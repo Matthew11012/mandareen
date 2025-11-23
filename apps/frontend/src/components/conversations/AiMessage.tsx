@@ -482,8 +482,8 @@ export function AiMessage({
             className="hidden sm:block bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-xl shadow-2xl p-4 w-64"
           >
             <div className="flex items-center justify-between gap-3">
-              <div className="font-bold text-white text-lg truncate">
-                {popup.data?.word}
+          <div className="font-bold text-white text-lg truncate">
+            {popup.data?.word}
               </div>
               {typeof popup.data?.hskLevel === "number" && (
                 <span
@@ -495,34 +495,34 @@ export function AiMessage({
                   HSK {popup.data?.hskLevel}
                 </span>
               )}
-            </div>
-            {popup.data?.pinyin && (
+          </div>
+          {popup.data?.pinyin && (
               <div className="text-[color:var(--text-highlight)] text-sm font-medium truncate mt-1">
-                {popup.data.pinyin}
-              </div>
-            )}
+              {popup.data.pinyin}
+            </div>
+          )}
             {popup.data?.definition ? (
               <div className="text-xs text-[color:var(--text-secondary-strong)] mt-2">
-                {popup.data.definition}
-              </div>
-            ) : null}
-            <div className="mt-3 pt-3 border-t border-[color:var(--border-strong)]">
-              <button
-                onClick={() => {
-                  const tokenIndex = popup.data?.tokenIndex ?? -1;
-                  const ctx =
-                    tokenIndex >= 0
-                      ? getSentenceContext(message, tokenIndex)
-                      : undefined;
-                  void addSingleToFlashcards(popup.data?.word || "", ctx);
-                  closePopup();
-                }}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[var(--color-accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-strong)] transition-colors duration-200 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="text-sm font-inter">Add to Flashcards</span>
-              </button>
+              {popup.data.definition}
             </div>
+          ) : null}
+            <div className="mt-3 pt-3 border-t border-[color:var(--border-strong)]">
+            <button
+              onClick={() => {
+                const tokenIndex = popup.data?.tokenIndex ?? -1;
+                const ctx =
+                  tokenIndex >= 0
+                    ? getSentenceContext(message, tokenIndex)
+                    : undefined;
+                void addSingleToFlashcards(popup.data?.word || "", ctx);
+                closePopup();
+              }}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[var(--color-accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-strong)] transition-colors duration-200 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="text-sm font-inter">Add to Flashcards</span>
+            </button>
+          </div>
           </div>,
           containerRef.current
         )}

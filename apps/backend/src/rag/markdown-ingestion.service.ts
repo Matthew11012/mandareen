@@ -586,6 +586,24 @@ export class MarkdownIngestionService {
     });
 
     if (existing) {
+      // Update metadata to ensure it's current (important after markdown corrections)
+      await this.prisma.ragSection.update({
+        where: { id: existing.id },
+        data: {
+          heading,
+          tags,
+          metadata: {
+            createdAt: new Date().toISOString(),
+            partTitle: chunk.partTitle,
+            chapterTitle: chunk.chapterTitle,
+            subchapterTitle: chunk.subchapterTitle,
+            subsubchapterTitle: chunk.subsubchapterTitle,
+            chapterNumber: chunk.chapterNumber,
+            subchapterNumber: chunk.subchapterNumber,
+            subsubchapterNumber: chunk.subsubchapterNumber,
+          },
+        },
+      });
       return { id: existing.id };
     }
 

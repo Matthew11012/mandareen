@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import type { Message } from "@/lib/api/conversations";
+import type { ConversationHskLevel, Message } from "@/lib/api/conversations";
 import { conversationsApi } from "@/lib/api/conversations";
 
 type Segment = NonNullable<Message["segments"]>[number];
@@ -221,6 +221,7 @@ export function useConversationStream() {
       params: {
         conversationId: number;
         text: string;
+        targetHskLevel?: ConversationHskLevel | null;
       },
       cb: StreamCallbacks
     ) => {
@@ -230,10 +231,10 @@ export function useConversationStream() {
       const createdAt = new Date().toISOString();
       cb.onStart?.({ id: aiId, createdAt });
 
-      const url = conversationsApi.streamUrl(
-        params.conversationId,
-        params.text
-      );
+      const url = conversationsApi.streamUrl(params.conversationId, {
+        hanzi: params.text,
+        targetHskLevel: params.targetHskLevel,
+      });
       const es = new EventSource(url, { withCredentials: true });
       currentEsRef.current = es;
       wireHandlers(es, cb);
@@ -248,6 +249,7 @@ export function useConversationStream() {
         audio: Blob;
         text?: string; // Optional: pass transcribed hanzi to enable user-update events
         skipSendAudio?: boolean; // If true, skip sendAudio call (already done by caller)
+        targetHskLevel?: ConversationHskLevel | null;
       },
       cb: StreamCallbacks
     ) => {
@@ -263,10 +265,10 @@ export function useConversationStream() {
       }
       // If text is provided, include it so servers that emit "user-update"
       // for text flows will do the same for audio flows.
-      const url = conversationsApi.streamUrl(
-        params.conversationId,
-        params.text ?? ""
-      );
+      const url = conversationsApi.streamUrl(params.conversationId, {
+        hanzi: params.text ?? "",
+        targetHskLevel: params.targetHskLevel,
+      });
       const es = new EventSource(url, { withCredentials: true });
       currentEsRef.current = es;
       wireHandlers(es, cb);

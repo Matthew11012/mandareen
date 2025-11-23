@@ -2808,7 +2808,7 @@ The very polite way to ask someone’s family name is:
 Nǐ guì xìng?
 (What is) your honorable family name?
 
-### 11.6 The verb of possession and existence: 有 y I u ‘have,’ ‘exist’
+### 11.6 The verb of possession and existence: 有 yǒu ‘have,’ ‘exist’
 
 有 yǒu has two meanings: ‘have’ and ‘exist.’
 
@@ -5738,7 +5738,7 @@ They answer the question: What does/did the subject do to the object? 把 bǎ se
 always be paraphrased as: the subject takes/took the object and does/did (an action) with it.
 The structure of 把 bǎ sentences is sometimes called the ‘disposal construction.’
 
-### 20.1 The structure of 把 b F sentences
+### 20.1 The structure of 把 bǎ sentences
 
 把 bǎ sentences take the following form:
 subject + 把 bǎ object + action verb
@@ -5955,7 +5955,7 @@ Take this money.
 Tā bǎ dàngāo chī le liǎng kǒu.
 She ate two bites of the cake.
 
-### 20.4 negation in 把 b F sentences
+### 20.4 negation in 把 bǎ sentences
 
 In 把 bǎ sentences, negation occurs before 把 bǎ and not before the action verb.
 If a 把 bǎ sentence refers to a future event, or to general or habitual action, negation is indicated
@@ -5981,7 +5981,7 @@ If a 把 bǎ sentence refers to an event that did not occur, negation is 没/沒
 Tā méi bǎ gùshi shuō qīngchu.
 He didn’t tell the story clearly.
 
-### 20.5 Adverbs and modal verbs in 把 b F sentences
+### 20.5 Adverbs and modal verbs in 把 bǎ sentences
 
 Adverbs and modal verbs that refer to the entire action occur before 把 bǎ.
 我已经把功课交给老师了。
@@ -6164,7 +6164,6 @@ functions.
 - 给/給 **gěi** is also used as a verb meaning ‘give,’ and as a preposition meaning ‘to’ or ‘for/on
   behalf of.’
 
-C 14
 When the verb is not followed by an object noun phrase, 叫 jiào and 让/讓 ràng may sometimes
 be interpreted as either a passive marker or as a verb, and the sentence may be ambiguous.
 
@@ -6184,6 +6183,29 @@ makes sense if 让/讓 ràng is interpreted as ‘allow’ or ‘let’ and not 
 媽媽讓孩子吃餅乾。
 Māma ràng háizi chī bǐnggān.
 Mom let the children eat cookies. (*by the children... )
+
+### 21.5 Additional functions of 让/讓 ràng, 叫 jiào, and 给/给 gěi
+
+In addition to their role in passive sentences, 让/讓 ràng, 叫 jiào, and 给/给 gěi have other functions.
+- 叫 jiào is also used as a verb meaning 'call,' or 'order.'
+- 让/讓 ràng is also used as a verb meaning 'let' or 'allow.'
+- 結/給 gěi  is also used as a verb meaning 'give,' and as a preposition meaning 'to' or 'for/on behalf of.'
+
+When the verb is not followed by an object noun phrase, 叫 jiao and 让/讓 rang may sometimes be interpreted as either a passive marker or as a verb, and the sentence may be ambiguous.
+
+教授讓學生批評了。
+Jiaoshou rang xuésheng piping le.
+The professor was criticized by the students.
+(让/讓 ràng=passive marker:by the students) 
+or 
+The professor now allows the students to criticize.
+(让/讓 ràng=allow:allows the students)
+
+In most cases, however, the context will make clear the function of 让/讓 ràng, 叫 jiào, and 给/给 gěi, and only one interpretation will make sense. For example, the following sentence only makes sense if 让/ ràng is interpreted as 'allow' or 'let' and not as the passive marker 'by.'
+
+妈妈让孩子吃饼干。
+Mama rang haizi chi binggan.
+Mom let the children eat cookies. (*by the children . . .)
 
 ### 21.6 Other Mandarin structures that highlight the affected object and de-emphasize the agent
 
@@ -9503,7 +9525,7 @@ Do you have a fever? Do you have a fever?
 Do you have a headache? Do you have a headache?
 
 
-## 31 describing how actions are performed**
+## 31 describing how actions are performed
 
 ### 31.1 describing the general or past performance of an action with a manner adverbial phrase
 
@@ -9593,7 +9615,7 @@ He doesn’t speak fast.
 Nǐmen dōu kǎo de bù hǎo.
 You all didn’t do well on the exam.
 
-#### 31.2 asking about the performance of an action
+### 31.2 asking about the performance of an action
 
 To ask how an action is performed, say:
 (subject) action verb 得怎么样？
@@ -10595,7 +10617,7 @@ Dìdi xiě zì de yǒu bàba nàme piàoliang.
 Younger brother writes characters as nicely as Dad.
 
 
-#### 33.2 difference
+### 33.2 difference
 
 #### 33.2.1 indicating that noun phrases are different
 
@@ -11312,7 +11334,7 @@ Tāmen zhèng zài kāi huì ne.
 They are having a meeting now.
 
 
-#### 34.4 Using 着/著 zhe to emphasize ongoing duration or an ongoing state in the present time
+### 34.4 Using 着/著 zhe to emphasize ongoing duration or an ongoing state in the present time
 
 Open-ended action verbs may be suffixed with 着/著 zhe to emphasize ongoing duration at
 the present time. 着/著 zhe often co-occurs with 在 zài , 正在 zhèngzài , and /or 呢 ne.
@@ -11413,8 +11435,6 @@ I’ve read two books (so far).
 Tā zài Měiguó zhù le shínián le.
 He has lived in America for ten years (and is still there).
 
-describing situations that are generally true
-34.8
 
 The adverb 已经/已經 yǐjing ‘already’ often occurs in these sentences to emphasize the fact
 that the situation has been ongoing from some time in the past up to the present time.
@@ -15513,7 +15533,7 @@ He’s thinking about taking a boat to China.
 Nǐ kěyǐ zuò dìtiě qù Tiān’ānmén.
 You can take the subway to Tiananmen.
 
-#### 48.6 asking about locations and asking for directions
+### 48.6 asking about locations and asking for directions
 
 #### 48.6.1 asking about locations
 

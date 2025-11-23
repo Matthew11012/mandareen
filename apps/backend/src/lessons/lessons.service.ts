@@ -1,6 +1,7 @@
 /* eslint-disable no-unused-vars */
 import { Injectable, Logger } from '@nestjs/common';
 import { toToneMarks } from '../utils/pinyin';
+import { getHskPromptFragment } from '../utils/hsk-prompts';
 import { Observable } from 'rxjs';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -148,8 +149,7 @@ export class LessonsService {
         });
       } catch (err) {
         this.logger.warn(
-          'createMany(vocabularyItem) failed in batchUpsertVocabulary',
-          err as any,
+          `createMany(vocabularyItem) failed in batchUpsertVocabulary: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
@@ -261,7 +261,9 @@ export class LessonsService {
           data: slice,
         });
       } catch (err) {
-        this.logger.warn('createMany(wordInstance) batch failed', err as any);
+        this.logger.warn(
+          `createMany(wordInstance) batch failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
   }
@@ -329,7 +331,9 @@ export class LessonsService {
                 return;
               }
             } catch (err) {
-              this.logger.warn('Idempotency lookup failed', err as any);
+              this.logger.warn(
+                `Idempotency lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
             }
           }
 
@@ -379,10 +383,15 @@ export class LessonsService {
             for (const t of turns) {
               let segs: any[] = [];
               try {
+                // const segStartTime = Date.now();
                 segs = await this.segmentationService.segmentText(
                   t.hanzi || '',
                   dedupNamedEntities,
                 );
+                // const segDuration = Date.now() - segStartTime;
+                // this.logger.debug?.(
+                //   `Segmented dialogue turn (${(t.hanzi || '').length} chars) in ${segDuration}ms`,
+                // );
               } catch (err) {
                 this.logger.warn(
                   `Segmentation failed for a dialogue turn: ${String(err)}`,
@@ -480,13 +489,16 @@ export class LessonsService {
                     turns: turns.map((t: any) => ({
                       hanzi: t.hanzi,
                       translation: t.translation,
+                      speaker: t.speaker,
                     })),
                   },
                   numItems: 5,
                 });
                 return quiz;
               } catch (e) {
-                this.logger.warn('Dialogue quiz generation failed', e as any);
+                this.logger.warn(
+                  `Dialogue quiz generation failed: ${e instanceof Error ? e.message : String(e)}`,
+                );
                 return {};
               }
             })();
@@ -528,7 +540,9 @@ export class LessonsService {
                 quizOut = { items: itemsSeg, passingScore: 100 };
               }
             } catch (e) {
-              this.logger.warn('Segment quiz failed', e as any);
+              this.logger.warn(
+                `Segment quiz failed: ${e instanceof Error ? e.message : String(e)}`,
+              );
             }
 
             // Upsert named entities into vocabulary (dialogue) - batched
@@ -589,8 +603,7 @@ export class LessonsService {
               await this.populateWordInstancesForLesson(created.id);
             } catch (e) {
               this.logger.warn(
-                'populateWordInstancesForLesson failed (stream dialogue)',
-                e as any,
+                `populateWordInstancesForLesson failed (stream dialogue): ${e instanceof Error ? e.message : String(e)}`,
               );
             }
             if (hooks?.onLessonPersisted) {
@@ -638,9 +651,14 @@ export class LessonsService {
                   definition: e.translation || e.definition || undefined,
                 }))
             : [];
+          const segStartTime = Date.now();
           const segs = await this.segmentationService.segmentText(
             mainText,
             namedEntities,
+          );
+          const segDuration = Date.now() - segStartTime;
+          this.logger.debug?.(
+            `Segmented story main text (${mainText.length} chars) in ${segDuration}ms`,
           );
 
           // Upsert named entities into vocabulary (story - streaming) - batched
@@ -732,7 +750,9 @@ export class LessonsService {
               });
               return quiz;
             } catch (e) {
-              this.logger.warn('Story quiz generation failed', e as any);
+              this.logger.warn(
+                `Story quiz generation failed: ${e instanceof Error ? e.message : String(e)}`,
+              );
               return {};
             }
           })();
@@ -774,7 +794,9 @@ export class LessonsService {
               quizOut2 = { items: itemsSeg, passingScore: 100 };
             }
           } catch (e) {
-            this.logger.warn('Segment story quiz failed', e as any);
+            this.logger.warn(
+              `Segment story quiz failed: ${e instanceof Error ? e.message : String(e)}`,
+            );
           }
 
           emit('step', { key: 'persist_lesson' });
@@ -874,7 +896,9 @@ export class LessonsService {
           if (heartbeat) clearInterval(heartbeat);
           subscriber.complete();
         } catch (err) {
-          this.logger.error('Stream generation failed', err as any);
+          this.logger.error(
+            `Stream generation failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
           try {
             subscriber.next({
               event: 'error',
@@ -945,12 +969,19 @@ export class LessonsService {
       });
 
       const turnsWithSegments = [] as any[];
+      let totalSegTime = 0;
       for (const t of turns) {
         let segs: any[] = [];
         try {
+          const segStartTime = Date.now();
           segs = await this.segmentationService.segmentText(
             t.hanzi || '',
             dedupNamedEntities,
+          );
+          const segDuration = Date.now() - segStartTime;
+          totalSegTime += segDuration;
+          this.logger.debug?.(
+            `Segmented dialogue turn (${(t.hanzi || '').length} chars) in ${segDuration}ms`,
           );
         } catch (err) {
           this.logger.warn(
@@ -986,6 +1017,12 @@ export class LessonsService {
           translation: t.translation || '',
           segments: filledSegs,
         });
+      }
+
+      if (totalSegTime > 0) {
+        this.logger.log(
+          `Dialogue lesson segmentation: ${turns.length} turns segmented in ${totalSegTime}ms (avg: ${Math.round(totalSegTime / turns.length)}ms/turn)`,
+        );
       }
 
       // Parallel grammar notes and quiz for dialogue
@@ -1032,7 +1069,9 @@ export class LessonsService {
             : undefined;
           return { grammarNotes, tipsRichOut };
         } catch (err) {
-          this.logger.warn('Grammar notes failed (dialogue)', err as any);
+          this.logger.warn(
+            `Grammar notes failed (dialogue): ${err instanceof Error ? err.message : String(err)}`,
+          );
           return { grammarNotes: undefined, tipsRichOut: undefined };
         }
       })();
@@ -1047,13 +1086,16 @@ export class LessonsService {
               turns: turns.map((t: any) => ({
                 hanzi: t.hanzi,
                 translation: t.translation,
+                speaker: t.speaker,
               })),
             },
             numItems: 5,
           });
           return quiz;
         } catch (e) {
-          this.logger.warn('Dialogue quiz generation failed', e as any);
+          this.logger.warn(
+            `Dialogue quiz generation failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
           return {};
         }
       })();
@@ -1105,7 +1147,9 @@ export class LessonsService {
           quizOut = { items: itemsSeg, passingScore: 100 };
         }
       } catch (e) {
-        this.logger.warn('Segment dialogue quiz failed', e as any);
+        this.logger.warn(
+          `Segment dialogue quiz failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
 
       // Normalize and process tags
@@ -1170,9 +1214,14 @@ export class LessonsService {
         seenNe2.add(e.text);
         return true;
       });
+      const segStartTime = Date.now();
       const segs = await this.segmentationService.segmentText(
         mainText,
         dedupNamedEntities2,
+      );
+      const segDuration = Date.now() - segStartTime;
+      this.logger.log(
+        `Story lesson segmentation: main text (${mainText.length} chars) segmented in ${segDuration}ms`,
       );
 
       // Fill missing pinyin from story.pinyin (fallback per character)
@@ -1240,7 +1289,9 @@ export class LessonsService {
             : undefined;
           return { grammarNotes, tipsRichOut2 };
         } catch (err) {
-          this.logger.warn('Error generating grammar notes', err as any);
+          this.logger.warn(
+            `Error generating grammar notes: ${err instanceof Error ? err.message : String(err)}`,
+          );
           return { grammarNotes: undefined, tipsRichOut2: undefined };
         }
       })();
@@ -1256,7 +1307,9 @@ export class LessonsService {
           });
           return quiz;
         } catch (e) {
-          this.logger.warn('Story quiz generation failed', e as any);
+          this.logger.warn(
+            `Story quiz generation failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
           return {};
         }
       })();
@@ -1312,7 +1365,9 @@ export class LessonsService {
           quizOut2 = { items: itemsSeg, passingScore: 100 };
         }
       } catch (e) {
-        this.logger.warn('Segment story quiz failed', e as any);
+        this.logger.warn(
+          `Segment story quiz failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
 
       // Normalize and process tags
@@ -1938,26 +1993,26 @@ export class LessonsService {
   ): string {
     switch (timeframe) {
       case 'mythic':
-        return `- **Temporal Constraints:**
+        return `**Temporal Constraints:**
             - Set the story strictly in a mythic/legendary era. No anachronisms or modern references.
             - Avoid: internet/互联网, 网络, 手机/phone, 社交媒体, AI/人工智能, 机器人, Wi-Fi, 电脑, 视频平台, 抖音/TikTok, 微信/WeChat, 品牌/brand names, 电影/现代影视 when used as current phenomena, 新冠/COVID, NFT/加密货币, 网红/influencer, 直播/live stream, etc.
             - Restrict namedEntities.kind to: person|title|location|event|festival|phrase (no brand/org).`;
       case 'imperial':
       case 'pre_modern':
-        return `- **Temporal Constraints:**
+        return `**Temporal Constraints:**
             - Set the story in pre-industrial historical setting (e.g., imperial bureaucracy, agrarian life).
             - No modern brands/tech/politics. Allow period-appropriate artifacts (科举, 官衔, 马车, 布匹, 城墙).
             - Restrict namedEntities.kind to: person|title|location|event|festival|phrase (no brand/org).`;
       case 'modern':
-        return `- **Content Requirements:**
+        return `**Content Requirements:**
             - If possible, infuse the story with inspiration from current events, trends, or recent cultural happenings (news, pop culture, popular activities, contemporary issues) relevant to the topic and appropriate for the specified HSK level.`;
       case 'futuristic':
-        return `- **Temporal Constraints:**
+        return `**Temporal Constraints:**
             - Set the story in a speculative future setting. Encourage futuristic tech/culture.
             - Avoid grounding in today's specific real events unless explicitly requested.
             - Restrict namedEntities.kind to: person|title|location|event|festival|phrase|brand|org (futuristic context).`;
       default:
-        return `- **Content Requirements:**
+        return `**Content Requirements:**
             - If possible, infuse the story with inspiration from current events, trends, or recent cultural happenings (news, pop culture, popular activities, contemporary issues) relevant to the topic and appropriate for the specified HSK level.`;
     }
   }
@@ -2002,41 +2057,36 @@ export class LessonsService {
     // - System message is fully static (no dynamic interpolation)
     // - User message has a long static prefix (instructions, JSON schema) followed by a short dynamic parameters tail
     // This maximizes cache hits by ensuring the majority of tokens are identical across requests
-    const staticSystemMessage = `You are a native Mandarin speaker and a senior Mandarin curriculum and lesson designer with much creativity in creating engaging lessons types and topics. Generate long, engaging lessons strictly as JSON. Do not include any extra commentary.
-          
-          - **Content Requirements:**
-            - Embed the entire story around the user-supplied TOPIC.
-            - The story must progress at a pace suited to the specified HSK level, introducing and reinforcing level-appropriate vocabulary and grammar, but with occasional inclusion of a few "stretch" words/structures.
-            - Promote gradual learning by organizing the story in a way that helps learners follow and understand (logical sequence, appropriate complexity for HSK level).
-            - Be creative and use storytelling techniques that engage learners emotionally and intellectually (e.g., character motivation, some conflict/resolution, surprise, or humor if suited)
-            
-        Generate lesson content first. 
-        IMPORTANT: Ignore all tag-related instructions until AFTER you complete the lesson generation.`;
+    const staticSystemMessageBase = `You are a native Mandarin speaker and a senior Mandarin curriculum and lesson designer with much creativity in creating engaging lessons types and topics. Generate long, engaging lessons strictly as JSON. Do not include any extra commentary.
+    \n**Content Requirements:**
+      - Embed the entire story around the user-supplied TOPIC.
+      - The story must progress at a pace suited to the specified HSK level, introducing and reinforcing level-appropriate vocabulary and grammar, but with occasional inclusion of a few "stretch" words/structures.
+      - Promote gradual learning by organizing the story in a way that helps learners follow and understand (logical sequence, appropriate complexity for HSK level).
+      - Be creative and use storytelling techniques that engage learners emotionally and intellectually (e.g., character motivation, some conflict/resolution, surprise, or humor if suited)
+    \nGenerate lesson content first. 
+    IMPORTANT: Ignore all tag-related instructions until AFTER you complete the lesson generation.`;
 
     const staticUserPrefix = `Generate a Mandarin Chinese story lesson tailored to the specified HSK level. Tell a coherent, engaging story strictly about the TOPIC. Provide rich content. Use vocab and grammar appropriate for the specified HSK level, with a few stretch words.
-
-        === TAG ASSIGNMENT (DO THIS LAST) ===
-        Only after completing the lesson generation above, assign appropriate tags to the lesson.
-        After creating the lesson, Use the available tags to create the appropriate tags for the lesson. Do not let the available tags influence your creation of the lesson. Only after creating the lesson may you check and assign the tags to the generated lesson. Use the tags available only if it is absolutely relevant to the lesson you have just created.
-
-        Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
-        {
-          "title": "string",
-          "titlePinyin": "string <using tone marks>",
-          "titleTranslation": "string",
-          "lessonType": "story",
-          "level": <use the HSK level specified in parameters>,
-          "tags": ["<use the timeframe specified in parameters>", "content_tag_1", "content_tag_2<optional, only add if absolutely necessary>"],
-          "story": {
-            "hanzi": "string (full Chinese text)",
-            "translation": "string (full English translation; mirror paragraph breaks with blank lines)"
-          },
-          "namedEntities": [
-            { "hanzi": "string", "pinyin": "string<using tone marks>", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" } <list main characters, locations, brands, organizations, title phrases, events, festivals introduced (as relevant to the story)> 
-          ]
-        }
-
-        === PARAMETERS ===`;
+    \n=== TAG ASSIGNMENT (DO THIS LAST) ===
+    Only after completing the lesson generation above, assign appropriate tags to the lesson.
+    After creating the lesson, Use the available tags to create the appropriate tags for the lesson. Do not let the available tags influence your creation of the lesson. Only after creating the lesson may you check and assign the tags to the generated lesson. Use the tags available only if it is absolutely relevant to the lesson you have just created.
+    \nReturn ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
+    {
+      "title": "string",
+      "titlePinyin": "string <using tone marks>",
+      "titleTranslation": "string",
+      "lessonType": "story",
+      "level": <use the HSK level specified in parameters>,
+      "tags": ["<use the timeframe specified in parameters>", "content_tag_1", "content_tag_2<optional, only add if absolutely necessary>"],
+      "story": {
+        "hanzi": "string (full Chinese text)",
+        "translation": "string (full English translation; mirror paragraph breaks with blank lines)"
+      },
+      "namedEntities": [
+        { "hanzi": "string", "pinyin": "string<using tone marks>", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" } <list main characters, locations, brands, organizations, title phrases, events, festivals introduced (as relevant to the story)> 
+      ]
+    }
+    \n=== PARAMETERS ===`;
 
     const dynamicParams = `HSK Level: ${level}
         Length target: ~${approxChars} characters
@@ -2045,15 +2095,23 @@ export class LessonsService {
         ${timeframeConditioning}
         ${availableTagsText}`;
 
+    const hskFragment = getHskPromptFragment(level);
+    const userMessageContent = hskFragment
+      ? `${staticUserPrefix}
+        ${dynamicParams}
+
+         ${hskFragment}`
+      : `${staticUserPrefix}
+        ${dynamicParams}`;
+
     const messages = [
       {
         role: 'system' as const,
-        content: staticSystemMessage,
+        content: staticSystemMessageBase,
       },
       {
         role: 'user' as const,
-        content: `${staticUserPrefix}
-        ${dynamicParams}`,
+        content: userMessageContent,
       },
     ];
     const response = await (client as any).responses.create({
@@ -2105,7 +2163,7 @@ export class LessonsService {
       12,
     );
     const topicLine = topic
-      ? `\nTOPIC (mandatory): ${topic}\n.Use realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC. Include topic-specific vocabulary in the vocabulary list.`
+      ? `\nTOPIC (mandatory): ${topic}.\nUse realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC. Include topic-specific vocabulary in the vocabulary list.`
       : `\nNo topic provided: choose a practical everyday-life scenario (not generic).`;
     const timeframeConditioning = this.getTimeframeConditioning(timeframe);
 
@@ -2120,62 +2178,53 @@ export class LessonsService {
     // - System message is fully static (no dynamic interpolation)
     // - User message has a long static prefix (instructions, JSON schema) followed by a short dynamic parameters tail
     // This maximizes cache hits by ensuring the majority of tokens are identical across requests
-    const staticSystemMessage = `You are a native Mandarin speaker and an expert Mandarin lesson designer. Your task is to generate an engaging, topical, practical Mandarin DIALOGUE lesson about the user-supplied TOPIC, tailored for the specified HSK level and focused on realistic learning objectives.
-          
-          - **Topicality & Engagement**:
-            - The entire dialogue must revolve around and deeply explore the TOPIC. Keep the flow realistic and practical.
-            - Ensure the dialogue is contextually engaging—use light conflict, diverse opinions, practical needs, humor, or surprise if suited to the topic and learners' level.
-            
-          - **Quality and Pedagogy**:
-            - The dialogue must be achievable for a learner at the specified HSK level, with scaffolding achieved through clear progression and repeated or paraphrased information.
-            - Avoid unnatural or overly simplistic exchanges; ensure each turn moves the scenario forward and offers learning value.
-            
-            ## Reasoning Process
-            Before constructing your dialogue:
-            1. Internally analyze the TOPIC, HSK level, and recent/quasi-contemporary context to shape a realistic scenario.
-            2. Determine character types, main communicative goal(s), likely challenges, and learning value.
-            3. Select or invent core and stretch vocabulary with high topicality and utility for learners.
-            4. Ensure dialogue pacing, complexity, and vocabulary align with HSK level objectives.
-            5. **Do not output your reasoning—apply it only to craft your JSON.**
-          
-          Generate lesson content first. 
-          IMPORTANT: Ignore all tag-related instructions until AFTER you complete the lesson generation.`;
+    const staticSystemMessageBase = `You are a native Mandarin speaker and an expert Mandarin lesson designer. Your task is to generate an engaging, topical, practical Mandarin DIALOGUE lesson about the user-supplied TOPIC, tailored for the specified HSK level and focused on realistic learning objectives.
+    \n**Topicality & Engagement**:
+      - The entire dialogue must revolve around and deeply explore the TOPIC. Keep the flow realistic and practical.
+      - Ensure the dialogue is contextually engaging—use light conflict, diverse opinions, practical needs, humor, or surprise if suited to the topic and learners' level.
+    \n**Quality and Pedagogy**:
+      - The dialogue must be achievable for a learner at the specified HSK level, with scaffolding achieved through clear progression and repeated or paraphrased information.
+      - Avoid unnatural or overly simplistic exchanges; ensure each turn moves the scenario forward and offers learning value.
+    \n**Reasoning Process**:
+      Before constructing your dialogue:
+      1. Internally analyze the TOPIC, HSK level, and recent/quasi-contemporary context to shape a realistic scenario.
+      2. Determine character types, main communicative goal(s), likely challenges, and learning value.
+      3. Select or invent core and stretch vocabulary with high topicality and utility for learners.
+      4. Ensure dialogue pacing, complexity, and vocabulary align with HSK level objectives.
+      5. Do not output your reasoning—apply it only to craft your JSON.
+    \nGenerate lesson content first. 
+    IMPORTANT: Ignore all tag-related instructions until AFTER you complete the lesson generation.`;
 
     const staticUserPrefix = `Generate a Mandarin Chinese dialogue lesson tailored to the specified HSK level. Provide the requested number of turns of natural conversation. Use vocab and grammar appropriate for the specified HSK level, with a few stretch words. Use realistic, practical daily-life conversation turns strictly about the TOPIC. Each turn should naturally advance a situation revolving around the TOPIC.
-
-        === TAG ASSIGNMENT (DO THIS LAST) ===
-        Only after completing the lesson generation above, assign appropriate tags to the lesson.
-        After creating the dialogue lesson, Use the available tags to create the appropriate tags for the lesson. Do not let the available tags influence your creation of the lesson. Only after creating the lesson may you check and assign the tags to the generated lesson. Use the tags available only if it is absolutely relevant to the lesson you have just created.
-
-        Return ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
-        {
-          "title": "string",
-          "titlePinyin": "string",
-          "titleTranslation": "string",
-          "lessonType": "dialogue",
-          "level": <use the HSK level specified in parameters>,
-          "tags": ["<use the timeframe specified in parameters>", "content_tag_1", "content_tag_2<optional, only add if absolutely necessary>"],
-          "dialogue": {
-            "turns": [ // Provide the number of turns specified in parameters, suitable for the specified HSK level
-              { "speaker": "<Character name or role(could be narrator or third person or other roles befitting the scenario)>", "hanzi": "string", "translation": "string" }
-              // ...repeat until at least the requested number of turns
-            ]
-          },
-          "namedEntities": [
-            { "hanzi": "string", "pinyin": "string<using tone marks>", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" }
-            // ...all topic-specific and stretch words/phrases
-          ]
-        }
-        (Note: Real dialogues must hit the requested turn count with plausible, progressively unfolding conversation. Some turns may be longer or shorter depending on authenticity.)
-        Choose appropriate roles for speakers: e.g., named characters, service staff, family members, etc. Use names, titles, or role descriptors as needed for realism.
-
-        - The title MUST include a keyword from the TOPIC (if provided).
-        - Keep JSON concise but content-rich. No markdown, no commentary, JSON only.
-        
-        **REMINDER:**  
-        Your main goal is to create a realistic, engaging, educational dialogue strictly about the supplied topic, perfectly matched to the learner's HSK level, turning the scenario into a practical lesson—all output as valid, strict JSON.
-
-        === PARAMETERS ===`;
+    \n=== TAG ASSIGNMENT (DO THIS LAST) ===
+    Only after completing the lesson generation above, assign appropriate tags to the lesson.
+    After creating the dialogue lesson, Use the available tags to create the appropriate tags for the lesson. Do not let the available tags influence your creation of the lesson. Only after creating the lesson may you check and assign the tags to the generated lesson. Use the tags available only if it is absolutely relevant to the lesson you have just created.
+    \nReturn ONLY valid JSON with EXACTLY these keys (no extra keys, no comments):
+    {
+      "title": "string",
+      "titlePinyin": "string",
+      "titleTranslation": "string",
+      "lessonType": "dialogue",
+      "level": <use the HSK level specified in parameters>,
+      "tags": ["<use the timeframe specified in parameters>", "content_tag_1", "content_tag_2<optional, only add if absolutely necessary>"],
+      "dialogue": {
+        "turns": [ // Provide the number of turns specified in parameters, suitable for the specified HSK level
+          { "speaker": "<Character name or role(could be narrator or third person or other roles befitting the scenario)>", "hanzi": "string", "translation": "string" }
+          // ...repeat until at least the requested number of turns
+        ]
+      },
+      "namedEntities": [
+        { "hanzi": "string", "pinyin": "string<using tone marks>", "translation": "string<in english>", "kind": "person|title|brand|org|location|phrase|event|festival" }
+        // ...all topic-specific and stretch words/phrases
+      ]
+    }
+    \n(Note: Real dialogues must hit the requested turn count with plausible, progressively unfolding conversation. Some turns may be longer or shorter depending on authenticity.)
+    Choose appropriate roles for speakers: e.g., named characters, service staff, family members, etc. Use names, titles, or role descriptors as needed for realism.
+    \n- The title MUST include a keyword from the TOPIC (if provided).
+    - Keep JSON concise but content-rich. No markdown, no commentary, JSON only.
+    \n**REMINDER:**  
+    Your main goal is to create a realistic, engaging, educational dialogue strictly about the supplied topic, perfectly matched to the learner's HSK level, turning the scenario into a practical lesson—all output as valid, strict JSON.
+    \n=== PARAMETERS ===`;
 
     const dynamicParams = `HSK Level: ${level}
         Number of turns: ${approxTurns}
@@ -2184,15 +2233,22 @@ export class LessonsService {
         ${timeframeConditioning}
         ${availableTagsText}`;
 
+    const hskFragment = getHskPromptFragment(level);
+    const userMessageContent = hskFragment
+      ? `${staticUserPrefix}
+        ${dynamicParams}
+        ${hskFragment}`
+      : `${staticUserPrefix}
+        ${dynamicParams}`;
+
     const messages = [
       {
         role: 'system' as const,
-        content: staticSystemMessage,
+        content: staticSystemMessageBase,
       },
       {
         role: 'user' as const,
-        content: `${staticUserPrefix}
-        ${dynamicParams}`,
+        content: userMessageContent,
       },
     ];
     const response = await (client as any).responses.create({
@@ -2280,7 +2336,12 @@ export class LessonsService {
   private async enrichTextWithSegments(text?: string, pinyin?: string) {
     if (!text || !Array.from(text).some((c) => this.isChineseChar(c)))
       return undefined as any[] | undefined;
+    // const segStartTime = Date.now();
     const segs = await this.segmentationService.segmentText(text);
+    // const segDuration = Date.now() - segStartTime;
+    // this.logger.debug?.(
+    //   `Segmented text for enrichment (${text.length} chars) in ${segDuration}ms`,
+    // );
     const charPinyinArray = (pinyin || '')
       .split(/\s+/)
       .map((s) => s.trim())
