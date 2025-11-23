@@ -67,7 +67,7 @@ export class OpenAIService {
               type: 'input_text',
               text: renderedEntries,
             },
-          ],
+      ],
         },
       ],
       text: {
@@ -127,7 +127,7 @@ export class OpenAIService {
         typeof item?.text === 'string'
       ) {
         chunks.push(item.text);
-      }
+    }
     }
     return chunks.join('');
   }

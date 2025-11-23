@@ -16,7 +16,7 @@ import {
   Settings,
   Sparkles,
   GraduationCap,
-  Activity,
+  ChartNoAxesColumn,
   CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -36,7 +36,7 @@ const ICONS = {
   TrendingUp,
   User,
   Settings,
-  Activity,
+  ChartNoAxesColumn,
   CreditCard,
 } as const;
 

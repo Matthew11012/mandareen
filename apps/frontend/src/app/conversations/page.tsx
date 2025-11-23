@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  useId,
+} from "react";
 import { DashboardLayout } from "@/components/layout";
 import {
   conversationsApi,
   type Message,
   type ConversationSummary,
+  type ConversationHskLevel,
 } from "@/lib/api/conversations";
+import { assessmentApi } from "@/lib/api/assessment";
 import { useConversationStream } from "@/lib/hooks/use-conversation-stream";
 import { useAudioRecorder } from "@/lib/hooks/use-audio-recorder";
 import {
@@ -19,7 +28,7 @@ import {
   sortConversationsByStartedAt,
 } from "@/lib/hooks/use-conversations";
 import { buildFallbackSegments } from "@/lib/utils/segments";
-import { MessageCircle, ChevronLeft } from "lucide-react";
+import { MessageCircle, ChevronLeft, HelpCircle } from "lucide-react";
 import { toast } from "sonner";
 import { ConversationList } from "@/components/conversations/ConversationList";
 import type { EnrichedConversation } from "@/components/conversations/ConversationList";
@@ -38,10 +47,84 @@ import {
 } from "@/components/conversations/ConversationErrorBanner";
 import { ConversationUsageToast } from "@/components/conversations/ConversationUsageToast";
 import { shouldDisplayResource } from "@/lib/constants/usage-resources";
+import { Tooltip } from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const INT32_MAX = 2147483647;
 const isPersistedMessageId = (id: number | null | undefined) =>
   typeof id === "number" && Number.isFinite(id) && Math.abs(id) <= INT32_MAX;
+const HSK_SELECTION_STORAGE_KEY = "conversation-hsk-level";
+const HSK_LEVEL_OPTIONS: Array<{
+  value: ConversationHskLevel;
+  label: string;
+  shortLabel: string;
+  helper: string;
+}> = [
+  {
+    value: "hsk1",
+    label: "HSK 1 • Beginner",
+    shortLabel: "HSK 1",
+    helper: "Short SVO phrases only",
+  },
+  {
+    value: "hsk2",
+    label: "HSK 2 • Elementary",
+    shortLabel: "HSK 2",
+    helper: "Simple compound sentences",
+  },
+  {
+    value: "hsk3",
+    label: "HSK 3 • Intermediate",
+    shortLabel: "HSK 3",
+    helper: "Adds basic subordinate clauses",
+  },
+  {
+    value: "hsk4",
+    label: "HSK 4 • Upper intermediate",
+    shortLabel: "HSK 4",
+    helper: "Multi-clause sentences, light idioms",
+  },
+  {
+    value: "hsk5",
+    label: "HSK 5 • Advanced ",
+    shortLabel: "HSK 5",
+    helper: "Fluent phrasing with richer structures",
+  },
+  {
+    value: "hsk6",
+    label: "HSK 6 • Proficient",
+    shortLabel: "HSK 6",
+    helper: "Near-native nuance",
+  },
+  {
+    value: "hsk7_9",
+    label: "HSK 7–9 • Expert",
+    shortLabel: "HSK 7–9",
+    helper: "Academic or research-grade register",
+  },
+];
+
+const mapCurrentLevelToSelection = (
+  level: number | null
+): ConversationHskLevel | null => {
+  if (typeof level !== "number" || !Number.isFinite(level) || level < 1) {
+    return null;
+  }
+  if (level >= 7) return "hsk7_9";
+  const clamped = Math.min(Math.max(Math.round(level), 1), 6);
+  return `hsk${clamped}` as ConversationHskLevel;
+};
+
+const isValidHskSelection = (
+  value: string | null
+): value is ConversationHskLevel =>
+  !!value && HSK_LEVEL_OPTIONS.some((option) => option.value === value);
 
 export default function ConversationsPage() {
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -57,6 +140,77 @@ export default function ConversationsPage() {
   const openNotesModal = (m: Message) =>
     setNotesModal({ open: true, message: m });
   const closeNotesModal = () => setNotesModal({ open: false, message: null });
+  const [targetHskLevel, setTargetHskLevel] =
+    useState<ConversationHskLevel | null>(null);
+  const [hydratingHskLevel, setHydratingHskLevel] = useState<boolean>(false);
+  const hskSelectId = useId();
+  const hskSelectLabelId = useId();
+  const hskSelectDescriptionId = useId();
+  const selectedHskOption = useMemo(
+    () =>
+      targetHskLevel
+        ? (HSK_LEVEL_OPTIONS.find(
+            (option) => option.value === targetHskLevel
+          ) ?? null)
+        : null,
+    [targetHskLevel]
+  );
+
+  const persistHskSelection = useCallback((value: ConversationHskLevel) => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(HSK_SELECTION_STORAGE_KEY, value);
+    } catch {
+      // Ignore storage failures (e.g., private mode)
+    }
+  }, []);
+
+  const handleHskSelectionChange = useCallback(
+    (value: ConversationHskLevel) => {
+      setTargetHskLevel(value);
+      persistHskSelection(value);
+    },
+    [persistHskSelection]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem(HSK_SELECTION_STORAGE_KEY);
+    } catch {
+      stored = null;
+    }
+    if (isValidHskSelection(stored)) {
+      setTargetHskLevel(stored);
+      return;
+    }
+    let cancelled = false;
+    setHydratingHskLevel(true);
+    assessmentApi
+      .getCurrentLevel()
+      .then(({ currentLevel }) => {
+        if (cancelled) return;
+        const mapped = mapCurrentLevelToSelection(currentLevel);
+        if (mapped) {
+          setTargetHskLevel(mapped);
+          persistHskSelection(mapped);
+        }
+      })
+      .catch((err) => {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("Failed to load default HSK level", err);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setHydratingHskLevel(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [persistHskSelection]);
 
   // Handler to generate notes for a message
   const handleGenerateNotes = async (messageId: number) => {
@@ -802,6 +956,7 @@ export default function ConversationsPage() {
             audio: blob,
             text: user.hanzi,
             skipSendAudio: true,
+            targetHskLevel,
           },
           callbacks
         );
@@ -1220,7 +1375,7 @@ export default function ConversationsPage() {
                 : "Show conversations"
             }
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               {showConversationsSidebar ? (
                 <ChevronLeft
                   className="w-4 h-4 text-white"
@@ -1259,12 +1414,86 @@ export default function ConversationsPage() {
               />
             </div>
           )}
-          <ConversationUsageHeader
-            summary={usageSummary}
-            isLoading={usageLoading}
-            onRefresh={handleRefreshUsage}
-            isRefreshing={usageFetching && !usageLoading}
-          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <ConversationUsageHeader
+              summary={usageSummary}
+              isLoading={usageLoading}
+              onRefresh={handleRefreshUsage}
+              isRefreshing={usageFetching && !usageLoading}
+              className="flex-1 flex-shrink-0"
+            />
+            <div className="flex items-center gap-2">
+              <span id={hskSelectLabelId} className="sr-only">
+                AI response HSK level
+              </span>
+              <Tooltip
+                content="Tailor every new tutor reply to your preferred level."
+                disableTouchDetection
+              >
+                <button
+                  type="button"
+                  aria-label="About AI HSK level"
+                  className="h-6 w-6 flex items-center justify-center rounded-full border border-[#2e323a] text-[#a6a6a6] hover:text-white hover:border-[#4040f2] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4040f2]"
+                >
+                  <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </Tooltip>
+              <Select
+                value={targetHskLevel ?? undefined}
+                onValueChange={(value) =>
+                  handleHskSelectionChange(value as ConversationHskLevel)
+                }
+                disabled={hydratingHskLevel}
+              >
+                <SelectTrigger
+                  id={hskSelectId}
+                  aria-labelledby={`${hskSelectLabelId}`}
+                  aria-describedby={hskSelectDescriptionId}
+                  className="w-auto bg-transparent border-[#404040] text-white min-h-[40px] sm:min-h-[42px] px-3 focus-visible:ring-orange-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0c10]"
+                  style={{ minWidth: "auto" }}
+                  aria-busy={hydratingHskLevel}
+                  title="Choose the HSK difficulty band for AI replies"
+                >
+                  <SelectValue
+                    className="text-sm font-medium text-white [&>span]:inline-flex [&>span]:items-center [&>span]:gap-1"
+                    placeholder={
+                      hydratingHskLevel ? "Loading level…" : "Select HSK level"
+                    }
+                  >
+                    {selectedHskOption ? (
+                      <>
+                        <span className="md:hidden">
+                          {selectedHskOption.shortLabel}
+                        </span>
+                        <span className="hidden md:inline">
+                          {selectedHskOption.label}
+                        </span>
+                      </>
+                    ) : null}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className="bg-[#2e323a] border-[#404040]">
+                  {HSK_LEVEL_OPTIONS.map((option) => (
+                    <SelectItem
+                      key={option.value}
+                      value={option.value}
+                      className="text-white hover:bg-[#404040]"
+                    >
+                      <div className="flex flex-col text-left">
+                        <span className="font-medium">{option.label}</span>
+                        <span className="text-[11px] text-[#a6a6a6]">
+                          {option.helper}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span id={hskSelectDescriptionId} className="sr-only">
+                Tailor every new tutor reply to your preferred difficulty.
+              </span>
+            </div>
+          </div>
           <MessageView
             messages={messages}
             aiShowPinyin={aiShowPinyin}
