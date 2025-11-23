@@ -176,6 +176,7 @@ model Message {
   audioUrl       String?
   createdAt      DateTime       @default(now())
   notes          Json?
+  segments       Json?
   conversation   Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   wordInstances  WordInstance[]
 }
