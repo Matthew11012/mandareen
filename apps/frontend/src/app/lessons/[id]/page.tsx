@@ -1916,9 +1916,18 @@ export default function LessonViewerPage() {
                     {popup.data?.pinyin}
                   </div>
                 )}
-                {popup.data?.definition ? (
-                  <div className="text-xs text-[color:var(--text-secondary-strong)] mt-2">
-                    {popup.data?.definition}
+                {Array.isArray(popup.data?.definitions) &&
+                popup.data?.definitions.length > 0 ? (
+                  <div className="text-xs text-[color:var(--text-secondary-strong)] mt-2 space-y-1">
+                    {popup.data.definitions.map((d, i) => (
+                      <div key={i}>• {d}</div>
+                    ))}
+                  </div>
+                ) : popup.data?.definition ? (
+                  <div className="text-xs text-[color:var(--text-secondary-strong)] mt-2 space-y-1">
+                    {popup.data.definition.split(";").map((d, i) => (
+                      <div key={i}>• {d.trim()}</div>
+                    ))}
                   </div>
                 ) : null}
                 <div className="mt-3 pt-3 border-t border-[color:var(--border-strong)]">
@@ -2117,9 +2126,18 @@ export default function LessonViewerPage() {
                         {popup.data?.pinyin}
                       </div>
                     )}
-                    {popup.data?.definition ? (
-                      <div className="text-xs text-[color:var(--text-secondary-strong)] mb-3">
-                        {popup.data?.definition}
+                    {Array.isArray(popup.data?.definitions) &&
+                    popup.data?.definitions.length > 0 ? (
+                      <div className="text-xs text-[color:var(--text-secondary-strong)] mb-3 space-y-1">
+                        {popup.data.definitions.map((d, i) => (
+                          <div key={i}>• {d}</div>
+                        ))}
+                      </div>
+                    ) : popup.data?.definition ? (
+                      <div className="text-xs text-[color:var(--text-secondary-strong)] mb-3 space-y-1">
+                        {popup.data.definition.split(";").map((d, i) => (
+                          <div key={i}>• {d.trim()}</div>
+                        ))}
                       </div>
                     ) : null}
                     <div className="flex gap-2">

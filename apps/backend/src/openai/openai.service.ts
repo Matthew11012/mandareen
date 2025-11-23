@@ -632,11 +632,11 @@ export class OpenAIService {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const sys = `You are a precise Mandarin tutor. Author a SHORT leveled passage in Mandarin Chinese. Keep it concise and aligned to the target HSK level. Include translation. Also add 3 micro comprehension questions (T/F only). For T/F questions, provide clear correct answers and brief explanations.`;
     const user = `Title: ${args.title}
-    Level: HSK-${args.level}
-    Max characters (Chinese): ${args.maxChars ?? 800}
-    Grounding context (snippets):\n${args.context?.slice(0, 8000) || ''}
+    \nLevel: HSK-${args.level}
+    \nMax characters (Chinese): ${args.maxChars ?? 800}
+    \nGrounding context (snippets):\n${args.context?.slice(0, 8000) || ''}
 
-    Return STRICT JSON:
+    \nReturn STRICT JSON:
     {
       "passage": { "hanzi": "...", "translation": "..." },
       "questions": [ 
@@ -649,15 +649,74 @@ export class OpenAIService {
         } 
       ]
     }`;
-    const completion = await this.openai.chat.completions.create({
+    const response = await (this.openai as any).responses.create({
       model,
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: user },
+      reasoning: { effort: 'low' },
+      input: [
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'input_text',
+              text: sys,
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: user,
+            },
+          ],
+        },
       ],
-      response_format: { type: 'json_object' },
-    } as any);
-    const content = completion.choices?.[0]?.message?.content;
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'ReadPassage',
+          schema: {
+            type: 'object',
+            properties: {
+              passage: {
+                type: 'object',
+                properties: {
+                  hanzi: { type: 'string' },
+                  translation: { type: 'string' },
+                },
+                required: ['hanzi', 'translation'],
+                additionalProperties: false,
+              },
+              questions: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    type: { type: 'string', enum: ['tf', 'short'] },
+                    prompt: { type: 'string' },
+                    translation: { type: 'string' },
+                    answer: { type: 'boolean' },
+                    explanation: { type: 'string' },
+                  },
+                  required: [
+                    'type',
+                    'prompt',
+                    'translation',
+                    'answer',
+                    'explanation',
+                  ],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['passage', 'questions'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+    const content = this.extractResponseText(response);
     if (!content) return {};
     try {
       return JSON.parse(content);
@@ -686,32 +745,78 @@ export class OpenAIService {
   }> {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const n = Math.min(Math.max(args.numItems || 5, 3), 8);
-    const sys = `You are a precise Mandarin pedagogy expert. Create fair MCQs that directly test comprehension of the given READ and GRAMMAR. Include at least one error-recognition item (choose the incorrect sentence). Provide brief rationales.`;
-    const user = `Level: HSK-${args.level}
-    READ (Chinese/pinyin/translation):
+    const sys = `You are a precise Mandarin pedagogy expert. Create fair MCQs that directly test comprehension of the given READ and GRAMMAR. Include at least one error-recognition item (choose the incorrect sentence) and for the options make it primarily in english for this. Provide brief rationales.`;
+    const user = `READ (Chinese/translation):
     ${JSON.stringify(args.read || {}).slice(0, 4000)}
 
-    GRAMMAR (notes/tips):
+    \nGRAMMAR (notes/tips):
     ${JSON.stringify(args.grammar || {}).slice(0, 4000)}
 
-    Optional grounding context:
-    ${(args.context || '').slice(0, 4000)}
+    \nOptional grounding context:${(args.context || '').slice(0, 4000)}
 
-    Return STRICT JSON with ${n} items (no commentary):
+    \nReturn STRICT JSON with ${n} items (no commentary):
     {
       "items": [
         { "question": "...", "options": ["A","B","C","D"], "answerIndex": 0, "rationale": "<primarily english explanation>" }
       ]
     }`;
-    const completion = await this.openai.chat.completions.create({
+    const response = await (this.openai as any).responses.create({
       model,
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: user },
+      reasoning: { effort: 'low' },
+      input: [
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'input_text',
+              text: sys,
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: user,
+            },
+          ],
+        },
       ],
-      response_format: { type: 'json_object' },
-    } as any);
-    const content = completion.choices?.[0]?.message?.content;
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'QuizItems',
+          schema: {
+            type: 'object',
+            properties: {
+              items: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    question: { type: 'string' },
+                    options: {
+                      type: 'array',
+                      items: {
+                        type: 'string',
+                      },
+                    },
+                    answerIndex: { type: 'number' },
+                    rationale: { type: 'string' },
+                  },
+                  required: ['question', 'options', 'answerIndex', 'rationale'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['items'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+    const content = this.extractResponseText(response);
     if (!content) return {};
     try {
       const parsed = JSON.parse(content);
@@ -745,20 +850,20 @@ export class OpenAIService {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const n = 3;
     const sys = `You are a precise Mandarin pedagogy expert. Create fair, SHORT multiple-choice questions to test comprehension of a given Chinese story. Keep difficulty appropriate for the target HSK level. Return STRICT JSON.`;
-    const user = `Level: HSK-${args.level}\n
-    Title: ${args.title || ''}\n
+    const user = `Level: HSK-${args.level}
+    \nTitle: ${args.title || ''}
 
-    STORY (Chinese):\n
-    CHINESE:\n
-    ${(args.story?.hanzi || '').slice(0, 8000)}\n
+    \nSTORY (Chinese):
+    \nCHINESE:
+    \n${(args.story?.hanzi || '').slice(0, 8000)}
 
-    Instructions:\n
+    \nInstructions:
     - Produce ${n} items. Each item MUST have exactly 4 options.
     - Questions and options should be SHORT to MEDIUM length, relatively easy, level-appropriate.
     - Output Chinese in 'zh' fields and include English 'translation' for both question and each option.
     - Include 'answerIndex' (0-3) and a brief English 'rationale'.\n
 
-    Return STRICT JSON only:
+    \nReturn STRICT JSON only:
     {
       "items": [
         {
@@ -774,15 +879,77 @@ export class OpenAIService {
         }
       ]
     }`;
-    const completion = await this.openai.chat.completions.create({
+    const response = await (this.openai as any).responses.create({
       model,
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: user },
+      reasoning: { effort: 'low' },
+      input: [
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'input_text',
+              text: sys,
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: user,
+            },
+          ],
+        },
       ],
-      response_format: { type: 'json_object' },
-    } as any);
-    const content = completion.choices?.[0]?.message?.content;
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'StoryQuizItems',
+          schema: {
+            type: 'object',
+            properties: {
+              items: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    question: {
+                      type: 'object',
+                      properties: {
+                        zh: { type: 'string' },
+                        translation: { type: 'string' },
+                      },
+                      required: ['zh', 'translation'],
+                      additionalProperties: false,
+                    },
+                    options: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          zh: { type: 'string' },
+                          translation: { type: 'string' },
+                        },
+                        required: ['zh', 'translation'],
+                        additionalProperties: false,
+                      },
+                    },
+                    answerIndex: { type: 'number' },
+                    rationale: { type: 'string' },
+                  },
+                  required: ['question', 'options', 'answerIndex', 'rationale'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['items'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+    const content = this.extractResponseText(response);
     if (!content) return {};
     try {
       const parsed = JSON.parse(content);
@@ -801,7 +968,9 @@ export class OpenAIService {
   async generateQuizForDialogueLesson(args: {
     level: number;
     title?: string | null;
-    dialogue: { turns: Array<{ hanzi: string; translation?: string }> };
+    dialogue: {
+      turns: Array<{ hanzi: string; translation?: string; speaker?: string }>;
+    };
     numItems?: number; // 3-5
   }): Promise<{
     items?: Array<{
@@ -815,23 +984,26 @@ export class OpenAIService {
     const n = 3;
     const sys = `You are a precise Mandarin pedagogy expert. Create fair, SHORT multiple-choice questions to test comprehension of a given Chinese dialogue. Keep difficulty appropriate for the target HSK level. Return STRICT JSON.`;
     const joinedHanzi = (args.dialogue?.turns || [])
-      .map((t) => `${t.hanzi || ''}`)
+      .map((t, idx) => {
+        const speaker = t.speaker || `Speaker ${idx + 1}`;
+        return `${speaker}: ${t.hanzi || ''}`;
+      })
       .join('\n');
 
-    const user = `Level: HSK-${args.level}\n
-    Title: ${args.title || ''}\n
+    const user = `Level: HSK-${args.level}
+    \nTitle: ${args.title || ''}
 
-    DIALOGUE (Chinese):\n
-    CHINESE TURNS:\n
-    ${joinedHanzi.slice(0, 8000)}\n
+    \nDIALOGUE (Chinese):
+    \nCHINESE TURNS:
+    \n${joinedHanzi.slice(0, 8000)}
 
-    Instructions:\n
+    \nInstructions:
     - Produce ${n} items. Each item MUST have exactly 4 options.
     - Questions and options should be SHORT to MEDIUM length, relatively easy, level-appropriate.
     - Output Chinese in 'zh' fields and include English 'translation' for both question and each option.
     - Include 'answerIndex' (0-3) and a brief English 'rationale'.\n
 
-    Return STRICT JSON only:
+    \nReturn STRICT JSON only:
     {
       "items": [
         {
@@ -847,15 +1019,77 @@ export class OpenAIService {
         }
       ]
     }`;
-    const completion = await this.openai.chat.completions.create({
+    const response = await (this.openai as any).responses.create({
       model,
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: user },
+      reasoning: { effort: 'low' },
+      input: [
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'input_text',
+              text: sys,
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: user,
+            },
+          ],
+        },
       ],
-      response_format: { type: 'json_object' },
-    } as any);
-    const content = completion.choices?.[0]?.message?.content;
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'DialogueQuizItems',
+          schema: {
+            type: 'object',
+            properties: {
+              items: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    question: {
+                      type: 'object',
+                      properties: {
+                        zh: { type: 'string' },
+                        translation: { type: 'string' },
+                      },
+                      required: ['zh', 'translation'],
+                      additionalProperties: false,
+                    },
+                    options: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          zh: { type: 'string' },
+                          translation: { type: 'string' },
+                        },
+                        required: ['zh', 'translation'],
+                        additionalProperties: false,
+                      },
+                    },
+                    answerIndex: { type: 'number' },
+                    rationale: { type: 'string' },
+                  },
+                  required: ['question', 'options', 'answerIndex', 'rationale'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['items'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+    const content = this.extractResponseText(response);
     if (!content) return {};
     try {
       const parsed = JSON.parse(content);
@@ -892,79 +1126,151 @@ export class OpenAIService {
   }> {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const maxSections = Math.min(Math.max(args.maxSections ?? 7, 1), 20);
-    const microChars = Math.min(
-      Math.max(args.preferMicroPassageChars ?? 220, 120),
-      400,
-    );
     const sys = `You are a senior Mandarin curriculum designer. Create an EXPLAIN-FIRST lesson in English with Chinese examples. Be concise, accurate, and grounded STRICTLY by the provided outline and context. If a claim is not supported by the context, omit it. Return STRICT JSON.`;
     const user = `Title: ${args.title}
-    Level: HSK-${args.level}
-    Outline (order matters):\n${args.outline.map((o, i) => `${i + 1}. ${o.title}`).join('\n')}
-    Grounding context (snippets):\n${args.context.slice(0, 8000)}
+    \nOutline (order matters):\n${args.outline.map((o, i) => `${i + 1}. ${o.title}`).join('\n')}
+    \nGrounding context (snippets):\n${args.context.slice(0, 8000)}\n
 
-      Construct (STRICT):
-      1) "overview": 2-4 sentences (English) summarizing what learners will learn.
-      2) "sections": EXACTLY ${maxSections} items and in the SAME ORDER as the outline lines above, one per outline line. Each section MUST correspond to the respective outline title (use it as section.title verbatim unless minor normalization is needed). Each section must include:
-      - title (English or Chinese),
-      - concept (English),
-      - 2-3 examples with Chinese, pinyin, English,
-      - pitfalls (min 1 if applicable): {bad, good, note} all should be in english, emphasize minimal pairs/contrasts and "say X, not Y" patterns when relevant,
-      - 2 short checks: type tf|fill with prompt and answer.
-      3) "microPassage": ${microChars} chars Chinese max, with translation (short), integrating 1-2 key points.
-    4) "citations": optional [{key, chunkId}] referencing context markers like [S1].
-
-      Return ONLY JSON with keys overview, sections, microPassage, citations.
-
-      EXAMPLE (shape only; keep content brief and grounded):
-      {
-        "overview": "This subchapter explains basic phrase order and common particles.",
-        "sections": [
-          {
-            "title": "1. Word order: SVO",
-            "concept": "In Mandarin, the default order is Subject–Verb–Object.",
-            "examples": [
-              { "zh": "我吃苹果。", "pinyin": "wǒ chī píngguǒ", "en": "I eat apples." },
-              { "zh": "他喝茶。", "pinyin": "tā hē chá", "en": "He drinks tea." }
-            ],
-            "pitfalls": [
-              { "bad": "我苹果吃。", "good": "我吃苹果。", "note": "Keep SVO order." }
-            ],
-            "checks": [
-              { "type": "tf", "prompt": "Mandarin defaults to SVO order.", "answer": "T" },
-              { "type": "fill", "prompt": "他__饭。 (eat)", "answer": "吃" }
-            ]
-          },
-          {
-            "title": "2. Particle 了 (le)",
-            "concept": "了 often marks a completed action.",
-            "examples": [
-              { "zh": "我吃了饭。", "pinyin": "wǒ chī le fàn", "en": "I ate (already)." }
-            ],
-            "pitfalls": [
-              { "bad": "Treat syllables like English 'lettuce' parts (no meaning).", "good": "Note meanings of individual Mandarin syllables.", "note": "With very few exceptions (e.g., suffix 子), syllables carry meaning." }
-            ],
-            "checks": [
-              { "type": "tf", "prompt": "了 always indicates past tense.", "answer": "F" },
-              { "type": "fill", "prompt": "他__了茶。 (drink)", "answer": "喝" }
-            ]
-          }
-        ],
-        "microPassage": {
-          "hanzi": "今天我吃了米饭，也喝了茶。",
-          "pinyin": "jīntiān wǒ chī le mǐfàn, yě hē le chá",
-          "translation": "Today I ate rice and also drank tea."
+    \nConstruct (STRICT):
+    1) "overview": 2-4 sentences (English) summarizing what learners will learn.
+    2) "sections": EXACTLY ${maxSections} items and in the SAME ORDER as the outline lines above, one per outline line. Each section MUST correspond to the respective outline title (use it as section.title verbatim unless minor normalization is needed). Each section must include:
+    - title (English or Chinese),
+    - concept (English),
+    - 2-3 examples with Chinese, pinyin, English,
+    - pitfalls (min 1 if applicable): {bad, good, note} all should be in english, emphasize minimal pairs/contrasts and "say X, not Y" patterns when relevant,
+    - 2 short checks: type tf|fill with prompt and answer.
+    \nReturn ONLY JSON with keys overview, sections, microPassage, citations.
+    \nEXAMPLE (shape only; keep content brief and grounded):
+    {
+      "overview": "This subchapter explains basic phrase order and common particles.",
+      "sections": [
+        {
+          "title": "1. Word order: SVO",
+          "concept": "In Mandarin, the default order is Subject–Verb–Object.",
+          "examples": [
+            { "zh": "我吃苹果。", "pinyin": "wǒ chī píngguǒ", "en": "I eat apples." },
+            { "zh": "他喝茶。", "pinyin": "tā hē chá", "en": "He drinks tea." }
+          ],
+          "pitfalls": [
+            { "bad": "我苹果吃。", "good": "我吃苹果。", "note": "Keep SVO order." }
+          ],
+          "checks": [
+            { "type": "tf", "prompt": "Mandarin defaults to SVO order.", "answer": "T" },
+            { "type": "fill", "prompt": "他__饭。 (eat)", "answer": "吃" }
+          ]
         },
-        "citations": [{ "key": "S1" }]
-      }`;
-    const completion = await this.openai.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: user },
+        {
+          "title": "2. Particle 了 (le)",
+          "concept": "了 often marks a completed action.",
+          "examples": [
+            { "zh": "我吃了饭。", "pinyin": "wǒ chī le fàn", "en": "I ate (already)." }
+          ],
+          "pitfalls": [
+            { "bad": "Treat syllables like English 'lettuce' parts (no meaning).", "good": "Note meanings of individual Mandarin syllables.", "note": "With very few exceptions (e.g., suffix 子), syllables carry meaning." }
+          ],
+          "checks": [
+            { "type": "tf", "prompt": "了 always indicates past tense.", "answer": "F" },
+            { "type": "fill", "prompt": "他__了茶。 (drink)", "answer": "喝" }
+          ]
+        }
       ],
-      response_format: { type: 'json_object' },
-    } as any);
-    const content = completion.choices?.[0]?.message?.content;
+    }`;
+    const response = await (this.openai as any).responses.create({
+      model,
+      reasoning: { effort: 'medium' },
+      input: [
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'input_text',
+              text: sys,
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: user,
+            },
+          ],
+        },
+      ],
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'CurriculumExplainLesson',
+          schema: {
+            type: 'object',
+            properties: {
+              overview: { type: 'string' },
+              sections: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string' },
+                    concept: { type: 'string' },
+                    examples: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          zh: { type: 'string' },
+                          pinyin: { type: 'string' },
+                          en: { type: 'string' },
+                        },
+                        required: ['zh', 'pinyin', 'en'],
+                        additionalProperties: false,
+                      },
+                    },
+                    pitfalls: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          bad: { type: 'string' },
+                          good: { type: 'string' },
+                          note: { type: 'string' },
+                        },
+                        required: ['bad', 'good', 'note'],
+                        additionalProperties: false,
+                      },
+                    },
+                    checks: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          type: { type: 'string', enum: ['tf', 'fill'] },
+                          prompt: { type: 'string' },
+                          answer: { type: 'string' },
+                        },
+                        required: ['type', 'prompt', 'answer'],
+                        additionalProperties: false,
+                      },
+                    },
+                  },
+                  required: [
+                    'title',
+                    'concept',
+                    'examples',
+                    'pitfalls',
+                    'checks',
+                  ],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['overview', 'sections'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+    const content = this.extractResponseText(response);
     if (!content) return {};
     try {
       const parsed = JSON.parse(content);

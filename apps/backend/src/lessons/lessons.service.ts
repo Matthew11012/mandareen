@@ -383,15 +383,15 @@ export class LessonsService {
             for (const t of turns) {
               let segs: any[] = [];
               try {
-                const segStartTime = Date.now();
+                // const segStartTime = Date.now();
                 segs = await this.segmentationService.segmentText(
                   t.hanzi || '',
                   dedupNamedEntities,
                 );
-                const segDuration = Date.now() - segStartTime;
-                this.logger.debug?.(
-                  `Segmented dialogue turn (${(t.hanzi || '').length} chars) in ${segDuration}ms`,
-                );
+                // const segDuration = Date.now() - segStartTime;
+                // this.logger.debug?.(
+                //   `Segmented dialogue turn (${(t.hanzi || '').length} chars) in ${segDuration}ms`,
+                // );
               } catch (err) {
                 this.logger.warn(
                   `Segmentation failed for a dialogue turn: ${String(err)}`,
@@ -489,6 +489,7 @@ export class LessonsService {
                     turns: turns.map((t: any) => ({
                       hanzi: t.hanzi,
                       translation: t.translation,
+                      speaker: t.speaker,
                     })),
                   },
                   numItems: 5,
@@ -1085,6 +1086,7 @@ export class LessonsService {
               turns: turns.map((t: any) => ({
                 hanzi: t.hanzi,
                 translation: t.translation,
+                speaker: t.speaker,
               })),
             },
             numItems: 5,
@@ -2334,12 +2336,12 @@ export class LessonsService {
   private async enrichTextWithSegments(text?: string, pinyin?: string) {
     if (!text || !Array.from(text).some((c) => this.isChineseChar(c)))
       return undefined as any[] | undefined;
-    const segStartTime = Date.now();
+    // const segStartTime = Date.now();
     const segs = await this.segmentationService.segmentText(text);
-    const segDuration = Date.now() - segStartTime;
-    this.logger.debug?.(
-      `Segmented text for enrichment (${text.length} chars) in ${segDuration}ms`,
-    );
+    // const segDuration = Date.now() - segStartTime;
+    // this.logger.debug?.(
+    //   `Segmented text for enrichment (${text.length} chars) in ${segDuration}ms`,
+    // );
     const charPinyinArray = (pinyin || '')
       .split(/\s+/)
       .map((s) => s.trim())

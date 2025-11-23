@@ -381,8 +381,8 @@ export class ConversationsService {
           }
 
           const responseInput = [
-            {
-              role: 'system',
+              {
+                role: 'system',
               content: systemPromptContent,
             },
             ...history.map((m) => ({
@@ -404,7 +404,7 @@ export class ConversationsService {
             },
             reasoning: {
               effort: 'minimal',
-            },
+              },
           } as any);
 
           let fullText = '';
@@ -415,7 +415,7 @@ export class ConversationsService {
             const type = event.type as string | undefined;
             if (type === 'response.output_text.delta') {
               const delta = (event.delta as string) || '';
-              if (!delta) continue;
+            if (!delta) continue;
               fullText += delta;
               subscriber.next({ data: JSON.stringify({ hanziDelta: delta }) });
             } else if (type === 'response.completed') {
@@ -430,10 +430,10 @@ export class ConversationsService {
           if (!completedResponse) {
             try {
               completedResponse = await stream.finalResponse();
-            } catch {
+              } catch {
               // ignore inability to fetch final response; rely on accumulated text
+              }
             }
-          }
 
           if (!fullText && completedResponse) {
             fullText = this.extractTextFromResponseOutput(
@@ -579,7 +579,7 @@ export class ConversationsService {
             }
             if (translationEntries.length > 0) {
               const translations = await (
-                this.openai as any
+              this.openai as any
               ).translateConversationEntries(translationEntries);
               assistantTranslation = translations.ai || '';
               userTranslationFromBatch = translations.user;
@@ -668,12 +668,12 @@ export class ConversationsService {
           await Promise.all([audioPromise]);
           emitFinalEvent({
             id: aiMsg.id,
-            conversationId,
+              conversationId,
             hanzi: finalHanzi,
             pinyin: pinyinPerChar || '',
             translation: assistantTranslation,
             segments,
-            complete: true,
+              complete: true,
           });
           subscriber.complete();
         } catch (e) {
@@ -841,12 +841,12 @@ export class ConversationsService {
             await Promise.all([audioPromise2]);
             emitFinalEvent({
               id: aiMsg.id,
-              conversationId,
+                conversationId,
               hanzi: finalHanziFallback,
               pinyin: pinyinPerChar || '',
               translation: fallbackAssistantTranslation,
               segments: segments2,
-              complete: true,
+                complete: true,
             });
             subscriber.complete();
           } catch (inner) {

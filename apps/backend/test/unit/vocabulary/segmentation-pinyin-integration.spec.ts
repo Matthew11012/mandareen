@@ -70,12 +70,56 @@ describe('SegmentationService - Pinyin Disambiguation Integration', () => {
       },
     );
 
+    mockPrismaService.vocabularyItem.findMany.mockImplementation(
+      (args: any) => {
+        const hanziList = args.where?.hanzi?.in || [];
+        const foundWords = hanziList
+          .map((h: string) => wordMap.get(h))
+          .filter(Boolean)
+          .map((word: any) => ({
+            id: word.id,
+            hanzi: word.hanzi,
+            pinyin: word.pinyin,
+            definition: word.definition,
+            hskLevel: 1,
+          }));
+        return Promise.resolve(foundWords);
+      },
+    );
+
     mockPrismaService.vocabularySense.findMany.mockImplementation(
       (args: any) => {
-        const word = Array.from(wordMap.values()).find(
-          (w) => w.id === args.where.vocabularyItemId,
-        );
-        return Promise.resolve(word?.senses || []);
+        const itemId = args.where?.vocabularyItemId;
+        if (itemId?.in) {
+          // Batch query: return all senses for items in the array
+          const itemIds = itemId.in;
+          const allSenses = itemIds
+            .map((id: number) => {
+              const word = Array.from(wordMap.values()).find(
+                (w) => w.id === id,
+              );
+              return (word?.senses || []).map((sense: any) => ({
+                vocabularyItemId: id,
+                pinyin: sense.pinyin,
+                definition: sense.definition,
+              }));
+            })
+            .flat();
+          return Promise.resolve(allSenses);
+        } else if (itemId) {
+          // Single item query
+          const word = Array.from(wordMap.values()).find(
+            (w) => w.id === itemId,
+          );
+          return Promise.resolve(
+            (word?.senses || []).map((sense: any) => ({
+              vocabularyItemId: itemId,
+              pinyin: sense.pinyin,
+              definition: sense.definition,
+            })),
+          );
+        }
+        return Promise.resolve([]);
       },
     );
   };
@@ -269,6 +313,46 @@ describe('SegmentationService - Pinyin Disambiguation Integration', () => {
         expect(['xing2', 'hang2']).toContain(xingSegment.pinyin);
         // Ideally should be xing2, but hang2 is acceptable if context extraction has issues
       }
+    });
+
+    it('should select xíng for 行 in 就行 context (single character usage meaning "okay/fine")', async () => {
+      setupVocabulary([
+        {
+          hanzi: '大',
+          pinyin: 'da4',
+          definition: 'big',
+          id: 1,
+        },
+        {
+          hanzi: '杯',
+          pinyin: 'bei1',
+          definition: 'cup',
+          id: 2,
+        },
+        {
+          hanzi: '就',
+          pinyin: 'jiu4',
+          definition: 'then, just',
+          id: 3,
+        },
+        {
+          hanzi: '行',
+          pinyin: 'hang2', // Base pinyin (less common for single char usage)
+          definition: 'bank, line',
+          id: 4,
+          senses: [
+            { pinyin: 'hang2', definition: 'bank, line' },
+            { pinyin: 'xing2', definition: 'okay, fine' }, // More common for single char
+          ],
+        },
+      ]);
+
+      const segments = await service.segmentText('大杯就行');
+      const xingSegment = segments.find((s) => s.word === '行');
+
+      expect(xingSegment).toBeDefined();
+      // Should select xing2 (okay/fine) based on context with 就
+      expect(xingSegment?.pinyin).toBe('xing2');
     });
   });
 
