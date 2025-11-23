@@ -54,15 +54,45 @@ export class ConversationsService {
       where: { conversationId },
       orderBy: { createdAt: 'asc' },
     });
-    // Attach segmentation for AI messages so frontend can render multi-word clickable tokens
+    // Use stored segments from DB, compute on-demand for old messages (lazy backfill)
     const enriched = await Promise.all(
       msgs.map(async (m) => {
         try {
+          // Check if message has Chinese characters
+          const text = m.hanzi || '';
+          const hasChinese = Array.from(text).some((ch) =>
+            this.isChineseChar(ch),
+          );
+          if (!hasChinese) return m as any;
+
+          // Use stored segments if available
+          const msgWithSegments = m as any;
+          if (msgWithSegments.segments) {
+            return { ...msgWithSegments, segments: msgWithSegments.segments };
+          }
+
+          // Fallback: compute for old messages (lazy backfill)
           const segments = await this.computeAndFormatSegments(
-            m.hanzi || '',
+            text,
             m.pinyin || undefined,
           );
           if (!segments) return m as any;
+
+          // Optionally save computed segments for old messages (lazy backfill)
+          // This improves performance on subsequent calls
+          try {
+            await this.prisma.message.update({
+              where: { id: m.id },
+              data: { segments: segments as any } as any,
+            });
+          } catch (err) {
+            // Ignore update errors (e.g., message deleted concurrently)
+            this.logger.debug(
+              `Failed to backfill segments for message ${m.id}`,
+              err as any,
+            );
+          }
+
           return { ...(m as any), segments };
         } catch {
           return m as any;
