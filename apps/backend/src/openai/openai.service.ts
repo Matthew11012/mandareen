@@ -605,6 +605,7 @@ export class OpenAIService {
     level: number;
     context: string;
     maxChars?: number;
+    logOnly?: boolean;
   }): Promise<{
     passage?: { hanzi: string; pinyin?: string; translation?: string };
     segments?: Array<{ zh: string; pinyin?: string; en?: string }>;
@@ -636,6 +637,11 @@ export class OpenAIService {
         } 
       ]
     }`;
+    if (args.logOnly) {
+      this.logger.log(`[ReadPassage prompt]\n${user}`, OpenAIService.name);
+      return {};
+    }
+
     const response = await (this.openai as any).responses.create({
       model,
       reasoning: { effort: 'low' },
@@ -722,6 +728,7 @@ export class OpenAIService {
     grammar: any;
     context?: string;
     numItems?: number;
+    logOnly?: boolean;
   }): Promise<{
     items?: Array<{
       question: string;
@@ -747,6 +754,11 @@ export class OpenAIService {
         { "question": "...", "options": ["A","B","C","D"], "answerIndex": 0, "rationale": "<primarily english explanation>" }
       ]
     }`;
+    if (args.logOnly) {
+      this.logger.log(`[QuizItems prompt]\n${user}`, OpenAIService.name);
+      return {};
+    }
+
     const response = await (this.openai as any).responses.create({
       model,
       reasoning: { effort: 'low' },
@@ -1099,6 +1111,8 @@ export class OpenAIService {
     context: string;
     maxSections?: number;
     preferMicroPassageChars?: number;
+    outlineIsFallback?: boolean;
+    logOnly?: boolean;
   }): Promise<{
     overview?: string;
     sections?: Array<{
@@ -1113,21 +1127,37 @@ export class OpenAIService {
   }> {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const maxSections = Math.min(Math.max(args.maxSections ?? 7, 1), 20);
+    const outlineItems =
+      Array.isArray(args.outline) && args.outline.length > 0
+        ? args.outline
+        : [{ title: args.title }];
+    const usingFallback =
+      Boolean(args.outlineIsFallback) ||
+      !(Array.isArray(args.outline) && args.outline.length > 0);
+    const outlineLabel = usingFallback
+      ? 'Outline (single consolidated section):'
+      : 'Outline (order matters):';
+    const outlineLines = outlineItems
+      .map((o, i) => `${i + 1}. ${o.title}`)
+      .join('\n');
+    const sectionDirective = usingFallback
+      ? `2) "sections": EXACTLY 1 item (one consolidated explanation) because this subchapter has no sub-subchapters. Title it after the line in the outline above and do NOT invent extra sections.`
+      : `2) "sections": EXACTLY ${maxSections} items and in the SAME ORDER as the outline lines above, one per outline line. Each section MUST correspond to the respective outline title (use it as section.title verbatim unless minor normalization is needed).`;
     const sys = `You are a senior Mandarin curriculum designer. Create an EXPLAIN-FIRST lesson in English with Chinese examples. Be concise, accurate, and grounded STRICTLY by the provided outline and context. If a claim is not supported by the context, omit it. Return STRICT JSON.`;
     const user = `Title: ${args.title}
-    \nOutline (order matters):\n${args.outline.map((o, i) => `${i + 1}. ${o.title}`).join('\n')}
-    \nGrounding context (snippets):\n${args.context.slice(0, 8000)}\n
+    \n${outlineLabel}\n${outlineLines}
+    \nGrounding context (snippets):\n${args.context}\n
 
     \nConstruct (STRICT):
     1) "overview": 2-4 sentences (English) summarizing what learners will learn.
-    2) "sections": EXACTLY ${maxSections} items and in the SAME ORDER as the outline lines above, one per outline line. Each section MUST correspond to the respective outline title (use it as section.title verbatim unless minor normalization is needed). Each section must include:
+    ${sectionDirective} Each section must include:
     - title (English or Chinese),
     - concept (English),
     - 2-3 examples with Chinese, pinyin, English,
     - pitfalls (min 1 if applicable): {bad, good, note} all should be in english, emphasize minimal pairs/contrasts and "say X, not Y" patterns when relevant,
     - 2 short checks: type tf|fill with prompt and answer.
-    \nReturn ONLY JSON with keys overview, sections, microPassage, citations.
-    \nEXAMPLE (shape only; keep content brief and grounded):
+    \nReturn ONLY JSON with keys overview, sections.
+    \nEXAMPLE (shape only; keep content detailed and grounded):
     {
       "overview": "This subchapter explains basic phrase order and common particles.",
       "sections": [
@@ -1162,6 +1192,13 @@ export class OpenAIService {
         }
       ],
     }`;
+    if (args.logOnly) {
+      this.logger.log(
+        `[CurriculumExplainLesson prompt]\n${user}`,
+        OpenAIService.name,
+      );
+      return {};
+    }
     const response = await (this.openai as any).responses.create({
       model,
       reasoning: { effort: 'medium' },
