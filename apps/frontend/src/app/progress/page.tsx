@@ -33,11 +33,8 @@ export default function ProgressPage() {
   }>({ points: [], totals: { new: 0, learned: 0 } });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  type LessonsChartType = "bars" | "stacked";
   type WordsChartType = "bars" | "pie";
   type WordsTimelineFilter = "all" | "30" | "7";
-  const [lessonsChartType, setLessonsChartType] =
-    useState<LessonsChartType>("bars");
   const [wordsChartType, setWordsChartType] = useState<WordsChartType>("bars");
   const [wordsTimelineFilter, setWordsTimelineFilter] =
     useState<WordsTimelineFilter>("all");
@@ -190,33 +187,6 @@ export default function ProgressPage() {
     );
   };
 
-  // Custom label renderer to place value inside a stacked bar segment; hides 0
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const renderInsideBarLabel = (props: any) => {
-    const toNum = (v: unknown): number => {
-      const n = typeof v === "number" ? v : Number(v);
-      return Number.isFinite(n) ? n : 0;
-    };
-    const { x, y, width, height, value } = props || {};
-    const numeric = toNum(value);
-    if (numeric <= 0) return null;
-    const cx = toNum(x) + toNum(width) / 2;
-    const cy = toNum(y) + Math.max(12, toNum(height) / 2);
-    return (
-      <text
-        x={cx}
-        y={cy}
-        fill="#ffffff"
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fontSize={12}
-        style={{ pointerEvents: "none" }}
-      >
-        {String(numeric)}
-      </text>
-    );
-  };
-
   return (
     <DashboardLayout
       title="Progress"
@@ -233,36 +203,6 @@ export default function ProgressPage() {
               <h2 className="text-white font-inter font-medium text-sm md:text-base">
                 Lessons Completed (by HSK)
               </h2>
-              <div
-                className="inline-flex rounded-lg border border-[#404040] overflow-hidden"
-                role="group"
-                aria-label="Chart type"
-              >
-                <button
-                  type="button"
-                  onClick={() => setLessonsChartType("bars")}
-                  className={`px-2 py-1 text-xs font-inter cursor-pointer ${
-                    lessonsChartType === "bars"
-                      ? "bg-[#4040f2]/10 text-[#9aa6ff]"
-                      : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
-                  }`}
-                  aria-pressed={lessonsChartType === "bars"}
-                >
-                  Bars
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLessonsChartType("stacked")}
-                  className={`px-2 py-1 text-xs font-inter border-l border-[#404040] cursor-pointer ${
-                    lessonsChartType === "stacked"
-                      ? "bg-[#4040f2]/10 text-[#9aa6ff]"
-                      : "text-[#a6a6a6] hover:bg-[#4040f2]/10"
-                  }`}
-                  aria-pressed={lessonsChartType === "stacked"}
-                >
-                  Stacked
-                </button>
-              </div>
             </div>
 
             {loading ? (
@@ -273,137 +213,63 @@ export default function ProgressPage() {
               </div>
             ) : (
               <div className="mt-2 h-64 sm:h-80">
-                {lessonsChartType === "bars" && (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={chartData}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 28 }}
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={chartData}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 28 }}
+                  >
+                    <CartesianGrid stroke="#2e323a" strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="level"
+                      stroke="#a6a6a6"
+                      tick={{
+                        fill: "#a6a6a6",
+                        fontSize: 12,
+                        textAnchor: "end",
+                      }}
+                      interval={0}
+                      tickMargin={5}
+                      height={38}
+                      angle={-30}
+                    />
+                    <YAxis
+                      stroke="#a6a6a6"
+                      tick={{ fill: "#a6a6a6", fontSize: 12 }}
+                      allowDecimals={false}
+                      domain={[0, maxValue]}
+                    />
+                    <ReTooltip
+                      contentStyle={{
+                        background: "#2e323a",
+                        border: "1px solid #404040",
+                        color: "#fff",
+                      }}
+                    />
+                    <Legend
+                      formatter={legendFormatter}
+                      verticalAlign="bottom"
+                      align="center"
+                      wrapperStyle={{ paddingTop: 8 }}
+                    />
+                    <Bar
+                      dataKey="finished"
+                      name="Finished"
+                      fill="#ffffff"
+                      radius={[4, 4, 0, 0]}
                     >
-                      <CartesianGrid stroke="#2e323a" strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="level"
-                        stroke="#a6a6a6"
-                        tick={{
-                          fill: "#a6a6a6",
-                          fontSize: 12,
-                          textAnchor: "end",
-                        }}
-                        interval={0}
-                        tickMargin={5}
-                        height={38}
-                        angle={-30}
-                      />
-                      <YAxis
-                        stroke="#a6a6a6"
-                        tick={{ fill: "#a6a6a6", fontSize: 12 }}
-                        allowDecimals={false}
-                        domain={[0, maxValue]}
-                      />
-                      <ReTooltip
-                        contentStyle={{
-                          background: "#2e323a",
-                          border: "1px solid #404040",
-                          color: "#fff",
-                        }}
-                      />
-                      <Legend
-                        formatter={legendFormatter}
-                        verticalAlign="bottom"
-                        align="center"
-                        wrapperStyle={{ paddingTop: 8 }}
-                      />
-                      <Bar
+                      {chartData.map((entry) => (
+                        <Cell
+                          key={entry.level}
+                          fill={getHSKBarColor(entry.levelNum)}
+                        />
+                      ))}
+                      <LabelList
                         dataKey="finished"
-                        name="Finished"
-                        fill="#ffffff"
-                        radius={[4, 4, 0, 0]}
-                      >
-                        {chartData.map((entry) => (
-                          <Cell
-                            key={entry.level}
-                            fill={getHSKBarColor(entry.levelNum)}
-                          />
-                        ))}
-                        <LabelList
-                          dataKey="finished"
-                          content={renderBarValueLabel}
-                        />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-                {lessonsChartType === "stacked" && (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={chartData}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 28 }}
-                    >
-                      <CartesianGrid stroke="#2e323a" strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="level"
-                        stroke="#a6a6a6"
-                        tick={{
-                          fill: "#a6a6a6",
-                          fontSize: 12,
-                          textAnchor: "end",
-                        }}
-                        interval={0}
-                        tickMargin={5}
-                        height={38}
-                        angle={-30}
+                        content={renderBarValueLabel}
                       />
-                      <YAxis
-                        stroke="#a6a6a6"
-                        tick={{ fill: "#a6a6a6", fontSize: 12 }}
-                        allowDecimals={false}
-                        domain={[0, maxValue]}
-                      />
-                      <ReTooltip
-                        contentStyle={{
-                          background: "#2e323a",
-                          border: "1px solid #404040",
-                          color: "#fff",
-                        }}
-                      />
-                      <Legend
-                        formatter={legendFormatter}
-                        verticalAlign="bottom"
-                        align="center"
-                        wrapperStyle={{ paddingTop: 8 }}
-                      />
-                      <Bar
-                        dataKey="finished"
-                        name="Finished"
-                        fill="#ffffff"
-                        stackId="a"
-                        radius={[4, 4, 0, 0]}
-                      >
-                        {chartData.map((entry) => (
-                          <Cell
-                            key={entry.level}
-                            fill={getHSKBarColor(entry.levelNum)}
-                          />
-                        ))}
-                        <LabelList
-                          dataKey="finished"
-                          content={renderInsideBarLabel}
-                        />
-                      </Bar>
-                      <Bar
-                        dataKey="unfinished"
-                        name="Unfinished"
-                        stackId="a"
-                        fill="#59606b"
-                        radius={[4, 4, 0, 0]}
-                      >
-                        <LabelList
-                          dataKey="unfinished"
-                          content={renderInsideBarLabel}
-                        />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             )}
           </section>
@@ -464,6 +330,8 @@ export default function ProgressPage() {
                           border: "1px solid #404040",
                           color: "#fff",
                         }}
+                        labelStyle={{ color: "#ffffff" }}
+                        itemStyle={{ color: "#ffffff" }}
                       />
                       <Legend
                         formatter={legendFormatter}
@@ -479,7 +347,7 @@ export default function ProgressPage() {
                             levelNum: lvl,
                           })),
                           {
-                            name: "Unknown",
+                            name: "Others",
                             value: wordsByHsk["unknown"] || 0,
                             levelNum: 0,
                           },
@@ -490,13 +358,18 @@ export default function ProgressPage() {
                         cy="50%"
                         outerRadius={90}
                         innerRadius={40}
+                        labelLine={false}
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        label={(entry: any) =>
+                          entry && entry.value > 0 ? entry.value : ""
+                        }
                       >
                         {[
                           ...HSK_LEVELS.map((lvl) => ({
                             key: `HSK ${lvl}`,
                             color: getHSKBarColor(lvl),
                           })),
-                          { key: "Unknown", color: "#59606b" },
+                          { key: "Others", color: "#59606b" },
                         ].map((entry) => (
                           <Cell key={entry.key} fill={entry.color} />
                         ))}
@@ -513,7 +386,7 @@ export default function ProgressPage() {
                           count: wordsByHsk[String(lvl)] || 0,
                         })),
                         {
-                          level: "Unknown",
+                          level: "Others",
                           levelNum: 0,
                           count: wordsByHsk["unknown"] || 0,
                         },
@@ -563,7 +436,7 @@ export default function ProgressPage() {
                             key: `HSK ${lvl}`,
                             color: getHSKBarColor(lvl),
                           })),
-                          { key: "Unknown", color: "#59606b" },
+                          { key: "Others", color: "#59606b" },
                         ].map((entry) => (
                           <Cell key={entry.key} fill={entry.color} />
                         ))}

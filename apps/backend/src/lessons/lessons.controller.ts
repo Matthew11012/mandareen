@@ -238,6 +238,7 @@ export class LessonsController {
     } = await this.billingPlanService.getUserPlan(userId);
     const planCode = (String(rawPlanCode || 'FREE').toUpperCase() ||
       'FREE') as PlanCode;
+    const isFreePlan = planCode === 'FREE';
 
     let sections = lesson.sections.map((s) => ({
       id: s.id,
@@ -257,6 +258,9 @@ export class LessonsController {
       viewAccess: LessonAccess,
       owned = false,
     ) => {
+      if (!isFreePlan) {
+        return;
+      }
       try {
         await this.usageService.recordAnalytics({
           userId,
