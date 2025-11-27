@@ -2,6 +2,7 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -17,6 +18,7 @@ import { auth } from '../lib/auth';
 export class DualAuthGuard implements CanActivate {
   private readonly jwtService: JwtService;
   private readonly prisma: PrismaService;
+  private readonly logger = new Logger(DualAuthGuard.name);
 
   constructor(jwtService: JwtService, prisma: PrismaService) {
     this.jwtService = jwtService;
@@ -31,6 +33,7 @@ export class DualAuthGuard implements CanActivate {
     if (session) {
       request.user = session;
       request.authSource = 'better-auth';
+      this.logger.debug(`Auth via Better Auth for user ${session.id}`);
       return true;
     }
 
@@ -41,10 +44,12 @@ export class DualAuthGuard implements CanActivate {
       this.prisma,
     );
     if (!legacyUser) {
+      this.logger.debug('Legacy JWT fallback failed: token missing/invalid');
       throw new UnauthorizedException('No valid authentication');
     }
     request.user = legacyUser;
     request.authSource = 'legacy-jwt';
+    this.logger.debug(`Auth via legacy JWT for user ${legacyUser.id}`);
     return true;
   }
 
@@ -64,14 +69,22 @@ export class DualAuthGuard implements CanActivate {
       });
 
       if (!baUser?.legacyUser) {
+        this.logger.debug(
+          `Better Auth user ${session.user.id} missing legacy link`,
+        );
         return null;
       }
 
-      return {
+      const mappedUser = {
         id: baUser.legacyUser.id,
         email: baUser.legacyUser.email,
       };
+      this.logger.debug(
+        `Mapped Better Auth user ${session.user.id} -> legacy user ${mappedUser.id}`,
+      );
+      return mappedUser;
     } catch {
+      this.logger.debug('Better Auth session lookup failed');
       return null;
     }
   }
@@ -92,8 +105,13 @@ export class DualAuthGuard implements CanActivate {
         where: { id: payload.sub },
         select: { id: true, email: true },
       });
-      return user ?? null;
-    } catch {
+      if (!user) {
+        this.logger.warn(`JWT valid but user ${payload.sub} not found`);
+        return null;
+      }
+      return user;
+    } catch (error) {
+      this.logger.debug(`JWT verification failed: ${(error as Error).message}`);
       return null;
     }
   }
