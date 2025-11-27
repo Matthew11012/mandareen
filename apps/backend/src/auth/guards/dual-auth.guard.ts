@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JWTPayload } from '../../types/request.types';
 import { auth } from '../lib/auth';
+import { UserMigrationService } from '../user-migration.service';
 
 /**
  * Guard that accepts either a Better Auth session or the legacy JWT.
@@ -18,18 +19,28 @@ import { auth } from '../lib/auth';
 export class DualAuthGuard implements CanActivate {
   private readonly jwtService: JwtService;
   private readonly prisma: PrismaService;
+  private readonly userMigrationService: UserMigrationService;
   private readonly logger = new Logger(DualAuthGuard.name);
 
-  constructor(jwtService: JwtService, prisma: PrismaService) {
+  constructor(
+    jwtService: JwtService,
+    prisma: PrismaService,
+    userMigrationService: UserMigrationService,
+  ) {
     this.jwtService = jwtService;
     this.prisma = prisma;
+    this.userMigrationService = userMigrationService;
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
 
     // 1. Prefer Better Auth session if present.
-    const session = await this.tryGetBetterAuthSession(request, this.prisma);
+    const session = await this.tryGetBetterAuthSession(
+      request,
+      this.prisma,
+      this.userMigrationService,
+    );
     if (session) {
       request.user = session;
       request.authSource = 'better-auth';
@@ -56,6 +67,7 @@ export class DualAuthGuard implements CanActivate {
   private async tryGetBetterAuthSession(
     request: any,
     prisma: PrismaService,
+    migrationService: UserMigrationService,
   ): Promise<{ id: number; email: string } | null> {
     try {
       const session = await auth.api.getSession({ headers: request.headers });
@@ -63,16 +75,30 @@ export class DualAuthGuard implements CanActivate {
         return null;
       }
 
-      const baUser = await prisma.betterAuthUser.findUnique({
+      let baUser = await prisma.betterAuthUser.findUnique({
         where: { id: session.user.id },
         include: { legacyUser: true },
       });
 
       if (!baUser?.legacyUser) {
-        this.logger.debug(
-          `Better Auth user ${session.user.id} missing legacy link`,
+        await migrationService.linkLegacyUser(
+          session.user.id,
+          session.user.email,
         );
-        return null;
+        baUser = await prisma.betterAuthUser.findUnique({
+          where: { id: session.user.id },
+          include: { legacyUser: true },
+        });
+        if (!baUser?.legacyUser) {
+          const legacyId = await migrationService.createLegacyUserForBaUser(
+            session.user.id,
+            session.user.email,
+          );
+          return {
+            id: legacyId,
+            email: session.user.email,
+          };
+        }
       }
 
       const mappedUser = {
