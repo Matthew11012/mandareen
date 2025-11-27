@@ -11,7 +11,7 @@ import {
 import { AssessmentService } from './assessment.service';
 import { FetchQuestionsDto } from './dto/fetch-questions.dto';
 import { SubmitAssessmentDto } from './dto/submit-assessment.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DualAuthGuard } from '../auth/guards/dual-auth.guard';
 import { Passage } from './models/passage.model';
 import { AuthenticatedRequest } from '../types/request.types';
 import { BillingPlanService } from '../billing/billing-plan.service';
@@ -22,7 +22,7 @@ import { Observable } from 'rxjs';
 import { randomUUID } from 'crypto';
 
 @Controller('assess')
-@UseGuards(JwtAuthGuard)
+@UseGuards(DualAuthGuard)
 export class AssessmentController {
   constructor(
     private readonly assessmentService: AssessmentService,

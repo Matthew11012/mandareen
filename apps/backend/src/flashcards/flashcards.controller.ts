@@ -10,12 +10,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { FlashcardsService } from './flashcards.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DualAuthGuard } from '../auth/guards/dual-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
 import { BadRequestException } from '@nestjs/common';
 
 @Controller('flashcards')
-@UseGuards(JwtAuthGuard)
+@UseGuards(DualAuthGuard)
 export class FlashcardsController {
   constructor(private readonly service: FlashcardsService) {}
 

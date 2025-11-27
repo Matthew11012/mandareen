@@ -1,6 +1,6 @@
 import { Controller, Query, Req, Sse, UseGuards } from '@nestjs/common';
 import { LessonsService } from './lessons.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DualAuthGuard } from '../auth/guards/dual-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
 import { BillingPlanService } from '../billing/billing-plan.service';
 import { UsageService } from '../billing/usage.service';
@@ -18,7 +18,7 @@ export class LessonsStreamController {
   ) {}
 
   // Public SSE endpoint; token is validated inside LessonsService
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(DualAuthGuard)
   @Sse('generate/stream')
   streamGenerate(
     @Req() req: AuthenticatedRequest,
@@ -38,7 +38,7 @@ export class LessonsStreamController {
       ? `gen:${requestId}`
       : `gen:${Date.now()}-${Math.random()}`;
 
-    // Prefer using the cookie-based auth; JwtAuthGuard has already validated the token
+    // Prefer using the cookie-based auth; DualAuthGuard has already validated the token
     // We still extract the cookie value to reuse the existing service method
     const cookieHeader: string | undefined = req?.headers?.cookie;
     let token: string | undefined = req?.cookies?.['auth-token'];
