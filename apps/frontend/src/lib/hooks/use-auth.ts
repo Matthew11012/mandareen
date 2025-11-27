@@ -1,6 +1,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuthStore } from "../stores/auth-store";
+import { useSession } from "../auth-client";
 
 /**
  * Custom hook for authentication logic
@@ -17,6 +18,7 @@ export const useAuth = () => {
     logout,
     clearError,
   } = useAuthStore();
+  const { data: baSession, isPending: baPending } = useSession();
 
   const router = useRouter();
 
@@ -61,14 +63,15 @@ export const useAuth = () => {
   };
 
   return {
-    user,
-    isAuthenticated,
-    isLoading,
+    user: baSession?.user ?? user,
+    isAuthenticated: Boolean(baSession?.user) || isAuthenticated,
+    isLoading: isLoading || baPending,
     error,
     login: loginWithRedirect,
     register: registerWithRedirect,
     logout: logoutWithRedirect,
     clearError,
+    authSource: baSession?.user ? "better-auth" : "legacy",
   };
 };
 
