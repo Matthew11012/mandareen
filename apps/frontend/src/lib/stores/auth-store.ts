@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { authApi, type LoginData, type RegisterData } from "../api/auth";
+import { authClient } from "../auth-client";
 
 interface User {
   id: number;
@@ -113,11 +114,15 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true });
 
         try {
-          // Call backend logout endpoint
-          await authApi.logout();
+          // Prefer Better Auth sign-out to revoke the current session cookies
+          await authClient.signOut();
         } catch (error) {
-          // Even if backend logout fails, we should clear local state
-          console.warn("Backend logout failed:", error);
+          console.warn("Better Auth sign-out failed, falling back:", error);
+          try {
+            await authApi.logout();
+          } catch (legacyError) {
+            console.warn("Legacy logout failed:", legacyError);
+          }
         } finally {
           // Clear session-scoped lesson filter keys to prevent cross-account leakage
           try {
