@@ -14,6 +14,7 @@ model User {
   createdAt            DateTime                @default(now())
   googleId             String?                 @unique
   weeklyGoalLessons    Int?
+  betterAuthUser       BetterAuthUser?         @relation("BetterAuthUserLegacyUser")
   activityAttempts     ActivityAttempt[]
   assessments          Assessment[]
   conversations        Conversation[]
@@ -547,5 +548,72 @@ model ConcurrencyLock {
   metadata   Json?
 
   @@index([userId, resource])
+  @@index([expiresAt])
+}
+
+// ============================================================================
+// Better Auth Tables
+// ============================================================================
+
+model BetterAuthUser {
+  id            String               @id @default(cuid())
+  name          String?
+  email         String               @unique
+  emailVerified Boolean              @default(false)
+  image         String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  legacyUserId  Int?                 @unique
+  legacyUser    User?                @relation("BetterAuthUserLegacyUser", fields: [legacyUserId], references: [id])
+  sessions      BetterAuthSession[]
+  accounts      BetterAuthAccount[]
+
+  @@index([email])
+}
+
+model BetterAuthSession {
+  id        String         @id @default(cuid())
+  userId    String
+  token     String         @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  user      BetterAuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model BetterAuthAccount {
+  id                   String         @id @default(cuid())
+  userId               String
+  accountId            String
+  providerId           String
+  accessToken          String?
+  refreshToken         String?
+  accessTokenExpiresAt DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                String?
+  idToken              String?
+  password             String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  user                 BetterAuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId, providerId])
+}
+
+model BetterAuthVerification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
   @@index([expiresAt])
 }
