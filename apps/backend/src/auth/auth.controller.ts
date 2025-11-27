@@ -13,7 +13,7 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { DualAuthGuard } from './guards/dual-auth.guard';
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/request.types';
 
@@ -51,7 +51,7 @@ export class AuthController {
   }
 
   @Post('logout')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(DualAuthGuard)
   @HttpCode(HttpStatus.OK)
   async logout(@Req() req: AuthenticatedRequest, @Res() res: Response) {
     await this.authService.logout(req.user.id);

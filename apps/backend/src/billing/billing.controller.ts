@@ -9,7 +9,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { BillingService } from './billing.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DualAuthGuard } from '../auth/guards/dual-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
 import { CreateCheckoutDto, BillingPeriod } from './dto/create-checkout.dto';
 
@@ -18,7 +18,7 @@ import { CreateCheckoutDto, BillingPeriod } from './dto/create-checkout.dto';
  * Provides endpoints for creating checkout sessions and accessing billing portal.
  */
 @Controller('billing')
-@UseGuards(JwtAuthGuard)
+@UseGuards(DualAuthGuard)
 export class BillingController {
   constructor(private readonly billingService: BillingService) {}
 

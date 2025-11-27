@@ -14,7 +14,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DualAuthGuard } from '../auth/guards/dual-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
 import { Observable } from 'rxjs';
 import { JwtService } from '@nestjs/jwt';
@@ -51,21 +51,21 @@ export class ConversationsController {
     this.concurrencyService = concurrencyService;
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(DualAuthGuard)
   @Post()
   async start(@Req() req: AuthenticatedRequest) {
     const convo = await this._service.startConversation(req.user.id);
     return { id: convo.id };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(DualAuthGuard)
   @Get(':id/messages')
   async list(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     const messages = await this._service.listMessages(Number(id));
     return messages;
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(DualAuthGuard)
   @Post(':id/messages')
   async send(
     @Req() req: AuthenticatedRequest,
@@ -93,7 +93,7 @@ export class ConversationsController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(DualAuthGuard)
   @Post(':id/audio')
   @UseInterceptors(
     FileInterceptor('audio', {
@@ -154,13 +154,13 @@ export class ConversationsController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(DualAuthGuard)
   @Sse(':id/stream')
   stream(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
   ): Observable<{ data: string } | { event: string; data: any }> {
-    // JwtAuthGuard supports Authorization header, query token, or cookie
+    // DualAuthGuard supports Authorization header, query token, or cookie
     const userId = Number((req as any)?.user?.id);
     if (!userId) {
       throw new Error('Unauthorized');
@@ -268,13 +268,13 @@ export class ConversationsController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(DualAuthGuard)
   @Get()
   async listConversations(@Req() req: AuthenticatedRequest) {
     return this._service.listUserConversations(req.user.id);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(DualAuthGuard)
   @Delete(':id')
   async deleteConversation(
     @Param('id') id: string,
@@ -287,7 +287,7 @@ export class ConversationsController {
     return { deleted };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(DualAuthGuard)
   @Post(':conversationId/messages/:messageId/generate-notes')
   async generateManualNotes(
     @Req() req: AuthenticatedRequest,

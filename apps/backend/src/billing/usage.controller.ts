@@ -9,7 +9,7 @@ import {
 import { UsageService } from './usage.service';
 import { BillingPlanService } from './billing-plan.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DualAuthGuard } from '../auth/guards/dual-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
 import { UsageSummaryDto } from './dto/usage-summary.dto';
 import { BILLING_RESOURCES } from './billing-resources.constants';
@@ -24,7 +24,7 @@ const OMITTED_USAGE_RESOURCES = new Set<string>([
  * Provides endpoints for querying rolling window usage data.
  */
 @Controller('usage')
-@UseGuards(JwtAuthGuard)
+@UseGuards(DualAuthGuard)
 export class UsageController {
   private readonly usageService: UsageService;
   private readonly billingPlanService: BillingPlanService;

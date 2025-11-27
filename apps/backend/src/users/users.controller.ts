@@ -7,12 +7,12 @@ import {
   Body,
   BadRequestException,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DualAuthGuard } from '../auth/guards/dual-auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
 import { UsersService } from '../users/users.service';
 
 @Controller('users')
-@UseGuards(JwtAuthGuard)
+@UseGuards(DualAuthGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
