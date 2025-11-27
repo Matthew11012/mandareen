@@ -12,15 +12,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { GoogleButton } from "@/components/ui/google-button";
 import { useAuth, useRedirectAuthenticated } from "@/lib/hooks/use-auth";
-import { loginSchema, type LoginData, authApi } from "@/lib/api/auth";
+import { loginSchema, type LoginData } from "@/lib/api/auth";
 import { useCheckoutMutation } from "@/lib/hooks/use-billing";
 import { BillingPeriod } from "@/lib/api/billing";
+import { signIn } from "@/lib/auth-client";
 
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLoading: authChecking } = useRedirectAuthenticated();
-  const { login, isLoading, clearError } = useAuth();
+  const { clearError } = useAuth();
   const checkoutMutation = useCheckoutMutation();
 
   // Get redirect URL from query params
@@ -51,6 +52,7 @@ function LoginPageContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
+  const [formSubmitting, setFormSubmitting] = useState(false);
 
   const {
     register,
@@ -88,8 +90,16 @@ function LoginPageContent() {
 
   const onSubmit = async (data: LoginData) => {
     try {
+      setFormSubmitting(true);
       clearError();
-      await login(data);
+      const result = await signIn.email({
+        email: data.email,
+        password: data.password,
+      });
+
+      if (result.error) {
+        throw new Error(result.error.message ?? "Sign in failed");
+      }
       toast.success("Welcome back!");
 
       // Check if redirect URL contains plan info for automatic checkout
@@ -106,8 +116,14 @@ function LoginPageContent() {
         // Default: redirect to dashboard
         router.push("/dashboard");
       }
-    } catch {
-      toast.error("Login failed. Please check your credentials.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Login failed. Please check your credentials."
+      );
+    } finally {
+      setFormSubmitting(false);
     }
   };
 
@@ -121,11 +137,25 @@ function LoginPageContent() {
         sessionStorage.setItem("login_redirect_url", redirectUrl);
       }
 
-      const googleAuthUrl = authApi.getGoogleAuthUrl();
-      window.location.href = googleAuthUrl;
-    } catch {
+      const response = await signIn.social({
+        provider: "google",
+        callbackURL: "/auth/callback",
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message ?? "Google sign-in failed");
+      }
+
+      if (response.data?.url) {
+        window.location.href = response.data.url;
+      }
+    } catch (error) {
       setGoogleLoading(false);
-      toast.error("Failed to initiate Google login");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to initiate Google login"
+      );
     }
   };
 
@@ -193,8 +223,8 @@ function LoginPageContent() {
               type="submit"
               variant="primary"
               size="full"
-              loading={isLoading}
-              disabled={isLoading || googleLoading}
+              loading={formSubmitting}
+              disabled={formSubmitting || googleLoading}
               className="bg-[#4040f2] hover:bg-[#3636d9] text-white shadow-[0_8px_20px_rgba(64,64,242,0.35)] hover:shadow-[0_10px_24px_rgba(64,64,242,0.45)] transition-all min-h-[44px]"
               aria-label="Log in"
             >
@@ -221,7 +251,7 @@ function LoginPageContent() {
               type="button"
               onClick={handleGoogleLogin}
               loading={googleLoading}
-              disabled={isLoading || googleLoading}
+              disabled={formSubmitting || googleLoading}
               className="min-h-[44px] w-full"
             />
 
