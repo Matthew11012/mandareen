@@ -22,14 +22,6 @@ export const loginSchema = z.object({
 export type RegisterData = z.infer<typeof registerSchema>;
 export type LoginData = z.infer<typeof loginSchema>;
 
-export interface AuthResponse {
-  user: {
-    id: number;
-    email: string;
-  };
-  token: string;
-}
-
 export interface MeResponse {
   id: number;
   email: string;
@@ -46,36 +38,6 @@ export interface ApiError {
 
 // API service functions
 export const authApi = {
-  /**
-   * Register a new user account
-   * @param data User registration data (email, password)
-   * @returns Promise with user data and JWT token
-   * @throws ApiError on validation failures or server errors
-   */
-  register: async (data: RegisterData): Promise<AuthResponse> => {
-    try {
-      const validatedData = registerSchema.parse(data);
-      return post<AuthResponse>("auth/register", validatedData);
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  /**
-   * Login with email and password
-   * @param data User login credentials
-   * @returns Promise with user data and JWT token
-   * @throws ApiError on invalid credentials or server errors
-   */
-  login: async (data: LoginData): Promise<AuthResponse> => {
-    try {
-      const validatedData = loginSchema.parse(data);
-      return post<AuthResponse>("auth/login", validatedData);
-    } catch (error) {
-      throw error;
-    }
-  },
-
   /**
    * Logout current user
    * @returns Promise with logout confirmation
@@ -107,15 +69,5 @@ export const authApi = {
     return put<{ weeklyGoalLessons: number | null }>("users/weekly-goal", {
       weeklyGoalLessons,
     });
-  },
-
-  /**
-   * Get Google OAuth authentication URL
-   * @returns Google OAuth URL to redirect the user to Google login
-   */
-  getGoogleAuthUrl: (): string => {
-    const apiBase =
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
-    return `${apiBase}/auth/google`;
   },
 };
