@@ -14,13 +14,22 @@ export async function serverApiFetch(path: string, init?: RequestInit) {
   const url = `${base}/${path}`.replace(/([^:]\/)\/+/g, "$1");
 
   const cookieStore = await cookies();
-  const token = cookieStore.get("auth-token")?.value;
+  const legacyToken = cookieStore.get("auth-token")?.value;
+  const betterAuthCookies = cookieStore
+    .getAll()
+    .filter((cookie) => cookie.name.startsWith("mandareen."));
 
   const headers = new Headers(init?.headers);
   if (!headers.has("Content-Type"))
     headers.set("Content-Type", "application/json");
-  if (token && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${token}`);
+  if (legacyToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${legacyToken}`);
+  }
+  if (betterAuthCookies.length > 0) {
+    const cookieHeader = betterAuthCookies
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join("; ");
+    headers.append("Cookie", cookieHeader);
   }
 
   const res = await fetch(url, {

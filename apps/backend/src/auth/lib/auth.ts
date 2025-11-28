@@ -1,11 +1,49 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { PrismaClient } from '@prisma/client';
+import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
+import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
+const SCRYPT_KEY_LEN = 64;
+const SCRYPT_CONFIG = {
+  N: 16384,
+  r: 16,
+  p: 1,
+  maxmem: 128 * 16384 * 16 * 2,
+};
+
+const hashWithScrypt = (password: string): string => {
+  const salt = randomBytes(16).toString('hex');
+  const derived = scryptSync(
+    password.normalize('NFKC'),
+    Buffer.from(salt, 'hex'),
+    SCRYPT_KEY_LEN,
+    SCRYPT_CONFIG,
+  );
+  return `${salt}:${derived.toString('hex')}`;
+};
+
+const verifyScryptHash = (hash: string, password: string): boolean => {
+  const [salt, storedKey] = hash.split(':');
+  if (!salt || !storedKey) {
+    throw new Error('Invalid password hash');
+  }
+  const derived = scryptSync(
+    password.normalize('NFKC'),
+    Buffer.from(salt, 'hex'),
+    SCRYPT_KEY_LEN,
+    SCRYPT_CONFIG,
+  );
+  return timingSafeEqual(Buffer.from(storedKey, 'hex'), derived);
+};
+
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+  baseURL:
+    process.env.BETTER_AUTH_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    'http://localhost:3000',
   database: prismaAdapter(prisma, {
     provider: 'postgresql',
   }),
@@ -36,6 +74,22 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
+    password: {
+      hash: async (password: string) => hashWithScrypt(password),
+      verify: async ({
+        hash,
+        password,
+      }: {
+        hash: string;
+        password: string;
+      }) => {
+        const isBcryptHash = hash.startsWith('$2a$') || hash.startsWith('$2b$');
+        if (isBcryptHash) {
+          return bcrypt.compare(password, hash);
+        }
+        return verifyScryptHash(hash, password);
+      },
+    },
   },
   socialProviders: {
     google: {
