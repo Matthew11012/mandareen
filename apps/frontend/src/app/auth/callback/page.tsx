@@ -94,7 +94,7 @@ function AuthCallbackContent() {
 
         // Update auth store with Better Auth user info
         // Note: Better Auth uses string IDs, but we need to map to legacy user
-        // The DualAuthGuard on backend handles this mapping
+        // The AuthGuard on backend handles this mapping
         // For now, we'll fetch the user from the backend to get the legacy user ID
         const { authApi } = await import("@/lib/api/auth");
         const me = await authApi.me();

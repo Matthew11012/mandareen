@@ -20,7 +20,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { authApi } from "@/lib/api/auth";
+import { signIn } from "@/lib/auth-client";
 
 const DURATION = 0.36;
 const EASE: number[] = [0.2, 0.8, 0.2, 1];
@@ -94,11 +94,31 @@ function CombinedAuthContent() {
     try {
       setGoogleLoading(true);
       clearError();
-      const url = authApi.getGoogleAuthUrl();
-      window.location.href = url;
-    } catch {
+
+      const frontendUrl =
+        typeof window !== "undefined"
+          ? window.location.origin
+          : process.env.NEXT_PUBLIC_FRONTEND_URL || "http://localhost:3001";
+
+      const response = await signIn.social({
+        provider: "google",
+        callbackURL: `${frontendUrl}/auth/callback`,
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message ?? "Google sign-in failed");
+      }
+
+      if (response.data?.url) {
+        window.location.href = response.data.url;
+      }
+    } catch (error) {
       setGoogleLoading(false);
-      toast.error("Failed to initiate Google sign in");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to initiate Google sign in"
+      );
     }
   };
 

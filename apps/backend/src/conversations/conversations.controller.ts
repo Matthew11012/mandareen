@@ -14,10 +14,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
-import { DualAuthGuard } from '../auth/guards/dual-auth.guard';
+import { AuthGuard } from '../auth/guards/auth.guard';
 import { AuthenticatedRequest } from '../types/request.types';
 import { Observable } from 'rxjs';
-import { JwtService } from '@nestjs/jwt';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { BillingPlanService } from '../billing/billing-plan.service';
@@ -29,7 +28,6 @@ import { BILLING_RESOURCES } from '../billing/billing-resources.constants';
 @Controller('conversations')
 export class ConversationsController {
   private readonly _service: ConversationsService;
-  private readonly _jwtService: JwtService;
   private readonly billingPlanService: BillingPlanService;
   private readonly usageService: UsageService;
   private readonly rateLimitService: RateLimitService;
@@ -37,35 +35,33 @@ export class ConversationsController {
 
   constructor(
     service: ConversationsService,
-    jwtService: JwtService,
     billingPlanService: BillingPlanService,
     usageService: UsageService,
     rateLimitService: RateLimitService,
     concurrencyService: ConcurrencyService,
   ) {
     this._service = service;
-    this._jwtService = jwtService;
     this.billingPlanService = billingPlanService;
     this.usageService = usageService;
     this.rateLimitService = rateLimitService;
     this.concurrencyService = concurrencyService;
   }
 
-  @UseGuards(DualAuthGuard)
+  @UseGuards(AuthGuard)
   @Post()
   async start(@Req() req: AuthenticatedRequest) {
     const convo = await this._service.startConversation(req.user.id);
     return { id: convo.id };
   }
 
-  @UseGuards(DualAuthGuard)
+  @UseGuards(AuthGuard)
   @Get(':id/messages')
   async list(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     const messages = await this._service.listMessages(Number(id));
     return messages;
   }
 
-  @UseGuards(DualAuthGuard)
+  @UseGuards(AuthGuard)
   @Post(':id/messages')
   async send(
     @Req() req: AuthenticatedRequest,
@@ -93,7 +89,7 @@ export class ConversationsController {
     });
   }
 
-  @UseGuards(DualAuthGuard)
+  @UseGuards(AuthGuard)
   @Post(':id/audio')
   @UseInterceptors(
     FileInterceptor('audio', {
@@ -154,13 +150,13 @@ export class ConversationsController {
     });
   }
 
-  @UseGuards(DualAuthGuard)
+  @UseGuards(AuthGuard)
   @Sse(':id/stream')
   stream(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
   ): Observable<{ data: string } | { event: string; data: any }> {
-    // DualAuthGuard supports Authorization header, query token, or cookie
+    // AuthGuard supports Better Auth session cookies
     const userId = Number((req as any)?.user?.id);
     if (!userId) {
       throw new Error('Unauthorized');
@@ -268,13 +264,13 @@ export class ConversationsController {
     });
   }
 
-  @UseGuards(DualAuthGuard)
+  @UseGuards(AuthGuard)
   @Get()
   async listConversations(@Req() req: AuthenticatedRequest) {
     return this._service.listUserConversations(req.user.id);
   }
 
-  @UseGuards(DualAuthGuard)
+  @UseGuards(AuthGuard)
   @Delete(':id')
   async deleteConversation(
     @Param('id') id: string,
@@ -287,7 +283,7 @@ export class ConversationsController {
     return { deleted };
   }
 
-  @UseGuards(DualAuthGuard)
+  @UseGuards(AuthGuard)
   @Post(':conversationId/messages/:messageId/generate-notes')
   async generateManualNotes(
     @Req() req: AuthenticatedRequest,

@@ -3,21 +3,19 @@ import {
   UnauthorizedException,
   ConflictException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
 import { GoogleUser } from '../types/request.types';
-import { BetterAuthAdapter } from './better-auth.config';
 
 @Injectable()
 export class AuthService {
-  constructor(
-    private prisma: PrismaService,
-    private jwtService: JwtService,
-    private betterAuth: BetterAuthAdapter,
-  ) {}
+  private readonly prisma: PrismaService;
+
+  constructor(prisma: PrismaService) {
+    this.prisma = prisma;
+  }
 
   async register(registerDto: RegisterDto) {
     // Check if user already exists
@@ -46,16 +44,8 @@ export class AuthService {
       },
     });
 
-    // Generate JWT token (Better Auth path or legacy based on flag)
-    const useBetter =
-      (process.env.AUTH_PROVIDER || 'betterauth') === 'betterauth';
-    const token = useBetter
-      ? this.betterAuth.issueJwt({ id: user.id, email: user.email })
-      : this.jwtService.sign({ sub: user.id, email: user.email });
-
     return {
       user,
-      token,
     };
   }
 
@@ -79,20 +69,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Generate JWT token (Better Auth path or legacy based on flag)
-    const useBetter =
-      (process.env.AUTH_PROVIDER || 'betterauth') === 'betterauth';
-    const token = useBetter
-      ? this.betterAuth.issueJwt({ id: user.id, email: user.email })
-      : this.jwtService.sign({ sub: user.id, email: user.email });
-
     return {
       user: {
         id: user.id,
         email: user.email,
         // levelPlaced: user.levelPlaced, // This will be null for new users
       },
-      token,
     };
   }
 
@@ -130,20 +112,10 @@ export class AuthService {
     levelPlaced: number | null;
   }): Promise<{
     user: { id: number; email: string; levelPlaced: number | null };
-    token: string;
   }> {
     if (!user) {
       throw new UnauthorizedException('No user from Google');
     }
-
-    // Generate JWT token (Better Auth path or legacy based on flag)
-    const useBetter =
-      (process.env.AUTH_PROVIDER || 'betterauth') === 'betterauth';
-    const token = useBetter
-      ? this.betterAuth.issueJwt({ id: user.id, email: user.email })
-      : await Promise.resolve(
-          this.jwtService.sign({ sub: user.id, email: user.email }),
-        );
 
     return {
       user: {
@@ -151,11 +123,10 @@ export class AuthService {
         email: user.email,
         levelPlaced: user.levelPlaced,
       },
-      token,
     };
   }
 
-  async logout(userId: number): Promise<{ message: string }> {
+  async logout(): Promise<{ message: string }> {
     // In a JWT-based auth system, logout is typically handled client-side
     // by removing the token. However, we can perform server-side cleanup here.
 

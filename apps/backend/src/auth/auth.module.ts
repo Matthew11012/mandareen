@@ -6,7 +6,6 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { GoogleStrategy } from './strategies/google.strategy';
-import { BetterAuthAdapter } from './better-auth.config';
 import { auth } from './lib/auth';
 import { UserMigrationService } from './user-migration.service';
 
@@ -24,7 +23,6 @@ import { UserMigrationService } from './user-migration.service';
   providers: [
     AuthService,
     GoogleStrategy,
-    BetterAuthAdapter,
     UserMigrationService,
   ],
   controllers: [AuthController],

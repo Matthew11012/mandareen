@@ -3,7 +3,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { toToneMarks } from '../utils/pinyin';
 import { getHskPromptFragment } from '../utils/hsk-prompts';
 import { Observable } from 'rxjs';
-import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { OpenAIService } from '../openai/openai.service';
 import { SegmentationService } from '../vocabulary/segmentation.service';
@@ -52,7 +51,6 @@ export class LessonsService {
     private readonly segmentationService: SegmentationService,
     private readonly ragService: RagService,
     private readonly notificationsService: NotificationsService,
-    private readonly jwt?: JwtService,
   ) {}
 
   private getTimelineCache(key: string): {
@@ -269,8 +267,8 @@ export class LessonsService {
   }
 
   // Stream generation progress via SSE-compatible Observable
-  streamGenerateWithToken(
-    token: string,
+  streamGenerateForUser(
+    user: { id: number; email: string },
     options: GenerateOptions,
     hooks?: GenerateStreamHooks,
   ): Observable<{ event: string; data: any } | { data: string }> {
@@ -279,15 +277,8 @@ export class LessonsService {
       let heartbeat: ReturnType<typeof setInterval> | null = null;
       (async () => {
         try {
-          if (!this.jwt) throw new Error('JWT service not available');
-          const payload = this.jwt.verify(token, {
-            secret: process.env.JWT_SECRET as string,
-          }) as any;
-          const userId = Number(payload?.sub || payload?.id);
-          const email = String(payload?.email || payload?.username || '');
-          if (!userId) throw new Error('Unauthorized');
+          if (!user?.id) throw new Error('Unauthorized');
 
-          const user = { id: userId, email } as { id: number; email: string };
           const emit = (event: string, data?: any) =>
             subscriber.next({ event, data });
 
