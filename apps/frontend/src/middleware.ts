@@ -13,12 +13,12 @@ import type { NextRequest } from "next/server";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Check legacy JWT cookie and Better Auth session cookies
+  // Check legacy JWT cookie and Better Auth session cookies (any mandareen.* cookie)
   const legacyToken = request.cookies.get("auth-token")?.value;
-  const betterAuthSession = request.cookies.get(
-    "mandareen.session_token"
-  )?.value;
-  const hasBetterAuthSession = Boolean(betterAuthSession);
+  const betterAuthCookies = request.cookies
+    .getAll()
+    .filter((cookie) => cookie.name.startsWith("mandareen."));
+  const hasBetterAuthSession = betterAuthCookies.length > 0;
   const isAuthenticated = Boolean(legacyToken) || hasBetterAuthSession;
 
   // Define protected routes that require authentication
