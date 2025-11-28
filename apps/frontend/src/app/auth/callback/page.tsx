@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { useAuthStore } from "@/lib/stores/auth-store";
-import { authApi } from "@/lib/api/auth";
+import { authClient } from "@/lib/auth-client";
 import { useCheckoutMutation } from "@/lib/hooks/use-billing";
 import { BillingPeriod } from "@/lib/api/billing";
 
@@ -58,7 +58,7 @@ function AuthCallbackContent() {
   // Handle checkout after successful OAuth
   const handleCheckoutAfterOAuth = async (
     planCode: "BASIC" | "PREMIUM",
-    billingPeriod: BillingPeriod,
+    billingPeriod: BillingPeriod
   ) => {
     try {
       const response = await checkoutMutation.mutateAsync({
@@ -84,8 +84,21 @@ function AuthCallbackContent() {
         const error = searchParams.get("error");
         if (error) throw new Error(error);
 
-        // HttpOnly cookie is already set by backend; fetch current user
+        // Better Auth sets the session cookie automatically
+        // Check for Better Auth session
+        const session = await authClient.getSession();
+
+        if (!session.data?.user) {
+          throw new Error("No session found after OAuth callback");
+        }
+
+        // Update auth store with Better Auth user info
+        // Note: Better Auth uses string IDs, but we need to map to legacy user
+        // The DualAuthGuard on backend handles this mapping
+        // For now, we'll fetch the user from the backend to get the legacy user ID
+        const { authApi } = await import("@/lib/api/auth");
         const me = await authApi.me();
+
         useAuthStore.setState({
           user: { id: me.id, email: me.email },
           token: null,
@@ -94,22 +107,36 @@ function AuthCallbackContent() {
 
         toast.success("Successfully signed in with Google!");
 
-        // Check sessionStorage for redirect URL with plan info
-        const storedRedirectUrl = sessionStorage.getItem("signup_redirect_url");
-        if (storedRedirectUrl) {
+        // Check sessionStorage for redirect URL with plan info (from signup)
+        const storedSignupRedirectUrl = sessionStorage.getItem(
+          "signup_redirect_url"
+        );
+        if (storedSignupRedirectUrl) {
           // Remove from sessionStorage after reading
           sessionStorage.removeItem("signup_redirect_url");
 
-          const planInfo = parseRedirectUrl(storedRedirectUrl);
+          const planInfo = parseRedirectUrl(storedSignupRedirectUrl);
           if (planInfo) {
             // Automatically trigger checkout for the selected plan
-            await handleCheckoutAfterOAuth(planInfo.planCode, planInfo.billingPeriod);
+            await handleCheckoutAfterOAuth(
+              planInfo.planCode,
+              planInfo.billingPeriod
+            );
             return;
           } else {
             // Redirect to the stored URL if no plan info
-            router.replace(storedRedirectUrl);
+            router.replace(storedSignupRedirectUrl);
             return;
           }
+        }
+
+        // Check for login redirect URL
+        const storedLoginRedirectUrl =
+          sessionStorage.getItem("login_redirect_url");
+        if (storedLoginRedirectUrl) {
+          sessionStorage.removeItem("login_redirect_url");
+          router.replace(storedLoginRedirectUrl);
+          return;
         }
 
         // Default: redirect to dashboard

@@ -137,9 +137,15 @@ function LoginPageContent() {
         sessionStorage.setItem("login_redirect_url", redirectUrl);
       }
 
+      // Use absolute frontend URL for callback
+      // Better Auth processes callback on backend, so it needs full URL to redirect to frontend
+      const frontendUrl =
+        typeof window !== "undefined"
+          ? window.location.origin
+          : process.env.NEXT_PUBLIC_FRONTEND_URL || "http://localhost:3001";
       const response = await signIn.social({
         provider: "google",
-        callbackURL: "/auth/callback",
+        callbackURL: `${frontendUrl}/auth/callback`,
       });
 
       if (response.error) {
