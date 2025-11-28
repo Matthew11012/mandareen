@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { authApi, type LoginData, type RegisterData } from "../api/auth";
-import { authClient } from "../auth-client";
+import { authClient, signIn, signUp } from "../auth-client";
 
 interface User {
   id: number;
@@ -46,8 +46,14 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
 
         try {
-          await authApi.login(data);
-          // After server sets cookie, fetch user profile
+          const result = await signIn.email({
+            email: data.email,
+            password: data.password,
+          });
+          if (result.error) {
+            throw new Error(result.error.message ?? "Login failed");
+          }
+
           const me = await authApi.me();
           set({
             user: { id: me.id, email: me.email },
@@ -81,7 +87,15 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
 
         try {
-          await authApi.register(data);
+          const result = await signUp.email({
+            email: data.email,
+            password: data.password,
+            name: data.email.split("@")[0] ?? data.email,
+          });
+          if (result.error) {
+            throw new Error(result.error.message ?? "Registration failed");
+          }
+
           const me = await authApi.me();
           set({
             user: { id: me.id, email: me.email },
@@ -170,6 +184,23 @@ export const useAuthStore = create<AuthState>()(
       initialize: async () => {
         set({ isLoading: true });
         try {
+          const session = await authClient.getSession();
+          if (session.data?.user) {
+            const me = await authApi.me();
+            set({
+              user: { id: me.id, email: me.email },
+              token: null,
+              isAuthenticated: true,
+              isLoading: false,
+              error: null,
+            });
+            return;
+          }
+        } catch (error) {
+          console.warn("Better Auth session lookup failed:", error);
+        }
+
+        try {
           const me = await authApi.me();
           set({
             user: { id: me.id, email: me.email },
@@ -178,6 +209,7 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
             error: null,
           });
+          return;
         } catch {
           set({
             user: null,
