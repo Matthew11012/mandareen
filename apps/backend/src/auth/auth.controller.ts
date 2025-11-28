@@ -24,14 +24,6 @@ export class AuthController {
   @Post('register')
   async register(@Body() registerDto: RegisterDto, @Res() res: Response) {
     const result = await this.authService.register(registerDto);
-    // Set HttpOnly auth cookie
-    res.cookie('auth-token', result.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 24 * 60 * 60 * 1000,
-    });
     return res.status(HttpStatus.CREATED).json({ user: result.user });
   }
 
@@ -39,14 +31,6 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto, @Res() res: Response) {
     const result = await this.authService.login(loginDto);
-    // Set HttpOnly auth cookie
-    res.cookie('auth-token', result.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 24 * 60 * 60 * 1000,
-    });
     return res.status(HttpStatus.OK).json({ user: result.user });
   }
 
@@ -54,7 +38,7 @@ export class AuthController {
   @UseGuards(DualAuthGuard)
   @HttpCode(HttpStatus.OK)
   async logout(@Req() req: AuthenticatedRequest, @Res() res: Response) {
-    await this.authService.logout(req.user.id);
+    await this.authService.logout();
     // Clear HttpOnly auth cookie
     res.clearCookie('auth-token', {
       httpOnly: true,
@@ -78,19 +62,11 @@ export class AuthController {
     @Res() res: Response,
   ) {
     try {
-      const result = await this.authService.googleLogin({
+      await this.authService.googleLogin({
         ...req.user,
         levelPlaced: req.user.levelPlaced ?? null,
       });
 
-      // Set HttpOnly auth cookie and redirect without exposing token
-      res.cookie('auth-token', result.token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 24 * 60 * 60 * 1000,
-      });
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
       res.redirect(`${frontendUrl}/dashboard`);
     } catch {
