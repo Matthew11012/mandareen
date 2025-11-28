@@ -1,10 +1,16 @@
 import { betterAuth } from 'better-auth';
+import { hashPassword, verifyPassword } from 'better-auth/crypto';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { PrismaClient } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
 export const auth = betterAuth({
+  baseURL:
+    process.env.BETTER_AUTH_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    'http://localhost:3000',
   database: prismaAdapter(prisma, {
     provider: 'postgresql',
   }),
@@ -35,6 +41,22 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
+    password: {
+      hash: hashPassword,
+      verify: async ({
+        hash,
+        password,
+      }: {
+        hash: string;
+        password: string;
+      }) => {
+        const isBcryptHash = hash.startsWith('$2a$') || hash.startsWith('$2b$');
+        if (isBcryptHash) {
+          return bcrypt.compare(password, hash);
+        }
+        return verifyPassword({ hash, password });
+      },
+    },
   },
   socialProviders: {
     google: {
@@ -49,6 +71,9 @@ export const auth = betterAuth({
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
+      domain:
+        process.env.BETTER_AUTH_COOKIE_DOMAIN ??
+        (process.env.NODE_ENV !== 'production' ? '.localhost' : undefined),
     },
   },
   secret: process.env.BETTER_AUTH_SECRET!,
