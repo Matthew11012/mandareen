@@ -3,7 +3,7 @@ import { INestApplication, HttpStatus } from '@nestjs/common';
 import supertest from 'supertest';
 import { AppModule } from '../../src/app.module';
 import { BillingService } from '../../src/billing/billing.service';
-import { DualAuthGuard } from '../../src/auth/guards/dual-auth.guard';
+import { AuthGuard } from '../../src/auth/guards/auth.guard';
 import {
   CheckoutError,
   PortalUnavailableError,
@@ -22,7 +22,7 @@ describe('BillingController (e2e)', () => {
     })
       .overrideProvider(BillingService)
       .useValue(billingServiceMock)
-      .overrideGuard(DualAuthGuard)
+      .overrideGuard(AuthGuard)
       .useValue({
         canActivate: (context) => {
           const req = context.switchToHttp().getRequest();

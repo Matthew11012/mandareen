@@ -1,10 +1,10 @@
 import { Controller, Post, Get, UseGuards, Logger } from '@nestjs/common';
 import { DictionaryImportService } from './dictionary-import.service';
 import { HSKLevelAssignmentService } from './hsk-level-assignment.service';
-import { DualAuthGuard } from '../auth/guards/dual-auth.guard';
+import { AuthGuard } from '../auth/guards/auth.guard';
 
 @Controller('dictionary')
-@UseGuards(DualAuthGuard) 
+@UseGuards(AuthGuard)
 export class DictionaryImportController {
   private readonly logger = new Logger(DictionaryImportController.name);
 

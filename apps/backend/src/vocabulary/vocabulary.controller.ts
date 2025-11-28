@@ -10,10 +10,10 @@ import {
 import { VocabularyService } from './vocabulary.service';
 import { SegmentationService } from './segmentation.service';
 import { CreateWordInstanceDto } from './dto/create-word-instance.dto';
-import { DualAuthGuard } from '../auth/guards/dual-auth.guard';
+import { AuthGuard } from '../auth/guards/auth.guard';
 
 @Controller('vocabulary')
-@UseGuards(DualAuthGuard)
+@UseGuards(AuthGuard)
 export class VocabularyController {
   constructor(
     private vocabularyService: VocabularyService,

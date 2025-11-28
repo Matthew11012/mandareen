@@ -8,7 +8,7 @@ import {
   Req,
   Logger,
 } from '@nestjs/common';
-import { DualAuthGuard } from '../auth/guards/dual-auth.guard';
+import { AuthGuard } from '../auth/guards/auth.guard';
 import { BadRequestException } from '@nestjs/common';
 import { CurriculumService } from './curriculum.service';
 import { AuthenticatedRequest } from '../types/request.types';
@@ -20,7 +20,7 @@ import { BILLING_RESOURCES } from '../billing/billing-resources.constants';
 import { isFreeSampleUnit } from './curriculum.config';
 
 @Controller('curriculum')
-@UseGuards(DualAuthGuard)
+@UseGuards(AuthGuard)
 export class CurriculumController {
   private readonly logger = new Logger(CurriculumController.name);
   private readonly curriculum: CurriculumService;

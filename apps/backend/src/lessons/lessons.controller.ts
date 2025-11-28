@@ -10,7 +10,7 @@ import {
   Logger,
   BadRequestException,
 } from '@nestjs/common';
-import { DualAuthGuard } from '../auth/guards/dual-auth.guard';
+import { AuthGuard } from '../auth/guards/auth.guard';
 import { LessonsService } from './lessons.service';
 import { AuthenticatedRequest } from '../types/request.types';
 import { UsageService } from '../billing/usage.service';
@@ -36,7 +36,7 @@ export interface GenerateLessonDto {
 }
 
 @Controller('lessons')
-@UseGuards(DualAuthGuard)
+@UseGuards(AuthGuard)
 export class LessonsController {
   private readonly logger = new Logger(LessonsController.name);
   private readonly lessonsService: LessonsService;
