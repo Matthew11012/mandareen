@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
-import { JwtModule } from '@nestjs/jwt';
 import { PrismaModule } from '../prisma/prisma.module';
 import { BillingPlanService } from './billing-plan.service';
 import { UsageService } from './usage.service';
@@ -22,10 +21,6 @@ import { UsageController } from './usage.controller';
       maxRedirects: 5,
     }),
     ConfigModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET,
-      signOptions: { expiresIn: '1d' },
-    }),
   ],
   controllers: [BillingWebhookController, BillingController, UsageController],
   providers: [

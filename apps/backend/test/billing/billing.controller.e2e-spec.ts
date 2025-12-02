@@ -1,10 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, HttpStatus } from '@nestjs/common';
-import supertest = require('supertest');
+import supertest from 'supertest';
 import { AppModule } from '../../src/app.module';
 import { BillingService } from '../../src/billing/billing.service';
-import { JwtAuthGuard } from '../../src/auth/guards/jwt-auth.guard';
-import { CheckoutError, PortalUnavailableError } from '../../src/billing/errors/billing.errors';
+import { AuthGuard } from '../../src/auth/guards/auth.guard';
+import {
+  CheckoutError,
+  PortalUnavailableError,
+} from '../../src/billing/errors/billing.errors';
 
 describe('BillingController (e2e)', () => {
   let app: INestApplication;
@@ -19,7 +22,7 @@ describe('BillingController (e2e)', () => {
     })
       .overrideProvider(BillingService)
       .useValue(billingServiceMock)
-      .overrideGuard(JwtAuthGuard)
+      .overrideGuard(AuthGuard)
       .useValue({
         canActivate: (context) => {
           const req = context.switchToHttp().getRequest();
@@ -87,7 +90,11 @@ describe('BillingController (e2e)', () => {
 
     it('surfaces checkout errors from service', async () => {
       billingServiceMock.createCheckout.mockRejectedValue(
-        new CheckoutError('Plan not found', HttpStatus.NOT_FOUND, 'Plan missing'),
+        new CheckoutError(
+          'Plan not found',
+          HttpStatus.NOT_FOUND,
+          'Plan missing',
+        ),
       );
 
       const response = await supertest(app.getHttpServer())
@@ -132,4 +139,3 @@ describe('BillingController (e2e)', () => {
     });
   });
 });
-

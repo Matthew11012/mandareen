@@ -10,7 +10,7 @@ import {
   Logger,
   BadRequestException,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AuthGuard } from '../auth/guards/auth.guard';
 import { LessonsService } from './lessons.service';
 import { AuthenticatedRequest } from '../types/request.types';
 import { UsageService } from '../billing/usage.service';
@@ -36,7 +36,7 @@ export interface GenerateLessonDto {
 }
 
 @Controller('lessons')
-@UseGuards(JwtAuthGuard)
+@UseGuards(AuthGuard)
 export class LessonsController {
   private readonly logger = new Logger(LessonsController.name);
   private readonly lessonsService: LessonsService;
@@ -238,6 +238,7 @@ export class LessonsController {
     } = await this.billingPlanService.getUserPlan(userId);
     const planCode = (String(rawPlanCode || 'FREE').toUpperCase() ||
       'FREE') as PlanCode;
+    const isFreePlan = planCode === 'FREE';
 
     let sections = lesson.sections.map((s) => ({
       id: s.id,
@@ -257,6 +258,9 @@ export class LessonsController {
       viewAccess: LessonAccess,
       owned = false,
     ) => {
+      if (!isFreePlan) {
+        return;
+      }
       try {
         await this.usageService.recordAnalytics({
           userId,

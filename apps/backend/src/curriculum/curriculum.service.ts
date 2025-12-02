@@ -8,13 +8,22 @@ import { toToneMarks } from '../utils/pinyin';
 @Injectable()
 export class CurriculumService {
   private readonly logger = new Logger(CurriculumService.name);
+  private readonly prisma: PrismaService;
+  private readonly openai: OpenAIService;
+  private readonly rag: RagService;
+  private readonly segmentationService: SegmentationService;
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly openai: OpenAIService,
-    private readonly rag: RagService,
-    private readonly segmentationService: SegmentationService,
-  ) {}
+    prisma: PrismaService,
+    openai: OpenAIService,
+    rag: RagService,
+    segmentationService: SegmentationService,
+  ) {
+    this.prisma = prisma;
+    this.openai = openai;
+    this.rag = rag;
+    this.segmentationService = segmentationService;
+  }
 
   async listSources() {
     const sources = await this.prisma.ragSource.findMany({
@@ -422,7 +431,11 @@ export class CurriculumService {
     lessonId: number,
     levelBand: number,
     lesson: any,
-    ctx: { chunks: any[]; contextText: string },
+    ctx: {
+      chunks: any[];
+      contextText: string;
+      sectionMetaById?: Record<number, any>;
+    },
   ) {
     const passageTitle =
       lesson.title || lesson.ragSection?.heading || 'Reading';
@@ -432,10 +445,11 @@ export class CurriculumService {
         chunkId: c.id,
         key: `[S${i + 1}]`,
       }));
+    const normalizedContext = this.dedupeContextLines(ctx?.contextText || '');
     const read = await (this.openai as any).generateReadPassage({
       title: passageTitle,
       level: Math.max(1, levelBand || 1),
-      context: ctx?.contextText || '',
+      context: normalizedContext,
       maxChars: 800,
     });
     // Enrich micro-passage with segments/pinyin/translation
@@ -458,7 +472,7 @@ export class CurriculumService {
       // leave segments empty on failure
     }
     // Process comprehension questions with segmentation
-    let processedQuestions: any[] = [];
+    const processedQuestions: any[] = [];
     if (Array.isArray(read?.questions)) {
       for (const question of read.questions) {
         let questionSegments: any[] = [];
@@ -509,16 +523,32 @@ export class CurriculumService {
     lessonId: number,
     levelBand: number,
     lesson: any,
-    ctx: { chunks: any[]; contextText: string },
+    ctx: {
+      chunks: any[];
+      contextText: string;
+      sectionMetaById?: Record<number, any>;
+    },
   ) {
     // Build outline from descendant sub-subchapters (if present in metadata of chunks' sections)
     const outline = await this.buildSubsubOutlineForLesson(lessonId);
-    const sectionCount = Math.max(outline.length || 1, 1); // ensure at least 1
+    const hasSubsections = outline.length > 0;
+    const effectiveOutline =
+      outline.length > 0
+        ? outline
+        : [lesson.title || lesson.ragSection?.heading || 'Lesson overview'];
+    const sectionCount = Math.max(effectiveOutline.length, 1); // ensure at least 1
+    const structuredContext = this.buildOutlineContextBlocks(
+      effectiveOutline,
+      ctx,
+      (lesson as any)?.metadata?.subchapterNumber || '',
+    );
+    const combinedContext = structuredContext || ctx?.contextText || '';
     const explain = await (this.openai as any).generateCurriculumExplainLesson({
       title: lesson.title || lesson.ragSection?.heading || 'Lesson',
       level: Math.max(1, levelBand || 1),
-      outline: outline.map((t: string) => ({ title: t })),
-      context: ctx?.contextText || '',
+      outline: effectiveOutline.map((t: string) => ({ title: t })),
+      outlineIsFallback: !hasSubsections,
+      context: combinedContext,
       maxSections: sectionCount,
       preferMicroPassageChars: (ctx?.chunks?.length || 0) > 12 ? 280 : 180,
     });
@@ -572,7 +602,11 @@ export class CurriculumService {
   private async generateQuiz(
     lessonId: number,
     levelBand: number,
-    ctx: { chunks: any[]; contextText: string },
+    ctx: {
+      chunks: any[];
+      contextText: string;
+      sectionMetaById?: Record<number, any>;
+    },
     readContent: any,
     grammarContent: any,
   ) {
@@ -595,11 +629,12 @@ export class CurriculumService {
         }
       : {};
 
+    const normalizedContext = this.dedupeContextLines(ctx?.contextText || '');
     const quiz = await (this.openai as any).generateQuizItems({
       level: Math.max(1, levelBand || 1),
       read: readForQuiz,
       grammar: grammarContent || {},
-      context: ctx?.contextText || '',
+      context: normalizedContext,
       numItems: 5,
     });
     const content = {
@@ -649,14 +684,16 @@ export class CurriculumService {
     return titles.filter((t) => (seen.has(t) ? false : (seen.add(t), true)));
   }
   // Build RAG context for a lesson: include ### section (if present) and all ####/##### descendants
-  private async buildLessonRagContext(
-    lessonId: number,
-  ): Promise<{ chunks: any[]; contextText: string }> {
+  private async buildLessonRagContext(lessonId: number): Promise<{
+    chunks: any[];
+    contextText: string;
+    sectionMetaById?: Record<number, { heading?: string; metadata?: any }>;
+  }> {
     const lesson = await this.prisma.curriculumLesson.findUnique({
       where: { id: lessonId },
       include: { unit: true, ragSection: { include: { chunks: true } } },
     });
-    if (!lesson) return { chunks: [], contextText: '' };
+    if (!lesson) return { chunks: [], contextText: '', sectionMetaById: {} };
 
     // Collect candidate sections
     const subchapterNumber = (lesson as any).metadata?.subchapterNumber || '';
@@ -666,11 +703,21 @@ export class CurriculumService {
     });
     const sourceId = unit?.ragSourceId || (unit as any)?.ragSource?.id || null;
 
-    let sections: { id: number }[] = [];
+    let sections: { id: number; heading?: string | null; metadata?: any }[] =
+      [];
+    let sectionMetaById: Record<number, { heading?: string; metadata?: any }> =
+      lesson.ragSectionId && lesson.ragSection
+        ? {
+            [lesson.ragSectionId]: {
+              heading: lesson.ragSection.heading || undefined,
+              metadata: lesson.ragSection.metadata || {},
+            },
+          }
+        : {};
     if (sourceId && subchapterNumber) {
       const all = await this.prisma.ragSection.findMany({
         where: { sourceId },
-        select: { id: true, metadata: true },
+        select: { id: true, metadata: true, heading: true },
       });
       sections = all.filter((s: any) => {
         const md = s.metadata || {};
@@ -678,6 +725,13 @@ export class CurriculumService {
         const subsub = String(md.subsubchapterNumber || '');
         return subsub.startsWith(subchapterNumber + '.');
       });
+      sectionMetaById = sections.reduce(
+        (acc, s) => {
+          acc[s.id] = { heading: s.heading || undefined, metadata: s.metadata };
+          return acc;
+        },
+        {} as Record<number, { heading?: string; metadata?: any }>,
+      );
     }
 
     const sectionIds = [
@@ -687,7 +741,6 @@ export class CurriculumService {
     const chunks = sectionIds.length
       ? await this.prisma.ragChunk.findMany({
           where: { sectionId: { in: sectionIds } },
-          select: { id: true, hanzi: true, english: true, sectionId: true },
           orderBy: { id: 'asc' },
         })
       : [];
@@ -698,7 +751,175 @@ export class CurriculumService {
       )
       .join('\n\n')
       .slice(0, 12000);
-    return { chunks, contextText };
+    return { chunks, contextText, sectionMetaById };
+  }
+
+  private buildOutlineContextBlocks(
+    outlineTitles: string[],
+    ctx: {
+      chunks: any[];
+      contextText: string;
+      sectionMetaById?: Record<number, { heading?: string; metadata?: any }>;
+    },
+    parentSubchapterNumber: string,
+  ): string | null {
+    if (!Array.isArray(outlineTitles) || outlineTitles.length === 0) {
+      return null;
+    }
+    const textFromChunk = (chunk: any) => {
+      const hanzi = `${chunk?.hanzi || ''}`.trim();
+      const english = `${chunk?.english || ''}`.trim();
+      if (hanzi && english) return `${hanzi}\n${english}`;
+      return hanzi || english || '';
+    };
+    const entries: string[] = [];
+    const maxSnippetChars = 800;
+    const metaById = ctx.sectionMetaById || {};
+    const chunksByKey = ctx.chunks.reduce(
+      (acc, chunk) => {
+        if (!chunk?.sectionId) return acc;
+        const metaKey = this.inferChunkKeyFromText(
+          chunk,
+          ctx.sectionMetaById?.[chunk.sectionId],
+        );
+        if (!acc[metaKey]) acc[metaKey] = [];
+        acc[metaKey].push(chunk);
+        return acc;
+      },
+      {} as Record<string, any[]>,
+    );
+
+    const extractNumber = (title: string) => {
+      const match = title?.match(/^(\d+(?:\.\d+)+)/);
+      return match ? match[1] : null;
+    };
+
+    outlineTitles.forEach((title, idx) => {
+      const targetNumber = extractNumber(title);
+      let sectionIds: number[] = [];
+      if (targetNumber) {
+        sectionIds = Object.entries(metaById)
+          .filter(
+            ([, meta]) =>
+              String(meta?.metadata?.subsubchapterNumber || '') ===
+              targetNumber,
+          )
+          .map(([id]) => Number(id));
+        if (
+          !sectionIds.length &&
+          parentSubchapterNumber &&
+          targetNumber === parentSubchapterNumber
+        ) {
+          sectionIds = Object.entries(metaById)
+            .filter(
+              ([, meta]) =>
+                String(meta?.metadata?.subchapterNumber || '') ===
+                  targetNumber && !meta?.metadata?.subsubchapterNumber,
+            )
+            .map(([id]) => Number(id));
+        }
+      }
+      if (!sectionIds.length) {
+        // try matching by heading text
+        sectionIds = Object.entries(metaById)
+          .filter(([, meta]) => (meta.heading || '').trim() === title.trim())
+          .map(([id]) => Number(id));
+      }
+      let snippetChunks = sectionIds
+        .map((id) => {
+          const subsubKey = `section-${id}`;
+          const meta = metaById[id]?.metadata || {};
+          const primaryKeys = [
+            String(meta.subsubchapterNumber || ''),
+            String(meta.subchapterNumber || ''),
+          ].filter(Boolean);
+          for (const key of primaryKeys) {
+            if (chunksByKey[key]) {
+              return chunksByKey[key];
+            }
+          }
+          return chunksByKey[subsubKey] || [];
+        })
+        .flat();
+
+      const allowParentFallback =
+        !targetNumber || targetNumber === parentSubchapterNumber;
+
+      if (!snippetChunks.length && allowParentFallback) {
+        snippetChunks = ctx.chunks.slice(0, 6);
+      }
+      const seenChunkIds = new Set<number>();
+      let snippetText = snippetChunks
+        .filter((chunk: any) => {
+          if (!chunk || typeof chunk.id !== 'number') return false;
+          if (seenChunkIds.has(chunk.id)) return false;
+          seenChunkIds.add(chunk.id);
+          return true;
+        })
+        .map((chunk: any) => textFromChunk(chunk))
+        .filter(Boolean)
+        .join('\n\n')
+        .slice(0, maxSnippetChars)
+        .trim();
+      // De-duplicate identical lines within a snippet to reduce repeated textbook sentences
+      snippetText = this.dedupeContextLines(snippetText);
+      if (snippetText) {
+        const headerLines = [`${idx + 1}. ${title}`];
+        const subchapterLabels = Array.from(
+          new Set(
+            sectionIds
+              .map((id) => metaById[id]?.metadata?.subchapterNumber)
+              .filter(Boolean),
+          ),
+        );
+        if (subchapterLabels.length) {
+          headerLines.push(
+            `Subchapter: ${subchapterLabels
+              .map((num) => String(num))
+              .join(', ')}`,
+          );
+        }
+        entries.push(
+          `${headerLines.join('\n')}\n\`\`\`\n${snippetText}\n\`\`\``,
+        );
+      }
+    });
+
+    if (!entries.length) return null;
+    return entries.join('\n\n');
+  }
+
+  private inferChunkKeyFromText(
+    chunk: any,
+    sectionMeta?: { metadata?: any },
+  ): string {
+    const meta = sectionMeta?.metadata || {};
+    if (meta.subsubchapterNumber) return String(meta.subsubchapterNumber);
+    if (meta.subchapterNumber) return String(meta.subchapterNumber);
+    const text = `${chunk?.hanzi || ''} ${chunk?.english || ''}`.trim();
+    const match = text.match(/(\d+\.\d+\.\d+)/);
+    if (match) return match[1];
+    const subSubMatch = text.match(/(\d+\.\d+)/);
+    if (subSubMatch) return subSubMatch[1];
+    return `section-${chunk?.sectionId || 'unknown'}`;
+  }
+
+  private dedupeContextLines(text: string): string {
+    if (!text) return '';
+    const lines = text.split('\n');
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const line of lines) {
+      const key = line.trim();
+      if (!key) {
+        out.push(line);
+        continue;
+      }
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(line);
+    }
+    return out.join('\n');
   }
 
   private async getActivityContent(

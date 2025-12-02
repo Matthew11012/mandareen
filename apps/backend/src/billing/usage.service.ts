@@ -198,37 +198,27 @@ export class UsageService {
         },
       });
 
-      // Upsert UsageDaily aggregate
-      // Use findFirst to check for existing record (more defensive than findUnique)
-      const existing = await tx.usageDaily.findFirst({
+      // Upsert UsageDaily aggregate (atomic and race-safe)
+      await tx.usageDaily.upsert({
         where: {
-          userId,
-          resource,
-          day,
-        },
-      });
-
-      if (existing) {
-        await tx.usageDaily.update({
-          where: {
-            id: existing.id,
-          },
-          data: {
-            used: {
-              increment: amount,
-            },
-          },
-        });
-      } else {
-        await tx.usageDaily.create({
-          data: {
+          userId_resource_day: {
             userId,
             resource,
             day,
-            used: amount,
           },
-        });
-      }
+        },
+        update: {
+          used: {
+            increment: amount,
+          },
+        },
+        create: {
+          userId,
+          resource,
+          day,
+          used: amount,
+        },
+      });
     });
   }
 

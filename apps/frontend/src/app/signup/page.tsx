@@ -14,10 +14,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { GoogleButton } from "@/components/ui/google-button";
 import { useAuthStore } from "@/lib/stores/auth-store";
-import { registerSchema, type RegisterData, authApi } from "@/lib/api/auth";
+import { registerSchema, type RegisterData } from "@/lib/api/auth";
 import { validatePassword } from "@/lib/utils";
 import { useCheckoutMutation } from "@/lib/hooks/use-billing";
 import { BillingPeriod } from "@/lib/api/billing";
+import { signIn, signUp } from "@/lib/auth-client";
 
 function SignupPageContent() {
   const router = useRouter();
@@ -26,7 +27,6 @@ function SignupPageContent() {
   const {
     isAuthenticated: authStoreIsAuthenticated,
     isLoading: authStoreIsLoading,
-    register: registerUser,
     clearError,
   } = authStore;
   const checkoutMutation = useCheckoutMutation();
@@ -156,7 +156,15 @@ function SignupPageContent() {
         isProcessingCheckoutRef.current = true;
       }
 
-      await registerUser(data);
+      const result = await signUp.email({
+        email: data.email,
+        password: data.password,
+        name: data.email.split("@")[0] ?? data.email,
+      });
+
+      if (result.error) {
+        throw new Error(result.error.message ?? "Sign up failed");
+      }
 
       if (!planInfo) {
         setIsRegistering(false);
@@ -178,11 +186,15 @@ function SignupPageContent() {
         isProcessingCheckoutRef.current = false;
         router.push("/dashboard");
       }
-    } catch {
+    } catch (error) {
       setIsRegistering(false);
       setIsProcessingCheckout(false);
       isProcessingCheckoutRef.current = false;
-      toast.error("Registration failed. Please try again.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Registration failed. Please try again."
+      );
     }
   };
 
@@ -195,11 +207,31 @@ function SignupPageContent() {
         sessionStorage.setItem("signup_redirect_url", redirectUrl);
       }
 
-      const googleAuthUrl = authApi.getGoogleAuthUrl();
-      window.location.href = googleAuthUrl;
-    } catch {
+      // Use absolute frontend URL for callback
+      // Better Auth processes callback on backend, so it needs full URL to redirect to frontend
+      const frontendUrl =
+        typeof window !== "undefined"
+          ? window.location.origin
+          : process.env.NEXT_PUBLIC_FRONTEND_URL || "http://localhost:3001";
+      const response = await signIn.social({
+        provider: "google",
+        callbackURL: `${frontendUrl}/auth/callback`,
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message ?? "Google sign up failed");
+      }
+
+      if (response.data?.url) {
+        window.location.href = response.data.url;
+      }
+    } catch (error) {
       setGoogleLoading(false);
-      toast.error("Failed to initiate Google sign up");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to initiate Google sign up"
+      );
     }
   };
 

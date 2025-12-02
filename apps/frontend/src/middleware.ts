@@ -13,8 +13,13 @@ import type { NextRequest } from "next/server";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Get token from cookies or authorization header
-  const token = request.cookies.get("auth-token")?.value;
+  // Check legacy JWT cookie and Better Auth session cookies (any mandareen.* cookie)
+  const legacyToken = request.cookies.get("auth-token")?.value;
+  const betterAuthCookies = request.cookies
+    .getAll()
+    .filter((cookie) => cookie.name.startsWith("mandareen."));
+  const hasBetterAuthSession = betterAuthCookies.length > 0;
+  const isAuthenticated = Boolean(legacyToken) || hasBetterAuthSession;
 
   // Define protected routes that require authentication
   const protectedRoutes = [
@@ -32,7 +37,7 @@ export function middleware(request: NextRequest) {
   // const isAuthRoute = authRoutes.some(route => pathname.startsWith(route));
 
   // Handle protected routes
-  if (isProtectedRoute && !token) {
+  if (isProtectedRoute && !isAuthenticated) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

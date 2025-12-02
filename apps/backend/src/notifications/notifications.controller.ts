@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Post, Req, UseGuards } from '@nestjs/common';
 import { IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AuthGuard } from '../auth/guards/auth.guard';
 import { NotificationsService } from './notifications.service';
 
 class SubscriptionKeysDto {
@@ -28,7 +28,7 @@ class SubscribeDto {
   userAgent?: string;
 }
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(AuthGuard)
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}

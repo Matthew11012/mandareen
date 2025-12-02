@@ -8,7 +8,7 @@ import {
   Req,
   Logger,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AuthGuard } from '../auth/guards/auth.guard';
 import { BadRequestException } from '@nestjs/common';
 import { CurriculumService } from './curriculum.service';
 import { AuthenticatedRequest } from '../types/request.types';
@@ -20,7 +20,7 @@ import { BILLING_RESOURCES } from '../billing/billing-resources.constants';
 import { isFreeSampleUnit } from './curriculum.config';
 
 @Controller('curriculum')
-@UseGuards(JwtAuthGuard)
+@UseGuards(AuthGuard)
 export class CurriculumController {
   private readonly logger = new Logger(CurriculumController.name);
   private readonly curriculum: CurriculumService;
@@ -108,6 +108,7 @@ export class CurriculumController {
       | 'FREE'
       | 'BASIC'
       | 'PREMIUM';
+    const isFreePlan = planCode === 'FREE';
     const unitOrder = (unit as any).order ?? null;
     const isFreeSample = isFreeSampleUnit(id, unitOrder);
     const access =
@@ -122,20 +123,22 @@ export class CurriculumController {
           }))
         : (unit as any).lessons;
 
-    try {
-      await this.usageService.recordAnalytics({
-        userId,
-        resource: BILLING_RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
-        amount: 0,
-        metadata: {
-          unitId: id,
-          view: 'unit_detail',
-          access,
-          planCode,
-        },
-      });
-    } catch (err) {
-      this.logger.warn('Failed to record curriculum unit view', err as any);
+    if (isFreePlan) {
+      try {
+        await this.usageService.recordAnalytics({
+          userId,
+          resource: BILLING_RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
+          amount: 0,
+          metadata: {
+            unitId: id,
+            view: 'unit_detail',
+            access,
+            planCode,
+          },
+        });
+      } catch (err) {
+        this.logger.warn('Failed to record curriculum unit view', err as any);
+      }
     }
 
     return {
@@ -200,6 +203,7 @@ export class CurriculumController {
       | 'FREE'
       | 'BASIC'
       | 'PREMIUM';
+    const isFreePlan = planCode === 'FREE';
     const unitOrder = (lesson as any)?.unit?.order ?? null;
     const isFreeSample = isFreeSampleUnit(uid, unitOrder);
 
@@ -224,21 +228,23 @@ export class CurriculumController {
         ? (lesson as any).activities
         : [];
 
-    try {
-      await this.usageService.recordAnalytics({
-        userId,
-        resource: BILLING_RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
-        amount: 0,
-        metadata: {
-          unitId: uid,
-          lessonId: lid,
-          view: 'lesson_detail',
-          access,
-          planCode,
-        },
-      });
-    } catch (err) {
-      this.logger.warn('Failed to record curriculum lesson view', err as any);
+    if (isFreePlan) {
+      try {
+        await this.usageService.recordAnalytics({
+          userId,
+          resource: BILLING_RESOURCES.CURRICULUM_UNIT_FULL_ACCESS,
+          amount: 0,
+          metadata: {
+            unitId: uid,
+            lessonId: lid,
+            view: 'lesson_detail',
+            access,
+            planCode,
+          },
+        });
+      } catch (err) {
+        this.logger.warn('Failed to record curriculum lesson view', err as any);
+      }
     }
 
     const lessonRest = { ...(lesson as any) };
