@@ -134,8 +134,15 @@ export class OpenAIService {
   /**
    * Transcribe an audio buffer into Mandarin text using OpenAI STT.
    * Accepts common MIME types like audio/webm, audio/mpeg, audio/mp4, audio/wav, audio/ogg, audio/m4a.
+   * @param buffer - Audio buffer to transcribe
+   * @param mimeType - MIME type of the audio file
+   * @param contextPrompt - Optional conversation context to improve transcription accuracy (last 2-4 messages)
    */
-  async transcribeAudio(buffer: Buffer, mimeType: string): Promise<string> {
+  async transcribeAudio(
+    buffer: Buffer,
+    mimeType: string,
+    contextPrompt?: string,
+  ): Promise<string> {
     const model = process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe';
     // Persist to a temp file to ensure compatibility with OpenAI SDK file upload
     const ext = this.mimeToExtension(mimeType) || 'webm';
@@ -145,13 +152,19 @@ export class OpenAIService {
     await fs.promises.writeFile(tempFile, buffer);
     try {
       const fileStream = fs.createReadStream(tempFile);
+      // Base prompt for Simplified Chinese output
+      const basePrompt =
+        '请使用简体中文（简体字）进行转写，不要使用繁体字。若听到中文请一律以简体字输出。';
+      // Combine base prompt with conversation context if provided
+      const fullPrompt = contextPrompt
+        ? `${basePrompt}\n\n对话上下文：\n${contextPrompt}`
+        : basePrompt;
       const result = await this.openai.audio.transcriptions.create({
         file: fileStream as any,
         model,
         // Hint the target language and bias model to Simplified Chinese output
         language: 'zh',
-        prompt:
-          '请使用简体中文（简体字）进行转写，不要使用繁体字。若听到中文请一律以简体字输出。',
+        prompt: fullPrompt,
       } as any);
       let text = ((result as any)?.text || '').trim();
       // Deterministic normalization: Traditional -> Simplified using opencc-js
