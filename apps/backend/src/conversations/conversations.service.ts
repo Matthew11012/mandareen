@@ -240,13 +240,69 @@ export class ConversationsService {
     const resource = BILLING_RESOURCES.CONVO_TTS_SECONDS;
     const limit = await this.billingPlanService.getLimit(userId, resource);
 
-    // 3) Perform STT transcription
+    // 3) Retrieve conversation context for transcription (last 2 turns = 4 messages)
+    // Single query approach - eliminates count query overhead
+    let contextPrompt: string | undefined;
+    try {
+      // Single optimized query: fetch last 4 messages with only needed fields
+      const previousMessages = await this.prisma.message.findMany({
+        where: {
+          conversationId,
+          hanzi: { not: '' }, // Filter empty messages at DB level
+        },
+        select: {
+          role: true,
+          hanzi: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 4, // Last 4 messages (last 2 turns)
+      });
+
+      // Reverse to chronological order
+      const chronologicalMessages = previousMessages.reverse();
+      const messageCount = chronologicalMessages.length;
+
+      // Turn-based context logic:
+      // - 0 messages: No context (first message)
+      // - 1 turn (1-2 messages): Use all available messages
+      // - 2+ turns (3-4 messages): Use last 4 messages (last 2 turns)
+      if (messageCount > 0) {
+        // Format messages with role labels
+        const MAX_MESSAGE_LENGTH = 100; // Prevent overly long context
+
+        const formatMessage = (msg: {
+          role: string;
+          hanzi: string;
+        }): string => {
+          const roleLabel = msg.role === 'user' ? '用户' : '助手';
+          const hanzi = msg.hanzi.trim();
+          const truncatedHanzi =
+            hanzi.length > MAX_MESSAGE_LENGTH
+              ? hanzi.substring(0, MAX_MESSAGE_LENGTH) + '...'
+              : hanzi;
+          return `${roleLabel}: ${truncatedHanzi}`;
+        };
+
+        contextPrompt = chronologicalMessages.map(formatMessage).join('\n');
+      }
+    } catch (error) {
+      // Log but don't fail transcription if context retrieval fails
+      // Fall back to transcription without context
+      this.logger.warn(
+        'Failed to retrieve conversation context for transcription, proceeding without context',
+        error as Error,
+      );
+    }
+
+    // 4) Perform STT transcription with context
     const hanzi = await (this.openai as any).transcribeAudio(
       audioBuffer,
       mimeType,
+      contextPrompt, // Pass context (undefined for first message)
     );
 
-    // 4) Create user message with segments
+    // 5) Create user message with segments
     const segments = await this.computeAndFormatSegments(hanzi);
     const userMsg = await this.prisma.message.create({
       data: {
@@ -259,7 +315,7 @@ export class ConversationsService {
       } as any,
     });
 
-    // 5) Record audio duration usage after successful STT and message creation
+    // 6) Record audio duration usage after successful STT and message creation
     if (limit && limit.monthlyCap > 0) {
       try {
         await this.usageService.recordUsage({
