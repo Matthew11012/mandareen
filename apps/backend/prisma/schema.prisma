@@ -180,6 +180,8 @@ model Message {
   segments       Json?
   conversation   Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   wordInstances  WordInstance[]
+
+  @@index([conversationId, createdAt(sort: Desc)])
 }
 
 /// RAG: Knowledge sources and chunks for grounded generation
