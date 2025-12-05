@@ -13,6 +13,7 @@ describe('UsageService', () => {
       findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      upsert: jest.fn(),
     },
     usageEvent: {
       findMany: jest.fn(),
@@ -129,9 +130,8 @@ describe('UsageService', () => {
       mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
 
       // Mock transaction operations
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
 
       await service.checkAndConsume({
         userId,
@@ -142,7 +142,7 @@ describe('UsageService', () => {
 
       expect(mockPrismaService.$transaction).toHaveBeenCalled();
       expect(mockPrismaService.usageEvent.create).toHaveBeenCalled();
-      expect(mockPrismaService.usageDaily.create).toHaveBeenCalled();
+      expect(mockPrismaService.usageDaily.upsert).toHaveBeenCalled();
     });
 
     it('should throw QuotaExceededError when quota would be exceeded', async () => {
@@ -224,9 +224,8 @@ describe('UsageService', () => {
       mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
 
       // Mock transaction operations
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
 
       // Should not throw in log-only mode
       await logOnlyService.checkAndConsume({
@@ -256,18 +255,8 @@ describe('UsageService', () => {
       // Mock idempotency check
       mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
 
-      // Mock existing daily record
-      const existingRecord = {
-        id: 1,
-        userId,
-        resource,
-        day: new Date(),
-        used: 50,
-      };
-
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(existingRecord);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.update.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
 
       await service.checkAndConsume({
         userId,
@@ -276,15 +265,7 @@ describe('UsageService', () => {
         planCap,
       });
 
-      expect(mockPrismaService.usageDaily.update).toHaveBeenCalledWith({
-        where: { id: existingRecord.id },
-        data: {
-          used: {
-            increment: amount,
-          },
-        },
-      });
-      expect(mockPrismaService.usageDaily.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.usageDaily.upsert).toHaveBeenCalled();
     });
 
     it('should use custom windowDays when provided', async () => {
@@ -298,9 +279,8 @@ describe('UsageService', () => {
         _sum: { used: 50 },
       });
       mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
 
       await service.checkAndConsume({
         userId,
@@ -331,9 +311,8 @@ describe('UsageService', () => {
         _sum: { used: 50 },
       });
       mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
 
       await service.checkAndConsume({
         userId,
@@ -390,9 +369,8 @@ describe('UsageService', () => {
   describe('recordUsage', () => {
     it('should record usage event with metadata', async () => {
       mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
 
       await service.recordUsage({
         userId: 2,
@@ -478,9 +456,8 @@ describe('UsageService', () => {
       const metadata = { customField: 'customValue' };
 
       mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
 
       await service.recordAnalytics({
         userId,
