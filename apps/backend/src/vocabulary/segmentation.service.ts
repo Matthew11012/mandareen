@@ -865,9 +865,9 @@ export class SegmentationService {
       // DB-backed mode: use a fixed upper bound
       this.maxTokenLength = 16;
       this.initialized = true;
-      this.logger.debug?.(
-        `SegmentationService initialized (mode=db), maxTokenLength=${this.maxTokenLength} (fixed)`,
-      );
+      // this.logger.debug?.(
+      //   `SegmentationService initialized (mode=db), maxTokenLength=${this.maxTokenLength} (fixed)`,
+      // );
       return;
     }
 

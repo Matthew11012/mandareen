@@ -13,9 +13,14 @@ describe('UsageService', () => {
       findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      upsert: jest.fn(),
     },
     usageEvent: {
       findMany: jest.fn(),
+      create: jest.fn(),
+    },
+    idempotencyKey: {
+      findUnique: jest.fn(),
       create: jest.fn(),
     },
     $transaction: jest.fn(),
@@ -40,6 +45,8 @@ describe('UsageService', () => {
     prisma = module.get<PrismaService>(PrismaService);
 
     jest.clearAllMocks();
+    mockPrismaService.idempotencyKey.findUnique.mockResolvedValue(null);
+    mockPrismaService.idempotencyKey.create.mockResolvedValue({});
 
     // Default transaction mock - execute callback immediately
     mockPrismaService.$transaction.mockImplementation(async (callback) => {
@@ -126,12 +133,12 @@ describe('UsageService', () => {
       });
 
       // Mock idempotency check (no duplicates)
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue(null);
 
       // Mock transaction operations
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
+      mockPrismaService.idempotencyKey.create.mockResolvedValue({});
 
       await service.checkAndConsume({
         userId,
@@ -142,7 +149,7 @@ describe('UsageService', () => {
 
       expect(mockPrismaService.$transaction).toHaveBeenCalled();
       expect(mockPrismaService.usageEvent.create).toHaveBeenCalled();
-      expect(mockPrismaService.usageDaily.create).toHaveBeenCalled();
+      expect(mockPrismaService.usageDaily.upsert).toHaveBeenCalled();
     });
 
     it('should throw QuotaExceededError when quota would be exceeded', async () => {
@@ -157,7 +164,7 @@ describe('UsageService', () => {
       });
 
       // Mock idempotency check (no duplicates)
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue(null);
 
       await expect(
         service.checkAndConsume({
@@ -184,11 +191,12 @@ describe('UsageService', () => {
       });
 
       // Mock idempotency check (duplicate found)
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([
-        {
-          metadata: { idempotencyKey: 'test-key-123' },
-        },
-      ]);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue({
+        id: 1,
+        userId,
+        resource,
+        key: idempotencyKey,
+      });
 
       await service.checkAndConsume({
         userId,
@@ -221,12 +229,12 @@ describe('UsageService', () => {
       });
 
       // Mock idempotency check
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue(null);
 
       // Mock transaction operations
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
+      mockPrismaService.idempotencyKey.create.mockResolvedValue({});
 
       // Should not throw in log-only mode
       await logOnlyService.checkAndConsume({
@@ -254,20 +262,11 @@ describe('UsageService', () => {
       });
 
       // Mock idempotency check
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue(null);
 
-      // Mock existing daily record
-      const existingRecord = {
-        id: 1,
-        userId,
-        resource,
-        day: new Date(),
-        used: 50,
-      };
-
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(existingRecord);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.update.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
+      mockPrismaService.idempotencyKey.create.mockResolvedValue({});
 
       await service.checkAndConsume({
         userId,
@@ -276,15 +275,7 @@ describe('UsageService', () => {
         planCap,
       });
 
-      expect(mockPrismaService.usageDaily.update).toHaveBeenCalledWith({
-        where: { id: existingRecord.id },
-        data: {
-          used: {
-            increment: amount,
-          },
-        },
-      });
-      expect(mockPrismaService.usageDaily.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.usageDaily.upsert).toHaveBeenCalled();
     });
 
     it('should use custom windowDays when provided', async () => {
@@ -297,10 +288,10 @@ describe('UsageService', () => {
       mockPrismaService.usageDaily.aggregate.mockResolvedValue({
         _sum: { used: 50 },
       });
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
+      mockPrismaService.idempotencyKey.create.mockResolvedValue({});
 
       await service.checkAndConsume({
         userId,
@@ -330,10 +321,10 @@ describe('UsageService', () => {
       mockPrismaService.usageDaily.aggregate.mockResolvedValue({
         _sum: { used: 50 },
       });
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
+      mockPrismaService.idempotencyKey.create.mockResolvedValue({});
 
       await service.checkAndConsume({
         userId,
@@ -348,6 +339,13 @@ describe('UsageService', () => {
           metadata: expect.objectContaining({
             idempotencyKey: 'test-key-456',
           }),
+        }),
+      });
+      expect(mockPrismaService.idempotencyKey.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          key: 'test-key-456',
+          userId,
+          resource,
         }),
       });
     });
@@ -372,9 +370,12 @@ describe('UsageService', () => {
       mockPrismaService.usageDaily.aggregate.mockResolvedValue({
         _sum: { used: 10 },
       });
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([
-        { metadata: { idempotencyKey: 'dup-key' } },
-      ]);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue({
+        id: 1,
+        userId: 1,
+        resource: 'lesson',
+        key: 'dup-key',
+      });
       await expect(
         service.ensureWithinQuota({
           userId: 1,
@@ -389,10 +390,10 @@ describe('UsageService', () => {
 
   describe('recordUsage', () => {
     it('should record usage event with metadata', async () => {
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
+      mockPrismaService.idempotencyKey.create.mockResolvedValue({});
 
       await service.recordUsage({
         userId: 2,
@@ -409,9 +410,12 @@ describe('UsageService', () => {
     });
 
     it('should skip recording when duplicate idempotency key detected', async () => {
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([
-        { metadata: { idempotencyKey: 'dup-key' } },
-      ]);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue({
+        id: 1,
+        userId: 2,
+        resource: 'lesson',
+        key: 'dup-key',
+      });
 
       await service.recordUsage({
         userId: 2,
@@ -431,12 +435,12 @@ describe('UsageService', () => {
       const amount = 10;
 
       // Mock idempotency check
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue(null);
 
       // Mock transaction operations
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
+      mockPrismaService.idempotencyKey.create.mockResolvedValue({});
 
       await service.recordAnalytics({
         userId,
@@ -455,11 +459,12 @@ describe('UsageService', () => {
       const idempotencyKey = 'analytics-key-123';
 
       // Mock idempotency check (duplicate found)
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([
-        {
-          metadata: { idempotencyKey: 'analytics-key-123' },
-        },
-      ]);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue({
+        id: 1,
+        userId,
+        resource,
+        key: idempotencyKey,
+      });
 
       await service.recordAnalytics({
         userId,
@@ -477,10 +482,10 @@ describe('UsageService', () => {
       const amount = 10;
       const metadata = { customField: 'customValue' };
 
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
+      mockPrismaService.idempotencyKey.create.mockResolvedValue({});
 
       await service.recordAnalytics({
         userId,
@@ -509,10 +514,18 @@ describe('UsageService', () => {
       mockPrismaService.usageDaily.aggregate.mockResolvedValue({
         _sum: { used: 50 },
       });
-      mockPrismaService.usageEvent.findMany.mockResolvedValue([]);
-      mockPrismaService.usageDaily.findFirst.mockResolvedValue(null);
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue(null);
       mockPrismaService.usageEvent.create.mockResolvedValue({});
-      mockPrismaService.usageDaily.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
+      mockPrismaService.idempotencyKey.create.mockResolvedValue({});
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue(null);
+      mockPrismaService.usageEvent.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
+      mockPrismaService.idempotencyKey.create.mockResolvedValue({});
+      mockPrismaService.idempotencyKey.findUnique.mockResolvedValue(null);
+      mockPrismaService.usageEvent.create.mockResolvedValue({});
+      mockPrismaService.usageDaily.upsert.mockResolvedValue({});
+      mockPrismaService.idempotencyKey.create.mockResolvedValue({});
 
       await service.checkAndConsume({
         userId,
