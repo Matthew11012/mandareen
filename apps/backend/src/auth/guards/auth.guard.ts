@@ -38,7 +38,7 @@ export class AuthGuard implements CanActivate {
 
     request.user = sessionUser;
     request.authSource = 'better-auth';
-    this.logger.debug(`Auth via Better Auth for user ${sessionUser.id}`);
+    // this.logger.debug(`Auth via Better Auth for user ${sessionUser.id}`);
     return true;
   }
 

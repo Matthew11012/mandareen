@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from '../prisma/prisma.module';
 import { BillingPlanService } from './billing-plan.service';
 import { UsageService } from './usage.service';
@@ -12,6 +13,7 @@ import { BillingWebhookService } from './billing.webhook.service';
 import { BillingWebhookController } from './billing.webhook.controller';
 import { BillingController } from './billing.controller';
 import { UsageController } from './usage.controller';
+import { UsageRetentionService } from './usage-retention.service';
 
 @Module({
   imports: [
@@ -21,6 +23,7 @@ import { UsageController } from './usage.controller';
       maxRedirects: 5,
     }),
     ConfigModule,
+    ScheduleModule,
   ],
   controllers: [BillingWebhookController, BillingController, UsageController],
   providers: [
@@ -31,6 +34,7 @@ import { UsageController } from './usage.controller';
     PolarAdapter,
     BillingService,
     BillingWebhookService,
+    UsageRetentionService,
   ],
   exports: [
     BillingPlanService,

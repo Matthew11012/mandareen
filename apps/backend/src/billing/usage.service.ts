@@ -31,11 +31,19 @@ export class UsageService {
   private readonly logger = new Logger(UsageService.name);
   private readonly windowDays: number;
   private readonly enforceUsage: boolean;
+  private readonly summaryCacheTtlMs: number;
+  private readonly summaryCache: Map<
+    string,
+    { value: Map<string, number>; expiresAt: number }
+  > = new Map();
 
   constructor(prisma: PrismaService) {
     this.prisma = prisma;
     this.windowDays = Number(process.env.USAGE_WINDOW_DAYS) || 30;
     this.enforceUsage = process.env.USAGE_ENFORCE === 'true';
+    const ttlSeconds =
+      Number(process.env.USAGE_SUMMARY_CACHE_TTL_SECONDS) || 300;
+    this.summaryCacheTtlMs = ttlSeconds > 0 ? ttlSeconds * 1000 : 0;
   }
 
   /**
@@ -75,14 +83,7 @@ export class UsageService {
    * In log-only mode (USAGE_ENFORCE=false), computes and logs but does not throw.
    */
   async checkAndConsume(args: CheckAndConsumeArgs): Promise<void> {
-    const {
-      userId,
-      resource,
-      amount,
-      idempotencyKey,
-      now = new Date(),
-      planCap,
-    } = args;
+    const { userId, resource, amount, idempotencyKey } = args;
 
     await this.ensureWithinQuota(args);
     await this.recordUsage(
@@ -91,7 +92,6 @@ export class UsageService {
         resource,
         amount,
         idempotencyKey,
-        now,
       },
       { logContext: 'usage' },
     );
@@ -107,17 +107,15 @@ export class UsageService {
       resource,
       amount,
       idempotencyKey,
-      now = new Date(),
       planCap,
       windowDays = this.windowDays,
     } = args;
 
     if (idempotencyKey) {
-      const hasDuplicate = await this.hasRecentIdempotentEvent(
-          userId,
-          resource,
+      const hasDuplicate = await this.hasIdempotencyKey(
+        userId,
+        resource,
         idempotencyKey,
-        now,
       );
       if (hasDuplicate) {
         this.logger.debug(
@@ -177,6 +175,8 @@ export class UsageService {
   ): Promise<void> {
     // Use transaction for race safety
     await this.prisma.$transaction(async (tx) => {
+      const idempotencyRepo = (tx as any).idempotencyKey;
+
       // Get UTC midnight for the day
       const day = new Date(now);
       day.setUTCHours(0, 0, 0, 0);
@@ -185,6 +185,27 @@ export class UsageService {
       const eventMetadata: any = metadata || {};
       if (idempotencyKey) {
         eventMetadata.idempotencyKey = idempotencyKey;
+      }
+
+      if (idempotencyKey && idempotencyRepo) {
+        try {
+          await idempotencyRepo.create({
+            data: {
+              userId,
+              resource,
+              key: idempotencyKey,
+              createdAt: now,
+            },
+          });
+        } catch (error: any) {
+          if (error?.code === 'P2002') {
+            this.logger.debug(
+              `Idempotency key ${idempotencyKey} already exists; skipping event`,
+            );
+            return;
+          }
+          throw error;
+        }
       }
 
       // Insert UsageEvent
@@ -236,11 +257,10 @@ export class UsageService {
     } = args;
 
     if (idempotencyKey) {
-      const hasDuplicate = await this.hasRecentIdempotentEvent(
+      const hasDuplicate = await this.hasIdempotencyKey(
         userId,
         resource,
         idempotencyKey,
-        now,
       );
       if (hasDuplicate) {
         this.logger.debug(
@@ -258,36 +278,26 @@ export class UsageService {
       now,
       metadata,
     );
+    this.invalidateSummaryCache(userId);
   }
 
-  private async hasRecentIdempotentEvent(
+  private async hasIdempotencyKey(
     userId: number,
     resource: string,
     idempotencyKey: string,
-    now: Date,
   ): Promise<boolean> {
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const recentEvents = await this.prisma.usageEvent.findMany({
+    const repo = (this.prisma as any).idempotencyKey;
+    if (!repo) return false;
+    const existing = await repo.findUnique({
       where: {
-        userId,
-        resource,
-        occurredAt: {
-          gte: oneDayAgo,
+        userId_resource_key: {
+          userId,
+          resource,
+          key: idempotencyKey,
         },
       },
-      select: {
-        metadata: true,
-      },
-      take: 100,
     });
-
-    return recentEvents.some((event) => {
-      if (!event.metadata || typeof event.metadata !== 'object') {
-        return false;
-      }
-      const metadata = event.metadata as any;
-      return metadata.idempotencyKey === idempotencyKey;
-    });
+    return Boolean(existing);
   }
 
   /**
@@ -338,6 +348,15 @@ export class UsageService {
       dayFilter.lt = windowEnd;
     }
 
+    const cacheKey = this.getSummaryCacheKey(userId, windowStart, windowEnd);
+    this.cleanupExpiredSummaryCache();
+    if (this.summaryCacheTtlMs > 0) {
+      const cached = this.summaryCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        return new Map(cached.value);
+      }
+    }
+
     // Single efficient query: group by resource and sum usage
     // This is much faster than N queries (one per resource)
     const results = await this.prisma.usageDaily.groupBy({
@@ -357,7 +376,44 @@ export class UsageService {
       usageMap.set(result.resource, result._sum.used || 0);
     }
 
+    if (this.summaryCacheTtlMs > 0) {
+      this.summaryCache.set(cacheKey, {
+        value: usageMap,
+        expiresAt: Date.now() + this.summaryCacheTtlMs,
+      });
+    }
+
     return usageMap;
+  }
+
+  private getSummaryCacheKey(
+    userId: number,
+    windowStart: Date,
+    windowEnd?: Date,
+  ): string {
+    const startIso = windowStart.toISOString();
+    const endIso = windowEnd ? windowEnd.toISOString() : 'none';
+    return `${userId}|${startIso}|${endIso}`;
+  }
+
+  private cleanupExpiredSummaryCache(): void {
+    if (this.summaryCache.size === 0) return;
+    const now = Date.now();
+    for (const [key, entry] of this.summaryCache.entries()) {
+      if (entry.expiresAt <= now) {
+        this.summaryCache.delete(key);
+      }
+    }
+  }
+
+  private invalidateSummaryCache(userId: number): void {
+    if (this.summaryCache.size === 0) return;
+    const prefix = `${userId}|`;
+    for (const key of this.summaryCache.keys()) {
+      if (key.startsWith(prefix)) {
+        this.summaryCache.delete(key);
+      }
+    }
   }
 
   /**

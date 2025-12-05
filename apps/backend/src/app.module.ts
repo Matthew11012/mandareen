@@ -7,6 +7,7 @@ import { AssessmentModule } from './assessment/assessment.module';
 import { OpenAIModule } from './openai/openai.module';
 import { VocabularyModule } from './vocabulary/vocabulary.module';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { UsersModule } from './users/users.module';
 import { LessonsModule } from './lessons/lessons.module';
 import { FlashcardsModule } from './flashcards/flashcards.module';
@@ -21,6 +22,7 @@ import { BillingModule } from './billing/billing.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
     AuthModule,
     PrismaModule,
     AssessmentModule,
