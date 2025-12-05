@@ -27,6 +27,7 @@ model User {
   subscriptions        UserSubscription[]
   usageEvents          UsageEvent[]
   usageDaily           UsageDaily[]
+  idempotencyKeys      IdempotencyKey[]
 }
 
 model Assessment {
@@ -539,6 +540,19 @@ model UsageDaily {
 
   @@unique([userId, resource, day])
   @@index([userId, resource, day])
+}
+
+model IdempotencyKey {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  resource  String
+  key       String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, resource, key])
+  @@index([createdAt])
 }
 
 model ConcurrencyLock {

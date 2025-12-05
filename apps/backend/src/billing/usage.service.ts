@@ -83,14 +83,7 @@ export class UsageService {
    * In log-only mode (USAGE_ENFORCE=false), computes and logs but does not throw.
    */
   async checkAndConsume(args: CheckAndConsumeArgs): Promise<void> {
-    const {
-      userId,
-      resource,
-      amount,
-      idempotencyKey,
-      now = new Date(),
-      planCap,
-    } = args;
+    const { userId, resource, amount, idempotencyKey } = args;
 
     await this.ensureWithinQuota(args);
     await this.recordUsage(
@@ -99,7 +92,6 @@ export class UsageService {
         resource,
         amount,
         idempotencyKey,
-        now,
       },
       { logContext: 'usage' },
     );
@@ -115,17 +107,15 @@ export class UsageService {
       resource,
       amount,
       idempotencyKey,
-      now = new Date(),
       planCap,
       windowDays = this.windowDays,
     } = args;
 
     if (idempotencyKey) {
-      const hasDuplicate = await this.hasRecentIdempotentEvent(
-          userId,
-          resource,
+      const hasDuplicate = await this.hasIdempotencyKey(
+        userId,
+        resource,
         idempotencyKey,
-        now,
       );
       if (hasDuplicate) {
         this.logger.debug(
@@ -185,6 +175,8 @@ export class UsageService {
   ): Promise<void> {
     // Use transaction for race safety
     await this.prisma.$transaction(async (tx) => {
+      const idempotencyRepo = (tx as any).idempotencyKey;
+
       // Get UTC midnight for the day
       const day = new Date(now);
       day.setUTCHours(0, 0, 0, 0);
@@ -193,6 +185,27 @@ export class UsageService {
       const eventMetadata: any = metadata || {};
       if (idempotencyKey) {
         eventMetadata.idempotencyKey = idempotencyKey;
+      }
+
+      if (idempotencyKey && idempotencyRepo) {
+        try {
+          await idempotencyRepo.create({
+            data: {
+              userId,
+              resource,
+              key: idempotencyKey,
+              createdAt: now,
+            },
+          });
+        } catch (error: any) {
+          if (error?.code === 'P2002') {
+            this.logger.debug(
+              `Idempotency key ${idempotencyKey} already exists; skipping event`,
+            );
+            return;
+          }
+          throw error;
+        }
       }
 
       // Insert UsageEvent
@@ -244,11 +257,10 @@ export class UsageService {
     } = args;
 
     if (idempotencyKey) {
-      const hasDuplicate = await this.hasRecentIdempotentEvent(
+      const hasDuplicate = await this.hasIdempotencyKey(
         userId,
         resource,
         idempotencyKey,
-        now,
       );
       if (hasDuplicate) {
         this.logger.debug(
@@ -269,34 +281,23 @@ export class UsageService {
     this.invalidateSummaryCache(userId);
   }
 
-  private async hasRecentIdempotentEvent(
+  private async hasIdempotencyKey(
     userId: number,
     resource: string,
     idempotencyKey: string,
-    now: Date,
   ): Promise<boolean> {
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const recentEvents = await this.prisma.usageEvent.findMany({
+    const repo = (this.prisma as any).idempotencyKey;
+    if (!repo) return false;
+    const existing = await repo.findUnique({
       where: {
-        userId,
-        resource,
-        occurredAt: {
-          gte: oneDayAgo,
+        userId_resource_key: {
+          userId,
+          resource,
+          key: idempotencyKey,
         },
       },
-      select: {
-        metadata: true,
-      },
-      take: 100,
     });
-
-    return recentEvents.some((event) => {
-      if (!event.metadata || typeof event.metadata !== 'object') {
-        return false;
-      }
-      const metadata = event.metadata as any;
-      return metadata.idempotencyKey === idempotencyKey;
-    });
+    return Boolean(existing);
   }
 
   /**

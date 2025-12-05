@@ -5,13 +5,16 @@ import { PrismaService } from '../prisma/prisma.service';
 const DEFAULT_RETENTION_DAYS = 60;
 const DEFAULT_CRON = process.env.USAGE_CLEANUP_SCHEDULE || '0 2 * * 0'; // weekly Sunday 02:00 UTC
 const BATCH_SIZE = 10_000;
+const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 @Injectable()
 export class UsageRetentionService {
   private readonly logger = new Logger(UsageRetentionService.name);
   private readonly retentionDays: number;
+  private readonly prisma: PrismaService;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(prisma: PrismaService) {
+    this.prisma = prisma;
     this.retentionDays = this.validateRetentionDays(
       Number(process.env.USAGE_RETENTION_DAYS) || DEFAULT_RETENTION_DAYS,
     );
@@ -20,6 +23,7 @@ export class UsageRetentionService {
   @Cron(DEFAULT_CRON)
   async cleanupOldRecords(): Promise<void> {
     const cutoff = this.getRetentionCutoffDate();
+    const idempotencyCutoff = new Date(Date.now() - IDEMPOTENCY_TTL_MS);
     const startedAt = Date.now();
     try {
       const usageDailyDeleted = await this.deleteInBatches(
@@ -32,12 +36,18 @@ export class UsageRetentionService {
         'occurredAt',
         cutoff,
       );
+      const idempotencyDeleted = await this.deleteInBatches(
+        'IdempotencyKey',
+        'createdAt',
+        idempotencyCutoff,
+      );
 
       this.logger.log({
         message: 'Usage retention cleanup completed',
         cutoff: cutoff.toISOString(),
         usageDailyDeleted,
         usageEventDeleted,
+        idempotencyDeleted,
         durationMs: Date.now() - startedAt,
       });
     } catch (error: any) {
@@ -69,8 +79,8 @@ export class UsageRetentionService {
    * Delete rows in batches using raw SQL with LIMIT to avoid long transactions.
    */
   private async deleteInBatches(
-    table: 'UsageDaily' | 'UsageEvent',
-    dateColumn: 'day' | 'occurredAt',
+    table: 'UsageDaily' | 'UsageEvent' | 'IdempotencyKey',
+    dateColumn: 'day' | 'occurredAt' | 'createdAt',
     cutoff: Date,
   ): Promise<number> {
     let totalDeleted = 0;
