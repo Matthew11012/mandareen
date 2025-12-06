@@ -30,6 +30,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
 import { useUsageSummary } from "@/lib/hooks/use-usage";
 import { Tooltip } from "@/components/ui/tooltip";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import {
   Accordion,
   AccordionContent,
@@ -69,6 +70,8 @@ type ReadContent = {
 type ExplainSection = {
   title: string;
   concept?: string;
+  /** Markdown-rich concept explanation (preferred) */
+  conceptMd?: string;
   examples?: Array<{ zh: string; pinyin?: string; en?: string }>;
   pitfalls?: Array<{ bad: string; good: string; note?: string }>;
   checks?: Array<{ type: "tf" | "fill"; prompt: string; answer?: string }>;
@@ -85,7 +88,6 @@ type ExplainContent = {
     translation?: string;
     segments?: TokenLike[];
   } | null;
-  citations?: unknown[];
 };
 
 type QuizItem = {
@@ -730,9 +732,9 @@ function ExplainView({ content }: { content: ExplainContent }) {
             <h3 className="text-white font-semibold text-base sm:text-lg mb-3">
               Overview
             </h3>
-            <p className="text-white/80 leading-relaxed text-sm sm:text-base">
-              {content.overview}
-            </p>
+            <div className="text-sm sm:text-base">
+              <MarkdownRenderer content={content.overview} />
+            </div>
           </div>
         </div>
       )}
@@ -756,16 +758,18 @@ function ExplainView({ content }: { content: ExplainContent }) {
               </AccordionTrigger>
               <AccordionContent className="pt-2 px-4 sm:px-6 pb-4 sm:pb-6 text-white/80">
                 <div className="space-y-4 sm:space-y-6">
-                  {s.concept && (
+                  {(s.conceptMd || s.concept) && (
                     <div className="relative">
                       <div className="absolute left-0 top-0 w-1 h-full bg-blue-500/30 rounded-full"></div>
                       <div className="pl-4 sm:pl-6">
                         <h4 className="text-white font-medium text-sm sm:text-base mb-2 sm:mb-3 ">
                           Key Concept
                         </h4>
-                        <p className="text-white/80 leading-relaxed text-sm sm:text-base">
-                          {s.concept}
-                        </p>
+                        <div className="text-sm sm:text-base">
+                          <MarkdownRenderer
+                            content={s.conceptMd || s.concept || ""}
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
