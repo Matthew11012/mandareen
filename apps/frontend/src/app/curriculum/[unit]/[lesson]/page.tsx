@@ -762,10 +762,10 @@ function ExplainView({ content }: { content: ExplainContent }) {
                     <div className="relative">
                       <div className="absolute left-0 top-0 w-1 h-full bg-blue-500/30 rounded-full"></div>
                       <div className="pl-4 sm:pl-6">
-                        <h4 className="text-white font-medium text-sm sm:text-base mb-2 sm:mb-3 ">
+                        <h3 className="text-white font-medium text-sm sm:text-lg mb-2 sm:mb-3 ">
                           Key Concept
-                        </h4>
-                        <div className="text-sm sm:text-base">
+                        </h3>
+                        <div className="text-sm sm:text-base rounded-lg border border-white/10 bg-white/5 px-4 py-3">
                           <MarkdownRenderer
                             content={s.conceptMd || s.concept || ""}
                           />
@@ -776,10 +776,10 @@ function ExplainView({ content }: { content: ExplainContent }) {
 
                   {Array.isArray(s.examples) && s.examples.length > 0 && (
                     <div className="space-y-3 sm:space-y-4">
-                      <h4 className="text-white font-medium text-sm sm:text-base">
+                      <h3 className="text-white font-medium text-sm sm:text-lg">
                         Examples
-                      </h4>
-                      <div className="space-y-2 sm:space-y-3">
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                         {s.examples.map(
                           (
                             ex: { zh: string; pinyin?: string; en?: string },
@@ -787,7 +787,7 @@ function ExplainView({ content }: { content: ExplainContent }) {
                           ) => (
                             <div
                               key={i}
-                              className="p-3 sm:p-4 border border-white/10 rounded-lg transition-all duration-200"
+                              className="p-3 sm:p-4 border border-white/10 rounded-lg bg-white/5 shadow-sm shadow-black/10 transition-all duration-200"
                             >
                               <div className="space-y-1 sm:space-y-2">
                                 <div className="text-white font-semibold text-base sm:text-lg">
@@ -814,40 +814,58 @@ function ExplainView({ content }: { content: ExplainContent }) {
                   )}
 
                   {Array.isArray(s.pitfalls) && s.pitfalls.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="text-white font-medium text-base">
-                        Common Pitfalls
-                      </h4>
-                      <div className="space-y-3 flex flex-col gap-2">
-                        {s.pitfalls.map(
+                    <div className="space-y-4 rounded-xl border border-white/10 bg-[#0f1624]/80 p-4 sm:p-5 shadow-md shadow-black/20">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-[#4040f2] flex items-center justify-center text-[#cfd4ff] font-semibold text-sm">
+                          !
+                        </div>
+                        <h4 className="text-white font-medium text-base sm:text-lg">
+                          Common Pitfalls
+                        </h4>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                        {(Array.isArray(s.pitfalls) ? s.pitfalls : []).map(
                           (
                             p: { bad: string; good: string; note?: string },
-                            i: number
-                          ) => (
-                            <div key={i} className="space-y-2">
-                              <div className="flex items-start gap-3 p-3 border border-red-500/20 rounded-lg bg-red-500/5">
-                                <span className="text-red-400 font-bold text-lg leading-none mt-0.5">
-                                  ✕
-                                </span>
-                                <div className="text-red-300 text-sm flex-1">
-                                  {p.bad}
+                            i: number,
+                            arr: { bad: string; good: string; note?: string }[]
+                          ) => {
+                            const isLastOdd =
+                              arr.length % 2 === 1 && i === arr.length - 1;
+                            return (
+                              <div
+                                key={i}
+                                className={`relative h-full rounded-lg border border-white/12 bg-[#161f30] p-3 sm:p-4 shadow-sm shadow-black/10 space-y-2.5 overflow-hidden ${
+                                  isLastOdd ? "md:col-span-2" : ""
+                                }`}
+                              >
+                                <div className="absolute left-0 top-0 h-full w-1 bg-[#4040f2]/60" />
+                                <div className="flex flex-col gap-2.5">
+                                  <div className="flex items-start gap-3 rounded-md bg-red-500/12 border border-red-500/25 px-3 py-2">
+                                    <span className="w-5 flex justify-center pt-0.5 text-red-300 font-semibold text-lg leading-none">
+                                      ✕
+                                    </span>
+                                    <div className="text-white/85 text-sm leading-relaxed">
+                                      {p.bad}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-start gap-3 rounded-md bg-green-500/12 border border-green-500/25 px-3 py-2">
+                                    <span className="w-5 flex justify-center pt-0.5 text-green-300 font-semibold text-lg leading-none">
+                                      ✓
+                                    </span>
+                                    <div className="text-white/85 text-sm leading-relaxed">
+                                      {p.good}
+                                    </div>
+                                  </div>
+                                  {p.note && (
+                                    <div className="pl-8 text-white/70 text-sm italic leading-relaxed">
+                                      {p.note}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                              <div className="flex items-start gap-3 p-3 border border-green-500/20 rounded-lg bg-green-500/5">
-                                <span className="text-green-400 font-bold text-lg leading-none mt-0.5">
-                                  ✓
-                                </span>
-                                <div className="text-green-300 text-sm flex-1">
-                                  {p.good}
-                                </div>
-                              </div>
-                              {p.note && (
-                                <div className="text-white/60 text-sm italic ml-6 p-2 bg-white/5 rounded border-l-2 border-white/20">
-                                  {p.note}
-                                </div>
-                              )}
-                            </div>
-                          )
+                            );
+                          }
                         )}
                       </div>
                     </div>
