@@ -1190,7 +1190,7 @@ export class OpenAIService {
       - When the context is an inventory/list (e.g., initials/finals), show the full set in a compact table, and include only 2-6 illustrative examples (not one per item).
       - Otherwise, include up to 6 examples total; avoid near-duplicate examples.
     - "pitfalls": array of common mistakes. Each: { "bad": "...", "good": "...", "note": "..." }. Include ALL that apply from context. Can be empty array if none.
-    - "checks": array of 1-3 comprehension checks. Prefer T/F style: { "type": "tf", "prompt": "...", "answer": "T"|"F" }. Keep them concise and directly tied to the section’s points.
+    - "checks": array of 1-3 comprehension checks (decide the amount based on the section's complexity). Use T/F style: { "type": "tf", "prompt": "...", "answer": "T"|"F" }. Keep them concise and directly tied to the section’s points.
 
     \nReturn ONLY valid JSON with keys: overview, sections. No additional text.
 
@@ -1211,8 +1211,7 @@ export class OpenAIService {
             { "bad": "我苹果吃。", "good": "我吃苹果。", "note": "Do not place the object before the verb." }
           ],
           "checks": [
-            { "type": "tf", "prompt": "Mandarin uses SVO order by default.", "answer": "T" },
-            { "type": "fill", "prompt": "他___饭。 (eat)", "answer": "吃" }
+            { "type": "tf", "prompt": "Mandarin uses SVO order by default.", "answer": "T" }       
           ]
         }
       ],
@@ -1293,9 +1292,9 @@ export class OpenAIService {
                       items: {
                         type: 'object',
                         properties: {
-                          type: { type: 'string', enum: ['tf', 'fill'] },
+                          type: { type: 'string', enum: ['tf'] },
                           prompt: { type: 'string' },
-                          answer: { type: 'string' },
+                          answer: { type: 'string', enum: ['T', 'F'] },
                         },
                         required: ['type', 'prompt', 'answer'],
                         additionalProperties: false,
