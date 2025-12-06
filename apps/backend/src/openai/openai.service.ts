@@ -1130,13 +1130,11 @@ export class OpenAIService {
     overview?: string;
     sections?: Array<{
       title: string;
-      concept: string;
+      conceptMd: string;
       examples: Array<{ zh: string; pinyin?: string; en?: string }>;
       pitfalls?: Array<{ bad: string; good: string; note?: string }>;
       checks?: Array<{ type: 'tf' | 'fill'; prompt: string; answer?: string }>;
     }>;
-    microPassage?: { hanzi: string; pinyin?: string; translation?: string };
-    citations?: Array<{ key?: string; chunkId?: number }>;
   }> {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const maxSections = Math.min(Math.max(args.maxSections ?? 7, 1), 20);
@@ -1245,7 +1243,7 @@ export class OpenAIService {
                   type: 'object',
                   properties: {
                     title: { type: 'string' },
-                    concept: { type: 'string' },
+                    conceptMd: { type: 'string' },
                     examples: {
                       type: 'array',
                       items: {
@@ -1288,7 +1286,7 @@ export class OpenAIService {
                   },
                   required: [
                     'title',
-                    'concept',
+                    'conceptMd',
                     'examples',
                     'pitfalls',
                     'checks',
