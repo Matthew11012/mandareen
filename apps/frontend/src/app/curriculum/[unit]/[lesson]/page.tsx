@@ -374,7 +374,7 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
         <div className="flex-1 min-w-0 overflow-y-auto overscroll-contain">
           <div className="p-3 sm:p-6 pt-0 space-y-4 sm:space-y-6">
             <nav
-              className="sticky top-0 z-40 bg-[#222831] py-2 -mx-3 sm:-mx-6 px-3 sm:px-6 mb-2"
+              className="sticky top-0 z-40 bg-[#222831] py-0 -mx-3 sm:-mx-6 px-3 sm:px-6 mb-2"
               aria-label="Breadcrumb"
             >
               <div className="flex items-center justify-between gap-2">
@@ -408,7 +408,7 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
                       : "Open curriculum navigation"
                   }
                   aria-expanded={isSidebarOpen}
-                  className="md:hidden p-2 rounded-lg hover:bg-white/5 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#222831]"
+                  className="md:hidden rounded-lg hover:bg-white/5 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#222831]"
                 >
                   <Menu className="w-5 h-5 text-white/80" aria-hidden="true" />
                 </button>
@@ -714,20 +714,20 @@ function ExplainView({ content }: { content: ExplainContent }) {
             <AccordionItem
               key={idx}
               value={`section-${idx}`}
-              className="border border-white/10 rounded-lg overflow-hidden hover:border-white/20 transition-all duration-200"
+              className="border border-transparent md:border md:border-white/12 md:bg-transparent rounded-lg overflow-hidden hover:border-white/25 transition-all duration-200"
             >
-              <AccordionTrigger className="px-4 sm:px-6 py-3 sm:py-4 text-white hover:no-underline hover:bg-white/5 transition-all duration-200 cursor-pointer">
+              <AccordionTrigger className="px-2 sm:px-6 py-3 sm:py-4 text-white hover:no-underline hover:bg-white/5 transition-all duration-200 cursor-pointer">
                 <h3 className="font-semibold text-base sm:text-lg text-left">
                   {s.title}
                 </h3>
               </AccordionTrigger>
-              <AccordionContent className="pt-2 px-4 sm:px-6 pb-4 sm:pb-6 text-white/80">
+              <AccordionContent className="pt-2 px-2 sm:px-6 pb-4 sm:pb-6 text-white/80">
                 <div className="space-y-4 sm:space-y-6">
                   {(s.conceptMd || s.concept) && (
                     <div className="relative">
-                      <div className="absolute left-0 top-0 w-1 h-full bg-blue-500/30 rounded-full"></div>
-                      <div className="pl-4 sm:pl-6">
-                        <h3 className="text-white font-medium text-sm sm:text-lg mb-2 sm:mb-3 ">
+                      {/* <div className="absolute left-0 top-0 w-1 h-full bg-blue-500/30 rounded-full"></div> */}
+                      <div className="">
+                        <h3 className="text-white font-medium text-base sm:text-lg mb-2 sm:mb-3 ">
                           Key Concept
                         </h3>
                         <div className="text-sm sm:text-base rounded-lg border border-white/10 bg-white/5 px-4 py-3">
@@ -741,7 +741,7 @@ function ExplainView({ content }: { content: ExplainContent }) {
 
                   {Array.isArray(s.examples) && s.examples.length > 0 && (
                     <div className="space-y-3 sm:space-y-4">
-                      <h3 className="text-white font-medium text-sm sm:text-lg">
+                      <h3 className="text-white font-medium text-base sm:text-lg">
                         Examples
                       </h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
