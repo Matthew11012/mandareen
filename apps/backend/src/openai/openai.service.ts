@@ -1154,7 +1154,22 @@ export class OpenAIService {
     const sectionDirective = usingFallback
       ? `\n2) "sections": EXACTLY 1 item (one consolidated explanation) because this subchapter has no sub-subchapters. Title it after the line in the outline above and do NOT invent extra sections.`
       : `\n2) "sections": EXACTLY ${maxSections} items in the SAME ORDER as the outline lines above, one per outline line. Each section MUST correspond to the respective outline title (use it as section.title verbatim unless minor normalization is needed).`;
-    const sys = `You are a senior Mandarin curriculum designer. Create a comprehensive EXPLAIN-FIRST lesson grounded STRICTLY by the provided context. Your goal is to capture ALL relevant information from the context—do not summarize or truncate. Use Markdown formatting (headers, bold, lists, tables) in the conceptMd field. If a claim is not supported by the context, omit it. Return STRICT JSON.`;
+    const sys = `You are a senior Mandarin curriculum designer. Create a comprehensive EXPLAIN-FIRST lesson drawing exclusively from the provided context. Your goal is to capture ALL relevant information faithfully from the context—do not summarize or truncate. 
+    - Begin with a detailed prose introduction for each section, followed by a varied mix of paragraphs, bullet points containing key points, and tables containing inventories/comparisons/information (using Markdown formatting: headings, bold, lists, tables, etc.) within the "conceptMd" field.
+    - Alternate between formats for clarity; avoid redundancy or over-reliance on a single format.
+    - Only include claims, facts, or points grounded in the supplied text—ignore unsupported information.
+    - Do not truncate or condense: preserve the full scope and granularity of the context.
+    
+    \nOutput must be returned strictly as a well-formed JSON object, with the key "conceptMd" whose value is a Markdown-formatted string as described.
+    
+    \n**Important:**  
+    - Output only the strict JSON object as specified (no extra commentary or code blocks).  
+    - Markdown formatting inside the JSON string is required.
+    - If the context is longer or more complex, your output should expand accordingly to thoroughly cover all points and details.
+    
+    \n**Reminder:**  
+    Your objective is to generate a comprehensive, Markdown-formatted explanation-first Mandarin grammar lesson grounded strictly and exhaustively in the provided context, with all information captured without summarization or truncation, formatted as a JSON object.`;
+
     const user = `Title: ${args.title}
     \n${outlineLabel}\n${outlineLines}
     \nGrounding context (snippets — include ALL relevant details from this):\n${args.context}\n
@@ -1166,11 +1181,11 @@ export class OpenAIService {
     ${sectionDirective} Each section MUST include
     - "title": string (English or Chinese, matching the outline item),
     - "conceptMd": string — a comprehensive Markdown explanation covering ALL key points from the grounding context for this section. Use:
-      - **bold** for key terms
-      - Bullet lists for multiple points (keep bullets concise; group long lists into at most 5 bullets)
-      - Tables if comparing patterns or showing inventories
-      - Inline Chinese with pinyin where helpful
-      Include everything the context provides; do NOT summarize or abbreviate. Do NOT include meta notes about context.
+      - Begin with a short prose intro before any list or table.
+      - **Bold** key terms.
+      - Mix formats: paragraphs for flow, bullets only where concise, and tables for inventories/comparisons. Do not overuse any single format; avoid nested bullets and redundancy.
+      - Inline Chinese with pinyin where helpful.
+      Stay thorough but concise; include everything the context provides without summarizing away detail. Do NOT include meta notes about context.
     - "examples": array of representative examples from the context. Each example: { "zh": "...", "pinyin": "...", "en": "..." }.
       - When the context is an inventory/list (e.g., initials/finals), show the full set in a compact table, and include only 2-6 illustrative examples (not one per item).
       - Otherwise, include up to 6 examples total; avoid near-duplicate examples.
