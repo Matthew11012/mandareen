@@ -51,12 +51,20 @@ export function MarkdownRenderer({
             <em className="text-white/90 italic">{children}</em>
           ),
           ul: ({ children }) => (
-            <ul className="list-disc list-inside space-y-1 mb-3 text-white/80 ml-2">
+            <ul
+              className="list-disc list-inside space-y-1 mb-3 text-white/80 ml-2
+              [&_ul]:list-[circle] [&_ul_ul]:list-[square] [&_ul_ul_ul]:list-[disc]
+              [&_ol]:list-decimal [&_ol_ol]:list-[lower-alpha] [&_ol_ol_ol]:list-[lower-roman]"
+            >
               {children}
             </ul>
           ),
           ol: ({ children }) => (
-            <ol className="list-decimal list-inside space-y-1 mb-3 text-white/80 ml-2">
+            <ol
+              className="list-decimal list-inside space-y-1 mb-3 text-white/80 ml-2
+              [&_ol]:list-[lower-alpha] [&_ol_ol]:list-[lower-roman] [&_ol_ol_ol]:list-[decimal]
+              [&_ul]:list-[circle] [&_ul_ul]:list-[square]"
+            >
               {children}
             </ol>
           ),
