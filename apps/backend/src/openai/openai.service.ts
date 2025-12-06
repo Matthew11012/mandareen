@@ -1155,52 +1155,48 @@ export class OpenAIService {
       .join('\n');
     const sectionDirective = usingFallback
       ? `2) "sections": EXACTLY 1 item (one consolidated explanation) because this subchapter has no sub-subchapters. Title it after the line in the outline above and do NOT invent extra sections.`
-      : `2) "sections": EXACTLY ${maxSections} items and in the SAME ORDER as the outline lines above, one per outline line. Each section MUST correspond to the respective outline title (use it as section.title verbatim unless minor normalization is needed).`;
-    const sys = `You are a senior Mandarin curriculum designer. Create an EXPLAIN-FIRST lesson in English with Chinese examples. Be concise, accurate, and grounded STRICTLY by the provided outline and context. If a claim is not supported by the context, omit it. Return STRICT JSON.`;
+      : `2) "sections": EXACTLY ${maxSections} items in the SAME ORDER as the outline lines above, one per outline line. Each section MUST correspond to the respective outline title (use it as section.title verbatim unless minor normalization is needed).`;
+    const sys = `You are a senior Mandarin curriculum designer. Create a comprehensive EXPLAIN-FIRST lesson grounded STRICTLY by the provided context. Your goal is to capture ALL relevant information from the context—do not summarize or truncate. Use Markdown formatting (headers, bold, lists, tables) in the conceptMd field. If a claim is not supported by the context, omit it. Return STRICT JSON.`;
     const user = `Title: ${args.title}
     \n${outlineLabel}\n${outlineLines}
-    \nGrounding context (snippets):\n${args.context}\n
+    \nGrounding context (snippets — include ALL relevant details from this):\n${args.context}\n
 
-    \nConstruct (STRICT):
-    1) "overview": 2-4 sentences (English) summarizing what learners will learn.
-    ${sectionDirective} Each section must include:
-    - title (English or Chinese),
-    - concept (English),
-    - 2-3 examples with Chinese, pinyin, English,
-    - pitfalls (min 1 if applicable): {bad, good, note} all should be in english, emphasize minimal pairs/contrasts and "say X, not Y" patterns when relevant,
-    - 2 short checks: type tf|fill with prompt and answer.
-    \nReturn ONLY JSON with keys overview, sections.
-    \nEXAMPLE (shape only; keep content detailed and grounded):
+    \nConstruct (STRICT JSON):
+    1) "overview": 3-6 sentences (English) summarizing what learners will master. Be thorough.
+
+    ${sectionDirective} Each section MUST include:
+    - "title": string (English or Chinese, matching the outline item),
+    - "conceptMd": string — a comprehensive Markdown explanation covering ALL key points from the grounding context for this section. Use:
+      - **bold** for key terms
+      - Bullet lists for multiple points
+      - Tables if comparing patterns
+      - Inline Chinese with pinyin where helpful
+      Include everything the context provides; do NOT summarize or abbreviate.
+    - "examples": array of ALL relevant examples from the context. Each example: { "zh": "...", "pinyin": "...", "en": "..." }. Include as many as the context supports.
+    - "pitfalls": array of common mistakes. Each: { "bad": "...", "good": "...", "note": "..." }. Include ALL that apply from context. Can be empty array if none.
+    - "checks": array of 2-5 comprehension checks. Each: { "type": "tf"|"fill", "prompt": "...", "answer": "..." }.
+
+    \nReturn ONLY valid JSON with keys: overview, sections. No additional text.
+
+    \nSCHEMA EXAMPLE (structure only — your content should be much more detailed):
     {
-      "overview": "This subchapter explains basic phrase order and common particles.",
+      "overview": "This lesson covers the fundamental SVO word order in Mandarin and introduces the aspect particle 了. Learners will understand when and how to use these patterns through extensive examples.",
       "sections": [
         {
-          "title": "1. Word order: SVO",
-          "concept": "In Mandarin, the default order is Subject–Verb–Object.",
+          "title": "1.1.1 Word order: SVO",
+          "conceptMd": "In Mandarin, the **default sentence order** is **Subject–Verb–Object (SVO)**, similar to English.\\n\\n**Key points:**\\n- The subject comes first\\n- The verb follows immediately\\n- The object comes last\\n\\n| Pattern | Example |\\n|---------|---------|\\n| S + V + O | 我吃苹果 |\\n\\nUnlike English, Mandarin does **not** change word order for questions in most cases.",
           "examples": [
             { "zh": "我吃苹果。", "pinyin": "wǒ chī píngguǒ", "en": "I eat apples." },
-            { "zh": "他喝茶。", "pinyin": "tā hē chá", "en": "He drinks tea." }
+            { "zh": "他喝茶。", "pinyin": "tā hē chá", "en": "He drinks tea." },
+            { "zh": "她看书。", "pinyin": "tā kàn shū", "en": "She reads books." },
+            { "zh": "我们学中文。", "pinyin": "wǒmen xué zhōngwén", "en": "We study Chinese." }
           ],
           "pitfalls": [
-            { "bad": "我苹果吃。", "good": "我吃苹果。", "note": "Keep SVO order." }
+            { "bad": "我苹果吃。", "good": "我吃苹果。", "note": "Do not place the object before the verb." }
           ],
           "checks": [
-            { "type": "tf", "prompt": "Mandarin defaults to SVO order.", "answer": "T" },
-            { "type": "fill", "prompt": "他__饭。 (eat)", "answer": "吃" }
-          ]
-        },
-        {
-          "title": "2. Particle 了 (le)",
-          "concept": "了 often marks a completed action.",
-          "examples": [
-            { "zh": "我吃了饭。", "pinyin": "wǒ chī le fàn", "en": "I ate (already)." }
-          ],
-          "pitfalls": [
-            { "bad": "Treat syllables like English 'lettuce' parts (no meaning).", "good": "Note meanings of individual Mandarin syllables.", "note": "With very few exceptions (e.g., suffix 子), syllables carry meaning." }
-          ],
-          "checks": [
-            { "type": "tf", "prompt": "了 always indicates past tense.", "answer": "F" },
-            { "type": "fill", "prompt": "他__了茶。 (drink)", "answer": "喝" }
+            { "type": "tf", "prompt": "Mandarin uses SVO order by default.", "answer": "T" },
+            { "type": "fill", "prompt": "他___饭。 (eat)", "answer": "吃" }
           ]
         }
       ],
