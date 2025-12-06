@@ -550,31 +550,7 @@ export class CurriculumService {
       outlineIsFallback: !hasSubsections,
       context: combinedContext,
       maxSections: sectionCount,
-      preferMicroPassageChars: (ctx?.chunks?.length || 0) > 12 ? 280 : 180,
     });
-    // Optionally enrich the microPassage with segments too
-    const micro = explain?.microPassage || null;
-    if (
-      micro &&
-      typeof micro?.hanzi === 'string' &&
-      micro.hanzi.trim().length
-    ) {
-      try {
-        const segs = await this.segmentationService.segmentText(micro.hanzi);
-        (micro as any).segments = segs.map((s) => ({
-          text: s.word,
-          startIndex: s.startIndex,
-          endIndex: s.endIndex,
-          isWord: s.isWord,
-          hskLevel: s.hskLevel,
-          pinyin: toToneMarks((s.pinyin || '').toLowerCase()),
-          definition: s.definition,
-          definitions: s.definitions,
-        }));
-      } catch {
-        // ignore segmentation errors for micro passage
-      }
-    }
 
     const mappedSections = Array.isArray(explain?.sections)
       ? explain.sections.map((s: any) => {
@@ -589,9 +565,12 @@ export class CurriculumService {
             ).values(),
           ).slice(0, 6);
 
+          const checks = this.normalizeChecksToTf(s.checks);
+
           return {
             ...s,
             examples: dedupedExamples,
+            checks,
             // keep both for backward compatibility
             concept: s.conceptMd || s.concept || '',
             conceptMd: s.conceptMd || s.concept || '',
@@ -604,7 +583,6 @@ export class CurriculumService {
       type: 'GRAMMAR',
       overview: explain?.overview || '',
       sections: mappedSections,
-      microPassage: micro,
     };
     await this.prisma.curriculumActivity.create({
       data: { lessonId, type: 'GRAMMAR' as any, levelBand, content },
@@ -914,6 +892,30 @@ export class CurriculumService {
     const subSubMatch = text.match(/(\d+\.\d+)/);
     if (subSubMatch) return subSubMatch[1];
     return `section-${chunk?.sectionId || 'unknown'}`;
+  }
+
+  private normalizeChecksToTf(
+    checks: any[],
+  ): Array<{ type: 'tf'; prompt: string; answer: 'T' | 'F' }> {
+    if (!Array.isArray(checks)) return [];
+    const out: Array<{ type: 'tf'; prompt: string; answer: 'T' | 'F' }> = [];
+    for (const c of checks) {
+      if (!c) continue;
+      const prompt = typeof c.prompt === 'string' ? c.prompt.trim() : '';
+      if (!prompt) continue;
+      const ansRaw =
+        typeof c.answer === 'string'
+          ? c.answer.trim().toUpperCase()
+          : typeof c.answer === 'boolean'
+            ? c.answer
+              ? 'T'
+              : 'F'
+            : '';
+      const answer: 'T' | 'F' = ansRaw === 'F' ? 'F' : 'T';
+      out.push({ type: 'tf', prompt, answer });
+      if (out.length >= 5) break;
+    }
+    return out;
   }
 
   private dedupeContextLines(text: string): string {

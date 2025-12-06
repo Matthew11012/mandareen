@@ -1163,9 +1163,9 @@ export class OpenAIService {
     \nOutput must be returned strictly as a well-formed JSON object, with the key "conceptMd" whose value is a Markdown-formatted string as described.
     
     \n**Important:**  
-    - Output only the strict JSON object as specified (no extra commentary or code blocks).  
+    - Output only the JSON object (no extra commentary or code blocks).  
     - Markdown formatting inside the JSON string is required.
-    - If the context is longer or more complex, your output should expand accordingly to thoroughly cover all points and details.
+    - Expand proportionally with context complexity to cover all points thoroughly.
     
     \n**Reminder:**  
     Your objective is to generate a comprehensive, Markdown-formatted explanation-first Mandarin grammar lesson grounded strictly and exhaustively in the provided context, with all information captured without summarization or truncation, formatted as a JSON object.`;
@@ -1183,14 +1183,14 @@ export class OpenAIService {
     - "conceptMd": string — a comprehensive Markdown explanation covering ALL key points from the grounding context for this section. Use:
       - Begin with a short prose intro before any list or table.
       - **Bold** key terms.
-      - Mix formats: paragraphs for flow, bullets only where concise, and tables for inventories/comparisons. Do not overuse any single format; avoid nested bullets and redundancy.
+      - Mix formats: paragraphs for flow, bullets where concise, tables for inventories/comparisons. Avoid overusing any single format; avoid nested bullets and redundancy.
       - Inline Chinese with pinyin where helpful.
       Stay thorough but concise; include everything the context provides without summarizing away detail. Do NOT include meta notes about context.
     - "examples": array of representative examples from the context. Each example: { "zh": "...", "pinyin": "...", "en": "..." }.
       - When the context is an inventory/list (e.g., initials/finals), show the full set in a compact table, and include only 2-6 illustrative examples (not one per item).
       - Otherwise, include up to 6 examples total; avoid near-duplicate examples.
     - "pitfalls": array of common mistakes. Each: { "bad": "...", "good": "...", "note": "..." }. Include ALL that apply from context. Can be empty array if none.
-    - "checks": array of 2-5 comprehension checks. Each: { "type": "tf"|"fill", "prompt": "...", "answer": "..." }.
+    - "checks": array of 1-3 comprehension checks (decide the amount based on the section's complexity). Use T/F style: { "type": "tf", "prompt": "...", "answer": "T"|"F" }. Keep them concise and directly tied to the section’s points.
 
     \nReturn ONLY valid JSON with keys: overview, sections. No additional text.
 
@@ -1211,8 +1211,7 @@ export class OpenAIService {
             { "bad": "我苹果吃。", "good": "我吃苹果。", "note": "Do not place the object before the verb." }
           ],
           "checks": [
-            { "type": "tf", "prompt": "Mandarin uses SVO order by default.", "answer": "T" },
-            { "type": "fill", "prompt": "他___饭。 (eat)", "answer": "吃" }
+            { "type": "tf", "prompt": "Mandarin uses SVO order by default.", "answer": "T" }       
           ]
         }
       ],
@@ -1293,9 +1292,9 @@ export class OpenAIService {
                       items: {
                         type: 'object',
                         properties: {
-                          type: { type: 'string', enum: ['tf', 'fill'] },
+                          type: { type: 'string', enum: ['tf'] },
                           prompt: { type: 'string' },
-                          answer: { type: 'string' },
+                          answer: { type: 'string', enum: ['T', 'F'] },
                         },
                         required: ['type', 'prompt', 'answer'],
                         additionalProperties: false,

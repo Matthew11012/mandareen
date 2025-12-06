@@ -82,12 +82,6 @@ type ExplainContent = {
   type?: "GRAMMAR";
   overview?: string;
   sections?: ExplainSection[];
-  microPassage?: {
-    hanzi?: string;
-    pinyin?: string;
-    translation?: string;
-    segments?: TokenLike[];
-  } | null;
 };
 
 type QuizItem = {
@@ -255,7 +249,6 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
     [lessonData, lessonAccess]
   );
   const hasExplain = activities.some((a) => a.type === "GRAMMAR");
-  const hasRead = activities.some((a) => a.type === "READ");
   const hasQuiz = activities.some((a) => a.type === "QUIZ");
 
   async function onGenerate() {
@@ -381,7 +374,7 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
         <div className="flex-1 min-w-0 overflow-y-auto overscroll-contain">
           <div className="p-3 sm:p-6 pt-0 space-y-4 sm:space-y-6">
             <nav
-              className="sticky top-0 z-40 bg-[#222831] py-2 -mx-3 sm:-mx-6 px-3 sm:px-6 mb-2"
+              className="sticky top-0 z-40 bg-[#222831] py-0 -mx-3 sm:-mx-6 px-3 sm:px-6 mb-2"
               aria-label="Breadcrumb"
             >
               <div className="flex items-center justify-between gap-2">
@@ -415,7 +408,7 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
                       : "Open curriculum navigation"
                   }
                   aria-expanded={isSidebarOpen}
-                  className="md:hidden p-2 rounded-lg hover:bg-white/5 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#222831]"
+                  className="md:hidden rounded-lg hover:bg-white/5 transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#222831]"
                 >
                   <Menu className="w-5 h-5 text-white/80" aria-hidden="true" />
                 </button>
@@ -558,34 +551,6 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
                       )
                       .map((a) => (
                         <ExplainView key={a.id} content={a.content} />
-                      ))}
-                    {activities
-                      .filter(
-                        (a): a is Extract<ActivityUnion, { type: "GRAMMAR" }> =>
-                          a.type === "GRAMMAR"
-                      )
-                      .map((a) => (
-                        <ExplainMicroPassage
-                          key={`micro-${a.id}`}
-                          content={a.content}
-                        />
-                      ))}
-                  </section>
-                )}
-
-                {/* Micro Passage (READ) */}
-                {hasRead && (
-                  <section className="rounded-xl sm:p-2">
-                    <h2 className="text-lg sm:text-xl font-semibold mb-2">
-                      Micro passage
-                    </h2>
-                    {activities
-                      .filter(
-                        (a): a is Extract<ActivityUnion, { type: "READ" }> =>
-                          a.type === "READ"
-                      )
-                      .map((a) => (
-                        <ReadView key={a.id} content={a.content} />
                       ))}
                   </section>
                 )}
@@ -749,20 +714,20 @@ function ExplainView({ content }: { content: ExplainContent }) {
             <AccordionItem
               key={idx}
               value={`section-${idx}`}
-              className="border border-white/10 rounded-lg overflow-hidden hover:border-white/20 transition-all duration-200"
+              className="border border-transparent md:border md:border-white/12 md:bg-transparent rounded-lg overflow-hidden hover:border-white/25 transition-all duration-200"
             >
-              <AccordionTrigger className="px-4 sm:px-6 py-3 sm:py-4 text-white hover:no-underline hover:bg-white/5 transition-all duration-200 cursor-pointer">
+              <AccordionTrigger className="px-2 sm:px-6 py-3 sm:py-4 text-white hover:no-underline hover:bg-white/5 transition-all duration-200 cursor-pointer">
                 <h3 className="font-semibold text-base sm:text-lg text-left">
                   {s.title}
                 </h3>
               </AccordionTrigger>
-              <AccordionContent className="pt-2 px-4 sm:px-6 pb-4 sm:pb-6 text-white/80">
+              <AccordionContent className="pt-2 px-2 sm:px-6 pb-4 sm:pb-6 text-white/80">
                 <div className="space-y-4 sm:space-y-6">
                   {(s.conceptMd || s.concept) && (
                     <div className="relative">
-                      <div className="absolute left-0 top-0 w-1 h-full bg-blue-500/30 rounded-full"></div>
-                      <div className="pl-4 sm:pl-6">
-                        <h3 className="text-white font-medium text-sm sm:text-lg mb-2 sm:mb-3 ">
+                      {/* <div className="absolute left-0 top-0 w-1 h-full bg-blue-500/30 rounded-full"></div> */}
+                      <div className="">
+                        <h3 className="text-white font-medium text-base sm:text-lg mb-2 sm:mb-3 ">
                           Key Concept
                         </h3>
                         <div className="text-sm sm:text-base rounded-lg border border-white/10 bg-white/5 px-4 py-3">
@@ -776,7 +741,7 @@ function ExplainView({ content }: { content: ExplainContent }) {
 
                   {Array.isArray(s.examples) && s.examples.length > 0 && (
                     <div className="space-y-3 sm:space-y-4">
-                      <h3 className="text-white font-medium text-sm sm:text-lg">
+                      <h3 className="text-white font-medium text-base sm:text-lg">
                         Examples
                       </h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -872,764 +837,22 @@ function ExplainView({ content }: { content: ExplainContent }) {
                   )}
 
                   {Array.isArray(s.checks) && s.checks.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="text-white font-medium text-base">
-                        Quick Checks
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {s.checks.map(
-                          (
-                            c: {
-                              type: "tf" | "fill";
-                              prompt: string;
-                              answer?: string;
-                            },
-                            i: number
-                          ) => (
-                            <div
-                              key={i}
-                              className="p-4 border border-white/10 rounded-lg hover:border-white/20 hover:bg-white/5 transition-all duration-200"
-                            >
-                              <div className="text-white/90 text-sm mb-2">
-                                {c.prompt}
-                              </div>
-                              {typeof c.answer === "string" && (
-                                <div className="text-blue-400 text-xs font-mono bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20">
-                                  Answer: {c.answer}
-                                </div>
-                              )}
-                            </div>
-                          )
-                        )}
-                      </div>
-                    </div>
+                    <ComprehensionView
+                      questions={s.checks.map((c) => ({
+                        type: "tf" as const,
+                        prompt: c.prompt,
+                        answer:
+                          typeof c.answer === "string"
+                            ? c.answer.trim().toUpperCase() === "T"
+                            : undefined,
+                      }))}
+                    />
                   )}
                 </div>
               </AccordionContent>
             </AccordionItem>
           ))}
         </Accordion>
-      )}
-    </div>
-  );
-}
-
-function ExplainMicroPassage({ content }: { content: ExplainContent }) {
-  const [showPinyin, setShowPinyin] = useState<boolean>(false);
-  // Rich popup like lessons viewer + add-to-flashcards
-  const [popup, setPopup] = useState<{
-    open: boolean;
-    x: number;
-    y: number;
-    anchorH?: number;
-    word: string;
-    pinyin?: string;
-    definition?: string;
-    definitions?: string[];
-    hskLevel?: number;
-    tokenIndex?: number;
-  }>({ open: false, x: 0, y: 0, word: "" });
-  const popupRef = useRef<HTMLDivElement | null>(null);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const [popupPos, setPopupPos] = useState<{
-    left: number;
-    top: number;
-  } | null>(null);
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
-        setPopup((p) => ({ ...p, open: false }));
-      }
-    };
-    if (popup.open) document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [popup.open]);
-  useEffect(() => {
-    if (!popup.open) {
-      setPopupPos(null);
-      return;
-    }
-    const modal = popupRef.current;
-    const container = contentRef.current;
-    if (!modal || !container) return;
-    const modalRect = modal.getBoundingClientRect();
-    const contRect = container.getBoundingClientRect();
-    const margin = 8;
-    const contW = contRect.width;
-    const contH = contRect.height;
-    const toolbar = document.querySelector(
-      '[role="toolbar"][aria-label="Lesson controls"]'
-    ) as HTMLElement | null;
-    const toolbarRect = toolbar?.getBoundingClientRect();
-    const toolbarBottom = toolbarRect ? toolbarRect.bottom : 0;
-    const visibleTopInContainer = Math.max(0, toolbarBottom - contRect.top);
-    const visibleBottomInContainer = Math.min(
-      contH,
-      Math.max(0, window.innerHeight - contRect.top)
-    );
-    let left = popup.x - modalRect.width / 2;
-    left = Math.max(margin, Math.min(left, contW - modalRect.width - margin));
-    const anchorH = popup.anchorH || 0;
-    const availableAbove = popup.y - visibleTopInContainer - margin;
-    const availableBelow =
-      visibleBottomInContainer - (popup.y + anchorH) - margin;
-    let top: number;
-    if (modalRect.height <= availableAbove || availableBelow < 0) {
-      top = Math.max(
-        visibleTopInContainer + margin,
-        popup.y - modalRect.height - margin
-      );
-    } else if (modalRect.height <= availableBelow || availableAbove < 0) {
-      top = Math.min(
-        visibleBottomInContainer - modalRect.height - margin,
-        popup.y + anchorH + margin
-      );
-    } else {
-      top = Math.min(
-        visibleBottomInContainer - modalRect.height - margin,
-        Math.max(visibleTopInContainer + margin, popup.y + anchorH + margin)
-      );
-    }
-    setPopupPos({ left, top });
-  }, [popup.open, popup.x, popup.y, popup.anchorH]);
-
-  const tokens = Array.isArray(content?.microPassage?.segments)
-    ? content!.microPassage!.segments!
-    : [];
-  if (!content?.microPassage?.hanzi) return null;
-  return (
-    <div className="mt-4 sm:mt-6" ref={contentRef}>
-      <h3 className="text-sm sm:text-base font-semibold text-white mb-2">
-        Micro passage
-      </h3>
-      <div className="rounded-xl border border-[#404040] bg-[#2e323a] p-3 sm:p-4 relative">
-        <div className="flex items-center justify-end mb-2">
-          <button
-            onClick={() => setShowPinyin((v) => !v)}
-            className={`px-2 py-1 text-xs rounded border ${
-              showPinyin
-                ? "border-[#4040f2] text-[#9aa6ff]"
-                : "border-[#404040] text-[#a6a6a6]"
-            } cursor-pointer`}
-            type="button"
-            aria-pressed={showPinyin}
-            aria-label={showPinyin ? "Hide pinyin" : "Show pinyin"}
-          >
-            Pinyin {showPinyin ? "On" : "Off"}
-          </button>
-        </div>
-        <p
-          className="text-white text-base sm:text-lg leading-8"
-          aria-label="Micro passage"
-        >
-          {tokens.length > 0 ? (
-            tokens.map((t, i) => (
-              <span
-                key={i}
-                role="button"
-                tabIndex={0}
-                data-token-id={i}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ")
-                    (e.currentTarget as HTMLSpanElement).click();
-                  if (e.key === "Escape")
-                    setPopup((p) => ({ ...p, open: false }));
-                }}
-                onClick={(e) => {
-                  const anchor = (
-                    e.currentTarget as HTMLSpanElement
-                  ).getBoundingClientRect();
-                  const container = contentRef.current?.getBoundingClientRect();
-                  const px = container
-                    ? anchor.left - container.left + anchor.width / 2
-                    : e.clientX;
-                  const py = container ? anchor.top - container.top : e.clientY;
-                  setPopup({
-                    open: true,
-                    x: px,
-                    y: py,
-                    anchorH: anchor.height,
-                    word: (t.text ?? t.zh ?? "").toString(),
-                    pinyin: t.pinyin,
-                    definition: t.definition ?? t.en,
-                    definitions: t.definitions,
-                    hskLevel: t.hskLevel,
-                    tokenIndex: i,
-                  });
-                }}
-                className={`inline-flex flex-col items-center align-top mr-[2px]`}
-              >
-                {showPinyin ? (
-                  t.isWord && t.pinyin ? (
-                    <span className="text-[10px] sm:text-xs text-[#9aa6ff] leading-none mb-[1px] sm:mb-[2px]">
-                      {t.pinyin}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] sm:text-xs opacity-0 leading-none mb-[1px] sm:mb-[2px] select-none">
-                      •
-                    </span>
-                  )
-                ) : null}
-                <span
-                  className={`px-[1px] rounded text-md sm:text-lg ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
-                >
-                  {t.text ?? t.zh ?? ""}
-                </span>
-              </span>
-            ))
-          ) : (
-            <span>{content.microPassage.hanzi}</span>
-          )}
-        </p>
-        {content.microPassage.translation && (
-          <div className="text-white/70 mt-2 text-sm sm:text-base">
-            {content.microPassage.translation}
-          </div>
-        )}
-        {/* Desktop popup */}
-        {popup.open && (
-          <div
-            ref={popupRef}
-            style={{
-              position: "absolute",
-              left: popupPos ? popupPos.left : popup.x,
-              top: popupPos ? popupPos.top : popup.y,
-              zIndex: 10,
-              visibility: popupPos ? "visible" : "hidden",
-              transform: popupPos
-                ? "none"
-                : "translate(-50%, calc(-100% - 8px))",
-            }}
-            className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="font-bold text-white text-lg truncate">
-                {popup.word}
-              </div>
-              {typeof popup.hskLevel === "number" && (
-                <span
-                  className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
-                    popup.hskLevel
-                  )}`}
-                  aria-label={`HSK level ${popup.hskLevel}`}
-                >
-                  HSK {popup.hskLevel}
-                </span>
-              )}
-            </div>
-            {popup.pinyin && (
-              <div className="text-[#c6ceff] text-sm font-medium truncate">
-                {popup.pinyin}
-              </div>
-            )}
-            {popup.definition ? (
-              <div className="text-xs text-[#a6a6a6] mt-2">
-                {popup.definition}
-              </div>
-            ) : null}
-            <div className="mt-3 pt-3 border-t border-[#404040]">
-              <button
-                onClick={async () => {
-                  try {
-                    const ctx = {
-                      hanzi: popup.word,
-                      pinyin: popup.pinyin,
-                      translation:
-                        popup.definition ||
-                        (Array.isArray(popup.definitions) &&
-                        popup.definitions.length > 0
-                          ? popup.definitions[0]
-                          : undefined),
-                    };
-                    const { post } = await import("@/lib/http/http");
-                    await post("flashcards", {
-                      hanzi: popup.word,
-                      sentenceHanzi: ctx.hanzi,
-                      sentencePinyin: ctx.pinyin,
-                      sentenceTranslation: ctx.translation,
-                      vocabPinyin: popup.pinyin,
-                      vocabDefinition:
-                        Array.isArray(popup.definitions) &&
-                        popup.definitions.length > 0
-                          ? popup.definitions[0]
-                          : popup.definition,
-                    });
-                    toast.success("Added to flashcards");
-                  } catch {
-                    toast.error("Failed to add to flashcards");
-                  } finally {
-                    setPopup((p) => ({ ...p, open: false }));
-                  }
-                }}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="text-sm font-inter">Add to Flashcards</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Mobile top sheet popup */}
-        <AnimatePresence>
-          {popup.open && (
-            <motion.div
-              initial={{ y: "-100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "-100%" }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 30,
-                duration: 0.3,
-              }}
-              className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
-            >
-              <div className="max-w-sm mx-auto">
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div className="font-bold text-white text-lg truncate">
-                    {popup.word}
-                  </div>
-                  {typeof popup.hskLevel === "number" && (
-                    <span
-                      className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
-                        popup.hskLevel
-                      )}`}
-                    >
-                      HSK {popup.hskLevel}
-                    </span>
-                  )}
-                </div>
-                {popup.pinyin && (
-                  <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
-                    {popup.pinyin}
-                  </div>
-                )}
-                {popup.definition ? (
-                  <div className="text-xs text-[#a6a6a6] mb-3">
-                    {popup.definition}
-                  </div>
-                ) : null}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setPopup((p) => ({ ...p, open: false }));
-                    }}
-                    className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
-                  >
-                    Close
-                  </button>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const ctx = {
-                          hanzi: popup.word,
-                          pinyin: popup.pinyin,
-                          translation:
-                            popup.definition ||
-                            (Array.isArray(popup.definitions) &&
-                            popup.definitions.length > 0
-                              ? popup.definitions[0]
-                              : undefined),
-                        };
-                        const { post } = await import("@/lib/http/http");
-                        await post("flashcards", {
-                          hanzi: popup.word,
-                          sentenceHanzi: ctx.hanzi,
-                          sentencePinyin: ctx.pinyin,
-                          sentenceTranslation: ctx.translation,
-                          vocabPinyin: popup.pinyin,
-                          vocabDefinition:
-                            Array.isArray(popup.definitions) &&
-                            popup.definitions.length > 0
-                              ? popup.definitions[0]
-                              : popup.definition,
-                        });
-                        toast.success("Added to flashcards");
-                      } catch {
-                        toast.error("Failed to add to flashcards");
-                      } finally {
-                        setPopup((p) => ({ ...p, open: false }));
-                      }
-                    }}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm font-inter">
-                      Add to Flashcards
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-function ReadView({ content }: { content: ReadContent }) {
-  // Popup replicated from lessons viewer for consistent UX
-  const [showPinyin, setShowPinyin] = useState<boolean>(false);
-  const [popup, setPopup] = useState<{
-    open: boolean;
-    x: number;
-    y: number;
-    anchorH?: number;
-    word: string;
-    pinyin?: string;
-    definition?: string;
-    definitions?: string[];
-    hskLevel?: number;
-  }>({ open: false, x: 0, y: 0, word: "" });
-  const popupRef = useRef<HTMLDivElement | null>(null);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const [popupPos, setPopupPos] = useState<{
-    left: number;
-    top: number;
-  } | null>(null);
-
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
-        setPopup((p) => ({ ...p, open: false }));
-      }
-    };
-    if (popup.open) document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [popup.open]);
-
-  useEffect(() => {
-    if (!popup.open) {
-      setPopupPos(null);
-      return;
-    }
-    const modal = popupRef.current;
-    const container = contentRef.current;
-    if (!modal || !container) return;
-    const modalRect = modal.getBoundingClientRect();
-    const contRect = container.getBoundingClientRect();
-    const margin = 8;
-    const contW = contRect.width;
-    const contH = contRect.height;
-    // Visible region inside container
-    const toolbar = document.querySelector(
-      '[role="toolbar"][aria-label="Lesson controls"]'
-    ) as HTMLElement | null;
-    const toolbarRect = toolbar?.getBoundingClientRect();
-    const toolbarBottom = toolbarRect ? toolbarRect.bottom : 0;
-    const visibleTopInContainer = Math.max(0, toolbarBottom - contRect.top);
-    const visibleBottomInContainer = Math.min(
-      contH,
-      Math.max(0, window.innerHeight - contRect.top)
-    );
-    // Horizontal center, clamp
-    let left = popup.x - modalRect.width / 2;
-    left = Math.max(margin, Math.min(left, contW - modalRect.width - margin));
-    // Vertical above/below
-    const anchorH = popup.anchorH || 0;
-    const availableAbove = popup.y - visibleTopInContainer - margin;
-    const availableBelow =
-      visibleBottomInContainer - (popup.y + anchorH) - margin;
-    let top: number;
-    if (modalRect.height <= availableAbove || availableBelow < 0) {
-      top = Math.max(
-        visibleTopInContainer + margin,
-        popup.y - modalRect.height - margin
-      );
-    } else if (modalRect.height <= availableBelow || availableAbove < 0) {
-      top = Math.min(
-        visibleBottomInContainer - modalRect.height - margin,
-        popup.y + anchorH + margin
-      );
-    } else {
-      top = Math.min(
-        visibleBottomInContainer - modalRect.height - margin,
-        Math.max(visibleTopInContainer + margin, popup.y + anchorH + margin)
-      );
-    }
-    setPopupPos({ left, top });
-  }, [popup.open, popup.x, popup.y, popup.anchorH]);
-
-  const tokens = Array.isArray(content?.segments) ? content.segments : [];
-  return (
-    <div className="space-y-2 sm:space-y-3" ref={contentRef}>
-      <div className="rounded-xl sm:border border-[#404040] sm:bg-[#2e323a] sm:p-4 relative mb-4">
-        <div className="flex items-center justify-end mb-2">
-          <button
-            onClick={() => setShowPinyin((v) => !v)}
-            className={`px-2 py-1 text-xs rounded border ${
-              showPinyin
-                ? "border-[#4040f2] text-[#9aa6ff]"
-                : "border-[#404040] text-[#a6a6a6]"
-            } cursor-pointer`}
-            type="button"
-            aria-pressed={showPinyin}
-            aria-label={showPinyin ? "Hide pinyin" : "Show pinyin"}
-          >
-            Pinyin {showPinyin ? "On" : "Off"}
-          </button>
-        </div>
-        <p className="text-white text-lg leading-8" aria-label="Micro passage">
-          {tokens.length > 0 ? (
-            tokens.map((t, i) => (
-              <span
-                key={i}
-                role="button"
-                tabIndex={0}
-                data-token-id={i}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ")
-                    (e.currentTarget as HTMLSpanElement).click();
-                  if (e.key === "Escape")
-                    setPopup((p) => ({ ...p, open: false }));
-                }}
-                onClick={(e) => {
-                  const anchor = (
-                    e.currentTarget as HTMLSpanElement
-                  ).getBoundingClientRect();
-                  const container = contentRef.current?.getBoundingClientRect();
-                  const px = container
-                    ? anchor.left - container.left + anchor.width / 2
-                    : e.clientX;
-                  const py = container ? anchor.top - container.top : e.clientY;
-                  setPopup({
-                    open: true,
-                    x: px,
-                    y: py,
-                    anchorH: anchor.height,
-                    word: (t.text ?? t.zh ?? "").toString(),
-                    pinyin: t.pinyin,
-                    definition: t.definition ?? t.en,
-                    definitions: t.definitions,
-                    hskLevel: t.hskLevel,
-                  });
-                }}
-                className={`inline-flex flex-col items-center align-top mr-[2px]`}
-              >
-                {showPinyin ? (
-                  t.isWord && t.pinyin ? (
-                    <span className="text-[10px] sm:text-xs text-[#9aa6ff] leading-none mb-[1px] sm:mb-[2px]">
-                      {t.pinyin}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] sm:text-xs opacity-0 leading-none mb-[1px] sm:mb-[2px] select-none">
-                      •
-                    </span>
-                  )
-                ) : null}
-                <span
-                  className={`px-[1px] rounded text-md sm:text-lg ${t.isWord ? "hover:bg-[#404040] cursor-pointer" : ""}`}
-                >
-                  {t.text ?? t.zh ?? ""}
-                </span>
-              </span>
-            ))
-          ) : (
-            <span>{content?.passage?.hanzi}</span>
-          )}
-        </p>
-        {content?.passage?.translation && (
-          <div className="text-white/70 mt-2 text-sm sm:text-base">
-            {content.passage.translation}
-          </div>
-        )}
-        {/* Desktop popup */}
-        {popup.open && (
-          <div
-            ref={popupRef}
-            style={{
-              position: "absolute",
-              left: popupPos ? popupPos.left : popup.x,
-              top: popupPos ? popupPos.top : popup.y,
-              zIndex: 10,
-              visibility: popupPos ? "visible" : "hidden",
-              transform: popupPos
-                ? "none"
-                : "translate(-50%, calc(-100% - 8px))",
-            }}
-            className="hidden sm:block bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-64"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="font-bold text-white text-lg truncate">
-                {popup.word}
-              </div>
-              {typeof popup.hskLevel === "number" && (
-                <span
-                  className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
-                    popup.hskLevel
-                  )}`}
-                  aria-label={`HSK level ${popup.hskLevel}`}
-                >
-                  HSK {popup.hskLevel}
-                </span>
-              )}
-            </div>
-            {popup.pinyin && (
-              <div className="text-[#c6ceff] text-sm font-medium truncate">
-                {popup.pinyin}
-              </div>
-            )}
-            {Array.isArray(popup.definitions) &&
-            popup.definitions.length > 0 ? (
-              <div className="text-xs text-[#a6a6a6] mt-2 space-y-1">
-                {popup.definitions.map((d, i) => (
-                  <div key={i}>• {d}</div>
-                ))}
-              </div>
-            ) : popup.definition ? (
-              <div className="text-xs text-[#a6a6a6] mt-2">
-                {popup.definition}
-              </div>
-            ) : null}
-            <div className="mt-3 pt-3 border-t border-[#404040]">
-              <button
-                onClick={async () => {
-                  try {
-                    const ctx = {
-                      hanzi: popup.word,
-                      pinyin: popup.pinyin,
-                      translation:
-                        popup.definition ||
-                        (Array.isArray(popup.definitions) &&
-                        popup.definitions.length > 0
-                          ? popup.definitions[0]
-                          : undefined),
-                    };
-                    const { post } = await import("@/lib/http/http");
-                    await post("flashcards", {
-                      hanzi: popup.word,
-                      sentenceHanzi: ctx.hanzi,
-                      sentencePinyin: ctx.pinyin,
-                      sentenceTranslation: ctx.translation,
-                      vocabPinyin: popup.pinyin,
-                      vocabDefinition:
-                        Array.isArray(popup.definitions) &&
-                        popup.definitions.length > 0
-                          ? popup.definitions[0]
-                          : popup.definition,
-                    });
-                    toast.success("Added to flashcards");
-                  } catch {
-                    toast.error("Failed to add to flashcards");
-                  } finally {
-                    setPopup((p) => ({ ...p, open: false }));
-                  }
-                }}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="text-sm font-inter">Add to Flashcards</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Mobile top sheet popup */}
-        <AnimatePresence>
-          {popup.open && (
-            <motion.div
-              initial={{ y: "-100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "-100%" }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                damping: 30,
-                duration: 0.3,
-              }}
-              className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[#2e323a] p-4"
-            >
-              <div className="max-w-sm mx-auto">
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div className="font-bold text-white text-lg truncate">
-                    {popup.word}
-                  </div>
-                  {typeof popup.hskLevel === "number" && (
-                    <span
-                      className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
-                        popup.hskLevel
-                      )}`}
-                    >
-                      HSK {popup.hskLevel}
-                    </span>
-                  )}
-                </div>
-                {popup.pinyin && (
-                  <div className="text-[#c6ceff] text-sm font-medium truncate mb-2">
-                    {popup.pinyin}
-                  </div>
-                )}
-                {Array.isArray(popup.definitions) &&
-                popup.definitions.length > 0 ? (
-                  <div className="text-xs text-[#a6a6a6] mb-3 space-y-1">
-                    {popup.definitions.map((d, i) => (
-                      <div key={i}>• {d}</div>
-                    ))}
-                  </div>
-                ) : popup.definition ? (
-                  <div className="text-xs text-[#a6a6a6] mb-3">
-                    {popup.definition}
-                  </div>
-                ) : null}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setPopup((p) => ({ ...p, open: false }));
-                    }}
-                    className="px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] text-[#a6a6a6] cursor-pointer text-sm"
-                  >
-                    Close
-                  </button>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const ctx = {
-                          hanzi: popup.word,
-                          pinyin: popup.pinyin,
-                          translation:
-                            popup.definition ||
-                            (Array.isArray(popup.definitions) &&
-                            popup.definitions.length > 0
-                              ? popup.definitions[0]
-                              : undefined),
-                        };
-                        const { post } = await import("@/lib/http/http");
-                        await post("flashcards", {
-                          hanzi: popup.word,
-                          sentenceHanzi: ctx.hanzi,
-                          sentencePinyin: ctx.pinyin,
-                          sentenceTranslation: ctx.translation,
-                          vocabPinyin: popup.pinyin,
-                          vocabDefinition:
-                            Array.isArray(popup.definitions) &&
-                            popup.definitions.length > 0
-                              ? popup.definitions[0]
-                              : popup.definition,
-                        });
-                        toast.success("Added to flashcards");
-                      } catch {
-                        toast.error("Failed to add to flashcards");
-                      } finally {
-                        setPopup((p) => ({ ...p, open: false }));
-                      }
-                    }}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[#4040f2] text-white rounded-lg hover:bg-[#3636d9] transition-colors duration-200 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm font-inter">
-                      Add to Flashcards
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-      {Array.isArray(content?.questions) && content.questions.length > 0 && (
-        <ComprehensionView questions={content.questions} />
       )}
     </div>
   );
