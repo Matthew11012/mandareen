@@ -753,10 +753,7 @@ export class OpenAIService {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const n = Math.min(Math.max(args.numItems || 5, 3), 8);
     const sys = `You are a precise Mandarin pedagogy expert. Create fair MCQs that directly test comprehension of the given READ and GRAMMAR. Include at least one error-recognition item (choose the incorrect sentence) and for the options make it primarily in english for this. Provide brief rationales.`;
-    const user = `READ (Chinese/translation):
-    ${JSON.stringify(args.read || {}).slice(0, 4000)}
-
-    \nGRAMMAR (notes/tips):
+    const user = `GRAMMAR (notes/tips):
     ${JSON.stringify(args.grammar || {}).slice(0, 4000)}
 
     \nOptional grounding context:${(args.context || '').slice(0, 4000)}

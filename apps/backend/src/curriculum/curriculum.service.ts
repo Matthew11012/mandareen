@@ -386,32 +386,19 @@ export class CurriculumService {
     const has = (t: string) =>
       existing.some((e) => e.type === t && e.levelBand === levelBand);
 
-    // Generate READ and GRAMMAR in parallel (they don't depend on each other)
-    const needsRead = force || !has('READ');
+    // Generate GRAMMAR (READ generation removed)
     const needsGrammar = force || !has('GRAMMAR');
 
-    const generationPromises: Promise<void>[] = [];
-    if (needsRead) {
-      generationPromises.push(
-        this.generateRead(lessonId, levelBand, lesson, lessonContext),
-      );
-    }
     if (needsGrammar) {
-      generationPromises.push(
-        this.generateGrammar(lessonId, levelBand, lesson, lessonContext),
-      );
+      await this.generateGrammar(lessonId, levelBand, lesson, lessonContext);
     }
 
-    // Wait for both READ and GRAMMAR to complete (or skip if not needed)
-    if (generationPromises.length > 0) {
-      await Promise.all(generationPromises);
-    }
-
-    // Fetch both contents after generation completes
-    const [readContent, grammarContent] = await Promise.all([
-      this.getActivityContent(lessonId, 'READ', levelBand),
-      this.getActivityContent(lessonId, 'GRAMMAR', levelBand),
-    ]);
+    // Fetch grammar content after generation completes
+    const grammarContent = await this.getActivityContent(
+      lessonId,
+      'GRAMMAR',
+      levelBand,
+    );
 
     // Generate QUIZ (depends on both READ and GRAMMAR content)
     if (force || !has('QUIZ')) {
@@ -419,7 +406,6 @@ export class CurriculumService {
         lessonId,
         levelBand,
         lessonContext,
-        readContent,
         grammarContent,
       );
     }
@@ -597,32 +583,12 @@ export class CurriculumService {
       contextText: string;
       sectionMetaById?: Record<number, any>;
     },
-    readContent: any,
     grammarContent: any,
   ) {
-    // Filter out segments and citations from readContent to avoid including them in quiz context
-    // Remove segments and citations from top level and segments from each question item
-    const readForQuiz = readContent
-      ? {
-          ...Object.fromEntries(
-            Object.entries(readContent).filter(
-              ([key]) => key !== 'segments' && key !== 'citations',
-            ),
-          ),
-          questions: Array.isArray(readContent.questions)
-            ? readContent.questions.map((q: any) =>
-                Object.fromEntries(
-                  Object.entries(q).filter(([key]) => key !== 'segments'),
-                ),
-              )
-            : readContent.questions,
-        }
-      : {};
-
     const normalizedContext = this.dedupeContextLines(ctx?.contextText || '');
     const quiz = await (this.openai as any).generateQuizItems({
       level: Math.max(1, levelBand || 1),
-      read: readForQuiz,
+      read: {},
       grammar: grammarContent || {},
       context: normalizedContext,
       numItems: 5,
