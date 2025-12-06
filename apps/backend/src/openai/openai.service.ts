@@ -1130,13 +1130,11 @@ export class OpenAIService {
     overview?: string;
     sections?: Array<{
       title: string;
-      concept: string;
+      conceptMd: string;
       examples: Array<{ zh: string; pinyin?: string; en?: string }>;
       pitfalls?: Array<{ bad: string; good: string; note?: string }>;
       checks?: Array<{ type: 'tf' | 'fill'; prompt: string; answer?: string }>;
     }>;
-    microPassage?: { hanzi: string; pinyin?: string; translation?: string };
-    citations?: Array<{ key?: string; chunkId?: number }>;
   }> {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const maxSections = Math.min(Math.max(args.maxSections ?? 7, 1), 20);
@@ -1154,53 +1152,66 @@ export class OpenAIService {
       .map((o, i) => `${i + 1}. ${o.title}`)
       .join('\n');
     const sectionDirective = usingFallback
-      ? `2) "sections": EXACTLY 1 item (one consolidated explanation) because this subchapter has no sub-subchapters. Title it after the line in the outline above and do NOT invent extra sections.`
-      : `2) "sections": EXACTLY ${maxSections} items and in the SAME ORDER as the outline lines above, one per outline line. Each section MUST correspond to the respective outline title (use it as section.title verbatim unless minor normalization is needed).`;
-    const sys = `You are a senior Mandarin curriculum designer. Create an EXPLAIN-FIRST lesson in English with Chinese examples. Be concise, accurate, and grounded STRICTLY by the provided outline and context. If a claim is not supported by the context, omit it. Return STRICT JSON.`;
+      ? `\n2) "sections": EXACTLY 1 item (one consolidated explanation) because this subchapter has no sub-subchapters. Title it after the line in the outline above and do NOT invent extra sections.`
+      : `\n2) "sections": EXACTLY ${maxSections} items in the SAME ORDER as the outline lines above, one per outline line. Each section MUST correspond to the respective outline title (use it as section.title verbatim unless minor normalization is needed).`;
+    const sys = `You are a senior Mandarin curriculum designer. Create a comprehensive EXPLAIN-FIRST lesson drawing exclusively from the provided context. Your goal is to capture ALL relevant information faithfully from the context—do not summarize or truncate. 
+    - Begin with a detailed prose introduction for each section, followed by a varied mix of paragraphs, bullet points containing key points, and tables containing inventories/comparisons/information (using Markdown formatting: headings, bold, lists, tables, etc.) within the "conceptMd" field.
+    - Alternate between formats for clarity; avoid redundancy or over-reliance on a single format.
+    - Only include claims, facts, or points grounded in the supplied text—ignore unsupported information.
+    - Do not truncate or condense: preserve the full scope and granularity of the context.
+    
+    \nOutput must be returned strictly as a well-formed JSON object, with the key "conceptMd" whose value is a Markdown-formatted string as described.
+    
+    \n**Important:**  
+    - Output only the JSON object (no extra commentary or code blocks).  
+    - Markdown formatting inside the JSON string is required.
+    - Expand proportionally with context complexity to cover all points thoroughly.
+    
+    \n**Reminder:**  
+    Your objective is to generate a comprehensive, Markdown-formatted explanation-first Mandarin grammar lesson grounded strictly and exhaustively in the provided context, with all information captured without summarization or truncation, formatted as a JSON object.`;
+
     const user = `Title: ${args.title}
     \n${outlineLabel}\n${outlineLines}
-    \nGrounding context (snippets):\n${args.context}\n
+    \nGrounding context (snippets — include ALL relevant details from this):\n${args.context}\n
 
-    \nConstruct (STRICT):
-    1) "overview": 2-4 sentences (English) summarizing what learners will learn.
-    ${sectionDirective} Each section must include:
-    - title (English or Chinese),
-    - concept (English),
-    - 2-3 examples with Chinese, pinyin, English,
-    - pitfalls (min 1 if applicable): {bad, good, note} all should be in english, emphasize minimal pairs/contrasts and "say X, not Y" patterns when relevant,
-    - 2 short checks: type tf|fill with prompt and answer.
-    \nReturn ONLY JSON with keys overview, sections.
-    \nEXAMPLE (shape only; keep content detailed and grounded):
+    \nConstruct (STRICT JSON):
+    1) "overview": 3-6 sentences (English) summarizing what learners will master. Be thorough.
+    2) Do NOT mention “from the context”, “provided context”, or any meta commentary. Write the content directly.
+
+    ${sectionDirective} Each section MUST include
+    - "title": string (English or Chinese, matching the outline item),
+    - "conceptMd": string — a comprehensive Markdown explanation covering ALL key points from the grounding context for this section. Use:
+      - Begin with a short prose intro before any list or table.
+      - **Bold** key terms.
+      - Mix formats: paragraphs for flow, bullets where concise, tables for inventories/comparisons. Avoid overusing any single format; avoid nested bullets and redundancy.
+      - Inline Chinese with pinyin where helpful.
+      Stay thorough but concise; include everything the context provides without summarizing away detail. Do NOT include meta notes about context.
+    - "examples": array of representative examples from the context. Each example: { "zh": "...", "pinyin": "...", "en": "..." }.
+      - When the context is an inventory/list (e.g., initials/finals), show the full set in a compact table, and include only 2-6 illustrative examples (not one per item).
+      - Otherwise, include up to 6 examples total; avoid near-duplicate examples.
+    - "pitfalls": array of common mistakes. Each: { "bad": "...", "good": "...", "note": "..." }. Include ALL that apply from context. Can be empty array if none.
+    - "checks": array of 1-3 comprehension checks (decide the amount based on the section's complexity). Use T/F style: { "type": "tf", "prompt": "...", "answer": "T"|"F" }. Keep them concise and directly tied to the section’s points.
+
+    \nReturn ONLY valid JSON with keys: overview, sections. No additional text.
+
+    \nSCHEMA EXAMPLE (structure only — your content should be much more detailed):
     {
-      "overview": "This subchapter explains basic phrase order and common particles.",
+      "overview": "This lesson covers the fundamental SVO word order in Mandarin and introduces the aspect particle 了. Learners will understand when and how to use these patterns through extensive examples.",
       "sections": [
         {
-          "title": "1. Word order: SVO",
-          "concept": "In Mandarin, the default order is Subject–Verb–Object.",
+          "title": "1.1.1 Word order: SVO",
+          "conceptMd": "In Mandarin, the **default sentence order** is **Subject–Verb–Object (SVO)**, similar to English.\\n\\n**Key points:**\\n- The subject comes first\\n- The verb follows immediately\\n- The object comes last\\n\\n| Pattern | Example |\\n|---------|---------|\\n| S + V + O | 我吃苹果 |\\n\\nUnlike English, Mandarin does **not** change word order for questions in most cases.",
           "examples": [
             { "zh": "我吃苹果。", "pinyin": "wǒ chī píngguǒ", "en": "I eat apples." },
-            { "zh": "他喝茶。", "pinyin": "tā hē chá", "en": "He drinks tea." }
+            { "zh": "他喝茶。", "pinyin": "tā hē chá", "en": "He drinks tea." },
+            { "zh": "她看书。", "pinyin": "tā kàn shū", "en": "She reads books." },
+            { "zh": "我们学中文。", "pinyin": "wǒmen xué zhōngwén", "en": "We study Chinese." }
           ],
           "pitfalls": [
-            { "bad": "我苹果吃。", "good": "我吃苹果。", "note": "Keep SVO order." }
+            { "bad": "我苹果吃。", "good": "我吃苹果。", "note": "Do not place the object before the verb." }
           ],
           "checks": [
-            { "type": "tf", "prompt": "Mandarin defaults to SVO order.", "answer": "T" },
-            { "type": "fill", "prompt": "他__饭。 (eat)", "answer": "吃" }
-          ]
-        },
-        {
-          "title": "2. Particle 了 (le)",
-          "concept": "了 often marks a completed action.",
-          "examples": [
-            { "zh": "我吃了饭。", "pinyin": "wǒ chī le fàn", "en": "I ate (already)." }
-          ],
-          "pitfalls": [
-            { "bad": "Treat syllables like English 'lettuce' parts (no meaning).", "good": "Note meanings of individual Mandarin syllables.", "note": "With very few exceptions (e.g., suffix 子), syllables carry meaning." }
-          ],
-          "checks": [
-            { "type": "tf", "prompt": "了 always indicates past tense.", "answer": "F" },
-            { "type": "fill", "prompt": "他__了茶。 (drink)", "answer": "喝" }
+            { "type": "tf", "prompt": "Mandarin uses SVO order by default.", "answer": "T" }       
           ]
         }
       ],
@@ -1249,7 +1260,7 @@ export class OpenAIService {
                   type: 'object',
                   properties: {
                     title: { type: 'string' },
-                    concept: { type: 'string' },
+                    conceptMd: { type: 'string' },
                     examples: {
                       type: 'array',
                       items: {
@@ -1281,9 +1292,9 @@ export class OpenAIService {
                       items: {
                         type: 'object',
                         properties: {
-                          type: { type: 'string', enum: ['tf', 'fill'] },
+                          type: { type: 'string', enum: ['tf'] },
                           prompt: { type: 'string' },
-                          answer: { type: 'string' },
+                          answer: { type: 'string', enum: ['T', 'F'] },
                         },
                         required: ['type', 'prompt', 'answer'],
                         additionalProperties: false,
@@ -1292,7 +1303,7 @@ export class OpenAIService {
                   },
                   required: [
                     'title',
-                    'concept',
+                    'conceptMd',
                     'examples',
                     'pitfalls',
                     'checks',

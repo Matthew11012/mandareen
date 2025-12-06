@@ -550,49 +550,39 @@ export class CurriculumService {
       outlineIsFallback: !hasSubsections,
       context: combinedContext,
       maxSections: sectionCount,
-      preferMicroPassageChars: (ctx?.chunks?.length || 0) > 12 ? 280 : 180,
     });
-    const fallbackCitations = (ctx?.chunks || [])
-      .slice(0, 6)
-      .map((c: any, i: number) => ({
-        chunkId: c.id,
-        key: `[S${i + 1}]`,
-      }));
-    // Optionally enrich the microPassage with segments too
-    const micro = explain?.microPassage || null;
-    if (
-      micro &&
-      typeof micro?.hanzi === 'string' &&
-      micro.hanzi.trim().length
-    ) {
-      try {
-        const segs = await this.segmentationService.segmentText(micro.hanzi);
-        (micro as any).segments = segs.map((s) => ({
-          text: s.word,
-          startIndex: s.startIndex,
-          endIndex: s.endIndex,
-          isWord: s.isWord,
-          hskLevel: s.hskLevel,
-          pinyin: toToneMarks((s.pinyin || '').toLowerCase()),
-          definition: s.definition,
-          definitions: s.definitions,
-        }));
-      } catch {
-        // ignore segmentation errors for micro passage
-      }
-    }
+
+    const mappedSections = Array.isArray(explain?.sections)
+      ? explain.sections.map((s: any) => {
+          const examples = Array.isArray(s.examples) ? s.examples : [];
+          // Dedupe by zh|en key and cap to 6 representative examples
+          const dedupedExamples = Array.from(
+            new Map(
+              examples.map((ex: any) => [
+                `${ex?.zh || ''}|${ex?.en || ''}`,
+                ex,
+              ]),
+            ).values(),
+          ).slice(0, 6);
+
+          const checks = this.normalizeChecksToTf(s.checks);
+
+          return {
+            ...s,
+            examples: dedupedExamples,
+            checks,
+            // keep both for backward compatibility
+            concept: s.conceptMd || s.concept || '',
+            conceptMd: s.conceptMd || s.concept || '',
+          };
+        })
+      : [];
 
     const content = {
       title: lesson.title || lesson.ragSection?.heading || 'Explain',
       type: 'GRAMMAR',
       overview: explain?.overview || '',
-      sections: Array.isArray(explain?.sections) ? explain.sections : [],
-      microPassage: micro,
-      drills: [],
-      citations:
-        Array.isArray(explain?.citations) && explain.citations.length
-          ? explain.citations
-          : fallbackCitations,
+      sections: mappedSections,
     };
     await this.prisma.curriculumActivity.create({
       data: { lessonId, type: 'GRAMMAR' as any, levelBand, content },
@@ -750,7 +740,7 @@ export class CurriculumService {
           `${c.hanzi || ''}`.trim() + (c.english ? `\n${c.english}` : ''),
       )
       .join('\n\n')
-      .slice(0, 12000);
+      .slice(0, 24000);
     return { chunks, contextText, sectionMetaById };
   }
 
@@ -773,7 +763,7 @@ export class CurriculumService {
       return hanzi || english || '';
     };
     const entries: string[] = [];
-    const maxSnippetChars = 800;
+    const maxSnippetChars = 4000;
     const metaById = ctx.sectionMetaById || {};
     const chunksByKey = ctx.chunks.reduce(
       (acc, chunk) => {
@@ -904,14 +894,45 @@ export class CurriculumService {
     return `section-${chunk?.sectionId || 'unknown'}`;
   }
 
+  private normalizeChecksToTf(
+    checks: any[],
+  ): Array<{ type: 'tf'; prompt: string; answer: 'T' | 'F' }> {
+    if (!Array.isArray(checks)) return [];
+    const out: Array<{ type: 'tf'; prompt: string; answer: 'T' | 'F' }> = [];
+    for (const c of checks) {
+      if (!c) continue;
+      const prompt = typeof c.prompt === 'string' ? c.prompt.trim() : '';
+      if (!prompt) continue;
+      const ansRaw =
+        typeof c.answer === 'string'
+          ? c.answer.trim().toUpperCase()
+          : typeof c.answer === 'boolean'
+            ? c.answer
+              ? 'T'
+              : 'F'
+            : '';
+      const answer: 'T' | 'F' = ansRaw === 'F' ? 'F' : 'T';
+      out.push({ type: 'tf', prompt, answer });
+      if (out.length >= 5) break;
+    }
+    return out;
+  }
+
   private dedupeContextLines(text: string): string {
     if (!text) return '';
     const lines = text.split('\n');
     const seen = new Set<string>();
     const out: string[] = [];
+    // Only dedupe lines longer than 20 chars to preserve short vocab/particles
+    const DEDUPE_THRESHOLD = 20;
     for (const line of lines) {
       const key = line.trim();
       if (!key) {
+        out.push(line);
+        continue;
+      }
+      // Keep short lines even if duplicated (e.g., single characters, particles)
+      if (key.length <= DEDUPE_THRESHOLD) {
         out.push(line);
         continue;
       }
