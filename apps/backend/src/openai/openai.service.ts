@@ -1152,8 +1152,8 @@ export class OpenAIService {
       .map((o, i) => `${i + 1}. ${o.title}`)
       .join('\n');
     const sectionDirective = usingFallback
-      ? `2) "sections": EXACTLY 1 item (one consolidated explanation) because this subchapter has no sub-subchapters. Title it after the line in the outline above and do NOT invent extra sections.`
-      : `2) "sections": EXACTLY ${maxSections} items in the SAME ORDER as the outline lines above, one per outline line. Each section MUST correspond to the respective outline title (use it as section.title verbatim unless minor normalization is needed).`;
+      ? `\n2) "sections": EXACTLY 1 item (one consolidated explanation) because this subchapter has no sub-subchapters. Title it after the line in the outline above and do NOT invent extra sections.`
+      : `\n2) "sections": EXACTLY ${maxSections} items in the SAME ORDER as the outline lines above, one per outline line. Each section MUST correspond to the respective outline title (use it as section.title verbatim unless minor normalization is needed).`;
     const sys = `You are a senior Mandarin curriculum designer. Create a comprehensive EXPLAIN-FIRST lesson grounded STRICTLY by the provided context. Your goal is to capture ALL relevant information from the context—do not summarize or truncate. Use Markdown formatting (headers, bold, lists, tables) in the conceptMd field. If a claim is not supported by the context, omit it. Return STRICT JSON.`;
     const user = `Title: ${args.title}
     \n${outlineLabel}\n${outlineLines}
@@ -1161,16 +1161,19 @@ export class OpenAIService {
 
     \nConstruct (STRICT JSON):
     1) "overview": 3-6 sentences (English) summarizing what learners will master. Be thorough.
+    2) Do NOT mention “from the context”, “provided context”, or any meta commentary. Write the content directly.
 
-    ${sectionDirective} Each section MUST include:
+    ${sectionDirective} Each section MUST include
     - "title": string (English or Chinese, matching the outline item),
     - "conceptMd": string — a comprehensive Markdown explanation covering ALL key points from the grounding context for this section. Use:
       - **bold** for key terms
-      - Bullet lists for multiple points
-      - Tables if comparing patterns
+      - Bullet lists for multiple points (keep bullets concise; group long lists into at most 5 bullets)
+      - Tables if comparing patterns or showing inventories
       - Inline Chinese with pinyin where helpful
-      Include everything the context provides; do NOT summarize or abbreviate.
-    - "examples": array of ALL relevant examples from the context. Each example: { "zh": "...", "pinyin": "...", "en": "..." }. Include as many as the context supports.
+      Include everything the context provides; do NOT summarize or abbreviate. Do NOT include meta notes about context.
+    - "examples": array of representative examples from the context. Each example: { "zh": "...", "pinyin": "...", "en": "..." }.
+      - When the context is an inventory/list (e.g., initials/finals), show the full set in a compact table, and include only 2-6 illustrative examples (not one per item).
+      - Otherwise, include up to 6 examples total; avoid near-duplicate examples.
     - "pitfalls": array of common mistakes. Each: { "bad": "...", "good": "...", "note": "..." }. Include ALL that apply from context. Can be empty array if none.
     - "checks": array of 2-5 comprehension checks. Each: { "type": "tf"|"fill", "prompt": "...", "answer": "..." }.
 

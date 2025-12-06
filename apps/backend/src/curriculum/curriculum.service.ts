@@ -577,12 +577,26 @@ export class CurriculumService {
     }
 
     const mappedSections = Array.isArray(explain?.sections)
-      ? explain.sections.map((s: any) => ({
-          ...s,
-          // keep both for backward compatibility
-          concept: s.conceptMd || s.concept || '',
-          conceptMd: s.conceptMd || s.concept || '',
-        }))
+      ? explain.sections.map((s: any) => {
+          const examples = Array.isArray(s.examples) ? s.examples : [];
+          // Dedupe by zh|en key and cap to 6 representative examples
+          const dedupedExamples = Array.from(
+            new Map(
+              examples.map((ex: any) => [
+                `${ex?.zh || ''}|${ex?.en || ''}`,
+                ex,
+              ]),
+            ).values(),
+          ).slice(0, 6);
+
+          return {
+            ...s,
+            examples: dedupedExamples,
+            // keep both for backward compatibility
+            concept: s.conceptMd || s.concept || '',
+            conceptMd: s.conceptMd || s.concept || '',
+          };
+        })
       : [];
 
     const content = {
