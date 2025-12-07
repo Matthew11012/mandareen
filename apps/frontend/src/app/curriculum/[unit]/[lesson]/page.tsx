@@ -372,9 +372,9 @@ function LessonRunnerPageContent({ params }: { params: Promise<Params> }) {
       <div className="flex h-full relative overflow-hidden">
         {/* Main Content */}
         <div className="flex-1 min-w-0 overflow-y-auto overscroll-contain">
-          <div className="p-3 sm:p-6 pt-0 space-y-4 sm:space-y-6">
+          <div className="p-3 sm:p-6 sm:pt-0 pt-0 space-y-4 sm:space-y-6">
             <nav
-              className="sticky top-0 z-40 bg-[#222831] py-0 -mx-3 sm:-mx-6 px-3 sm:px-6 mb-2"
+              className="sticky top-0 z-40 bg-[#222831] py-0 -mx-3 sm:-mx-6 px-3 sm:px-6 mb-2 sm:py-2"
               aria-label="Breadcrumb"
             >
               <div className="flex items-center justify-between gap-2">
