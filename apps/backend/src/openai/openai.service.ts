@@ -100,6 +100,115 @@ export class OpenAIService {
     }
   }
 
+  async generateReplySuggestions(opts: {
+    conversationHistory: Array<{ role: 'user' | 'ai'; hanzi: string }>;
+    targetHskLevel?: string;
+  }): Promise<Array<{ zh: string; translation: string }>> {
+    const model = process.env.OPENAI_MODEL_CONVERSATION_REPLY || 'gpt-5-nano';
+
+    const history = Array.isArray(opts.conversationHistory)
+      ? opts.conversationHistory.slice(-4)
+      : [];
+    const renderedHistory =
+      history.length === 0
+        ? '(no prior turns)'
+        : history
+            .map(
+              (m) => `${m.role === 'user' ? 'User' : 'AI'}: ${m.hanzi || ''}`,
+            )
+            .join('\n');
+
+    const hskHint = opts.targetHskLevel
+      ? ` Use only vocabulary and grammar appropriate to ${opts.targetHskLevel.toUpperCase()}; if a simpler phrasing exists, prefer it.`
+      : '';
+
+    const response = await (this.openai as any).responses.create({
+      model,
+      reasoning: { effort: 'low' },
+      input: [
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'input_text',
+              text: `You are a native Mandarin tutor and friend continuing this exact conversation. Generate exactly TWO short follow-up suggestions that the *user* would plausibly say next in reply to the latest AI message, in Simplified Chinese plus an English gloss.
+              \nRules:
+              - Base suggestions ONLY on the last two turns; do NOT introduce new topics, activities, or invitations that were not mentioned.
+              - Each suggestion must naturally continue the current flow (a brief follow-up reply or question), not start a new branch, and must read as the user's next turn to the AI.
+              - Keep each Chinese suggestion concise (<=20 chars), friendly, on-topic, and coherent with the last AI message.
+              - ${hskHint}
+              - English gloss must be pure English (no Chinese chars or pinyin); no pinyin anywhere.
+              - No punctuation-only lines or extra formatting.
+              \nReturn STRICT JSON matching the schema.`,
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: `Recent turns (most recent last):\n${renderedHistory}`,
+            },
+          ],
+        },
+      ],
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'ConversationReplySuggestions',
+          schema: {
+            type: 'object',
+            properties: {
+              suggestions: {
+                type: 'array',
+                minItems: 2,
+                maxItems: 2,
+                items: {
+                  type: 'object',
+                  properties: {
+                    zh: { type: 'string' },
+                    translation: { type: 'string' },
+                  },
+                  required: ['zh', 'translation'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['suggestions'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+
+    const content = this.extractResponseText(response);
+    if (!content) return [];
+    try {
+      const parsed = JSON.parse(content);
+      const arr = Array.isArray(parsed?.suggestions)
+        ? parsed.suggestions
+        : Array.isArray(parsed)
+          ? parsed
+          : [];
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .map((item) => {
+          const zh = typeof item?.zh === 'string' ? item.zh.trim() : '';
+          const translation =
+            typeof item?.translation === 'string'
+              ? item.translation.trim()
+              : '';
+          if (!zh) return null;
+          return { zh, translation };
+        })
+        .filter(Boolean) as Array<{ zh: string; translation: string }>;
+    } catch (err) {
+      this.logger.warn('Failed to parse reply suggestions JSON', err as any);
+      return [];
+    }
+  }
+
   private extractResponseText(resp: any): string {
     if (!resp) return '';
     if (typeof resp.output_text === 'function') {
@@ -753,10 +862,7 @@ export class OpenAIService {
     const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const n = Math.min(Math.max(args.numItems || 5, 3), 8);
     const sys = `You are a precise Mandarin pedagogy expert. Create fair MCQs that directly test comprehension of the given READ and GRAMMAR. Include at least one error-recognition item (choose the incorrect sentence) and for the options make it primarily in english for this. Provide brief rationales.`;
-    const user = `READ (Chinese/translation):
-    ${JSON.stringify(args.read || {}).slice(0, 4000)}
-
-    \nGRAMMAR (notes/tips):
+    const user = `GRAMMAR (notes/tips):
     ${JSON.stringify(args.grammar || {}).slice(0, 4000)}
 
     \nOptional grounding context:${(args.context || '').slice(0, 4000)}
@@ -1154,11 +1260,17 @@ export class OpenAIService {
     const sectionDirective = usingFallback
       ? `\n2) "sections": EXACTLY 1 item (one consolidated explanation) because this subchapter has no sub-subchapters. Title it after the line in the outline above and do NOT invent extra sections.`
       : `\n2) "sections": EXACTLY ${maxSections} items in the SAME ORDER as the outline lines above, one per outline line. Each section MUST correspond to the respective outline title (use it as section.title verbatim unless minor normalization is needed).`;
-    const sys = `You are a senior Mandarin curriculum designer. Create a comprehensive EXPLAIN-FIRST lesson drawing exclusively from the provided context. Your goal is to capture ALL relevant information faithfully from the context—do not summarize or truncate. 
+    const sys = `You are a senior Mandarin curriculum designer. Create a comprehensive English EXPLAIN-FIRST lesson drawing exclusively from the provided context. Your goal is to capture ALL relevant information faithfully from the context—do not summarize or truncate. 
     - Begin with a detailed prose introduction for each section, followed by a varied mix of paragraphs, bullet points containing key points, and tables containing inventories/comparisons/information (using Markdown formatting: headings, bold, lists, tables, etc.) within the "conceptMd" field.
     - Alternate between formats for clarity; avoid redundancy or over-reliance on a single format.
     - Only include claims, facts, or points grounded in the supplied text—ignore unsupported information.
     - Do not truncate or condense: preserve the full scope and granularity of the context.
+    - Use **simplified Chinese only** (omit traditional variants). Whenever you present Chinese text (inline, bullets, or tables), alwaysinclude **pinyin** and a brief **English gloss** right there so learners who cannot read Hanzi still benefit. It important to always include the pinyin for any chinese text. You do not need to include the english gloss if the presenting information is explaining about the chinese text. However, if the chinese text is a example, you should include the english gloss.
+    - When you need a table, keep it compact and readable. Prefer columns like: Pattern/Expression | Pinyin | Meaning | Example (simplified + pinyin + English). Do NOT add a traditional column.
+    - Avoid meta phrases like “examples from text/context”; just write “Examples” or list the items directly.
+    - Keep length controlled: avoid runaway tables or long repetitive lists—group similar items instead of enumerating near-duplicates.
+    - Avoid redundancy: do not repeat the same example/pattern across prose, bullets, tables, and the examples list. Present each unique example once.
+    - Absolutely no hallucinations: include nothing that is not present in the provided context.
     
     \nOutput must be returned strictly as a well-formed JSON object, with the key "conceptMd" whose value is a Markdown-formatted string as described.
     
@@ -1183,13 +1295,15 @@ export class OpenAIService {
     - "conceptMd": string — a comprehensive Markdown explanation covering ALL key points from the grounding context for this section. Use:
       - Begin with a short prose intro before any list or table.
       - **Bold** key terms.
-      - Mix formats: paragraphs for flow, bullets where concise, tables for inventories/comparisons. Avoid overusing any single format; avoid nested bullets and redundancy.
-      - Inline Chinese with pinyin where helpful.
+      - Mix formats: paragraphs for flow, bullets where concise, tables for inventories/comparisons. Avoid overusing any single format; avoid nested bullets and redundancy. Do not restate the same example in multiple formats.
+      - Inline Chinese WITH pinyin + English gloss every time (no Hanzi-only snippets), and keep to simplified forms only. If the context provides traditional Chinese variants, do not use it. Only use simplified Chinese examples.
+      - Tables: use compact columns (Pattern/Expression | Pinyin | Meaning | Example with simplified + pinyin + English). Group similar items rather than long repetitive lists; keep tables concise and readable. If an example appears in a table, do not repeat it again in bullets.
+      - No hallucinated claims, forms, or patterns beyond what appears in the context.
       Stay thorough but concise; include everything the context provides without summarizing away detail. Do NOT include meta notes about context.
-    - "examples": array of representative examples from the context. Each example: { "zh": "...", "pinyin": "...", "en": "..." }.
+    - "examples": array of representative examples from the context. Each example: { "zh": "...", "pinyin": "...", "en": "..." } in simplified form only (omit traditional variants).
       - When the context is an inventory/list (e.g., initials/finals), show the full set in a compact table, and include only 2-6 illustrative examples (not one per item).
-      - Otherwise, include up to 6 examples total; avoid near-duplicate examples.
-    - "pitfalls": array of common mistakes. Each: { "bad": "...", "good": "...", "note": "..." }. Include ALL that apply from context. Can be empty array if none.
+      - Otherwise, include up to 6 examples total; avoid near-duplicate examples. Do NOT repeat examples already shown verbatim inside conceptMd tables or bullets—use distinct examples or omit.
+    - "pitfalls": array of common mistakes. Each: { "bad": "...", "good": "...", "note": "..." }. Include ALL that apply from context. Can be empty array if none. bad, good, and note should always be in an english first explanation.
     - "checks": array of 1-3 comprehension checks (decide the amount based on the section's complexity). Use T/F style: { "type": "tf", "prompt": "...", "answer": "T"|"F" }. Keep them concise and directly tied to the section’s points.
 
     \nReturn ONLY valid JSON with keys: overview, sections. No additional text.
@@ -1208,7 +1322,7 @@ export class OpenAIService {
             { "zh": "我们学中文。", "pinyin": "wǒmen xué zhōngwén", "en": "We study Chinese." }
           ],
           "pitfalls": [
-            { "bad": "我苹果吃。", "good": "我吃苹果。", "note": "Do not place the object before the verb." }
+            { "bad": "I apple eat. (我苹果吃。)", "good": "I eat apples. (我吃苹果。)", "note": "Explain pitfalls in English first; include the Chinese form in parentheses." }
           ],
           "checks": [
             { "type": "tf", "prompt": "Mandarin uses SVO order by default.", "answer": "T" }       

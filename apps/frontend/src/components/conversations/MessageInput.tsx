@@ -31,9 +31,9 @@ export function MessageInput({
   audioDisabledReason,
 }: MessageInputProps) {
   return (
-    <div className="w-full">
+    <div className="w-full flex justify-center">
       {recording ? (
-        <div className="flex items-center min-h-[58px] w-full bg-[#1a1d23] border border-[#2e323a] rounded-lg px-4 h-14">
+        <div className="flex items-center min-h-[58px] w-1/2 bg-[#1a1d23] border border-[#2e323a] rounded-full px-4 h-14">
           <div className="flex-1 flex items-center gap-3 overflow-hidden h-full">
             <AudioWaveform stream={audioStream ?? null} isActive={recording} />
           </div>
@@ -61,7 +61,7 @@ export function MessageInput({
           </div>
         </div>
       ) : (
-        <div className="w-full min-h-[58px] bg-[#1a1d23] border border-[#2e323a] rounded-2xl px-4 py-2 flex justify-between items-center gap-3 text-center shadow-[0_6px_20px_rgba(0,0,0,0.2)]">
+        <div className="w-1/2 min-h-[58px] bg-[#1a1d23] border border-[#2e323a] rounded-full pl-6 pr-4 sm:pl-6 sm:pr-4 py-2 flex justify-between items-center gap-3 text-center shadow-[0_6px_20px_rgba(0,0,0,0.2)]">
           <div className="space-y-1">
             <p className="text-sm text-[#a6a6a6]">{recPrompt}</p>
             {sendDisabledReason && (

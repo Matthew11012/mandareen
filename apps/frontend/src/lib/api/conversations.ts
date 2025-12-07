@@ -1,19 +1,19 @@
 import { get, post, del } from "../http/http";
 
 export interface MessageNotes {
-    grammarNotes?: Array<{
-      point: string;
-      brief: string;
-      sources?: Array<{ key?: string; chunkId?: number }>;
-      pointPinyin?: string;
-      pointEn?: string;
-      briefPinyin?: string;
-      briefEn?: string;
-      examples?: Array<{ zh: string; en?: string; pinyin?: string }>;
-    }>;
-    tips?: string[];
-    tipsRich?: Array<{ zh: string; pinyin?: string; en?: string }>;
-    citations?: Array<{ key?: string; chunkId?: number }>;
+  grammarNotes?: Array<{
+    point: string;
+    brief: string;
+    sources?: Array<{ key?: string; chunkId?: number }>;
+    pointPinyin?: string;
+    pointEn?: string;
+    briefPinyin?: string;
+    briefEn?: string;
+    examples?: Array<{ zh: string; en?: string; pinyin?: string }>;
+  }>;
+  tips?: string[];
+  tipsRich?: Array<{ zh: string; pinyin?: string; en?: string }>;
+  citations?: Array<{ key?: string; chunkId?: number }>;
 }
 
 export type ConversationHskLevel =
@@ -24,6 +24,22 @@ export type ConversationHskLevel =
   | "hsk5"
   | "hsk6"
   | "hsk7_9";
+
+export interface ReplySuggestion {
+  zh: string;
+  pinyin: string;
+  translation: string;
+  segments?: Array<{
+    text: string;
+    startIndex: number;
+    endIndex: number;
+    isWord: boolean;
+    hskLevel?: number;
+    pinyin?: string;
+    definition?: string;
+    definitions?: string[];
+  }>;
+}
 
 export interface Message {
   id: number;
@@ -44,6 +60,7 @@ export interface Message {
     definition?: string;
     definitions?: string[];
   }>;
+  suggestions?: ReplySuggestion[];
   // Loading flags for progressive SSE events
   _loadingPinyin?: boolean;
   _loadingTranslation?: boolean;

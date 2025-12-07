@@ -20,7 +20,7 @@ export function AudioWaveform({ stream, isActive }: AudioWaveformProps) {
   useEffect(() => {
     const updateBarCount = () => {
       const isMobile = window.innerWidth < 768;
-      setBarCount(isMobile ? 48 : 96);
+      setBarCount(isMobile ? 24 : 96);
     };
 
     updateBarCount();

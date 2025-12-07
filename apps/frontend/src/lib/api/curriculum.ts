@@ -89,7 +89,7 @@ export async function generateLesson(
       force: !!opts.force,
     },
     {
-      timeoutMs: 120000, // 2 minutes timeout for lesson generation
+      timeoutMs: 300000, // 5 minutes timeout for lesson generation
     }
   );
 }

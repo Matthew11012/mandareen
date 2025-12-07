@@ -30,6 +30,23 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { AnimatePresence, motion } from "framer-motion";
 import { useReducedMotionSafe } from "@/lib/hooks/use-reduced-motion-safe";
 
+function SidebarToggleIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      {...props}
+    >
+      <path d="M2 12C2 8.3109 2 6.46633 2.81382 5.1588C3.1149 4.67505 3.48891 4.2543 3.91891 3.91557C5.08116 3.00003 6.72077 3.00003 10 3.00003H14C17.2792 3.00003 18.9188 3.00003 20.0811 3.91557C20.5111 4.2543 20.8851 4.67505 21.1862 5.1588C22 6.46633 22 8.3109 22 12C22 15.6892 22 17.5337 21.1862 18.8413C20.8851 19.325 20.5111 19.7458 20.0811 20.0845C18.9188 21 17.2792 21 14 21H10C6.72077 21 5.08116 21 3.91891 20.0845C3.48891 19.7458 3.1149 19.325 2.81382 18.8413C2 17.5337 2 15.6892 2 12Z" />
+      <path d="M14.5 3.00003L14.5 21" />
+      <path d="M18 7.00006H19M18 10.0001H19" />
+    </svg>
+  );
+}
+
 interface CurriculumSidebarProps {
   currentUnitId: number;
   currentLessonId: number;
@@ -374,30 +391,30 @@ function LessonItem({
             <span className="text-[11px] text-amber-200">Preview</span>
           </div>
         ) : (
-        <Link
-          href={`/curriculum/${unitId}/${lesson.id}`}
-          onClick={handleClick}
-          aria-current={isCurrent ? "page" : undefined}
-          className={cn(
-            "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors duration-200 min-h-[44px] touch-manipulation w-full",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1d23]",
-            isCurrent
-              ? "bg-[#4040f2]/20 text-white font-semibold border border-[#4040f2]/30"
-              : isCompleted
-                ? "text-white/70 hover:bg-white/5 hover:text-white"
-                : "text-white/80 hover:bg-white/5 hover:text-white"
-          )}
-        >
-          {isCompleted ? (
-            <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
-          ) : (
-            <div className="w-4 h-4 flex-shrink-0" />
-          )}
+          <Link
+            href={`/curriculum/${unitId}/${lesson.id}`}
+            onClick={handleClick}
+            aria-current={isCurrent ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors duration-200 min-h-[44px] touch-manipulation w-full",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1d23]",
+              isCurrent
+                ? "bg-[#4040f2]/20 text-white font-semibold border border-[#4040f2]/30"
+                : isCompleted
+                  ? "text-white/70 hover:bg-white/5 hover:text-white"
+                  : "text-white/80 hover:bg-white/5 hover:text-white"
+            )}
+          >
+            {isCompleted ? (
+              <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
+            ) : (
+              <div className="w-4 h-4 flex-shrink-0" />
+            )}
             <span className="flex-1 text-xs truncate block">
               {lesson.title}
             </span>
-          {isCurrent && <span className="sr-only">Current lesson</span>}
-        </Link>
+            {isCurrent && <span className="sr-only">Current lesson</span>}
+          </Link>
         )}
       </ConditionalTooltip>
     </li>
@@ -524,8 +541,8 @@ function UnitSection({
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-            <div className="font-medium text-xs text-white truncate w-full">
-              {unit.title}
+              <div className="font-medium text-xs text-white truncate w-full">
+                {unit.title}
               </div>
               {isLockedUnit && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-inter text-amber-100">
@@ -658,6 +675,7 @@ export function CurriculumNavigationSidebar({
     useCurriculumData();
   const { isOpen, close } = useSidebarState();
   const [expandedUnits, setExpandedUnits] = useState<Set<number>>(new Set());
+  const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const pathname = usePathname();
@@ -675,6 +693,13 @@ export function CurriculumNavigationSidebar({
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
+
+  // Reset desktop collapse when moving to mobile to keep mobile UX unchanged
+  useEffect(() => {
+    if (isMobile && isDesktopCollapsed) {
+      setIsDesktopCollapsed(false);
+    }
+  }, [isMobile, isDesktopCollapsed]);
 
   // On desktop, sidebar is always visible (ignore URL state)
   const shouldShowSidebar = isMobile ? isOpen : true;
@@ -906,68 +931,101 @@ export function CurriculumNavigationSidebar({
         </AnimatePresence>
       ) : (
         /* Desktop: Always visible sidebar */
-        <nav
+        <motion.nav
           ref={sidebarRef}
           aria-label="Curriculum navigation"
-          className="relative w-[280px] flex-shrink-0 bg-[#1a1d23] border-l border-[#2e323a] flex flex-col h-full"
+          aria-expanded={!isDesktopCollapsed}
+          initial={false}
+          animate={{ width: isDesktopCollapsed ? 56 : 280 }}
+          transition={
+            prefersReducedMotion
+              ? { duration: 0 }
+              : { type: "spring", stiffness: 260, damping: 26 }
+          }
+          className="relative flex-shrink-0 bg-[#1a1d23] border-l border-[#2e323a] flex flex-col h-full"
           tabIndex={-1}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-[#2e323a]">
-            <h2 className="font-semibold text-white text-sm">Curriculum</h2>
+          <div
+            className={cn(
+              "flex items-center gap-2 border-b border-[#2e323a]",
+              isDesktopCollapsed ? "p-2 justify-start" : "p-2 justify-start"
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => setIsDesktopCollapsed((v) => !v)}
+              aria-label={
+                isDesktopCollapsed
+                  ? "Expand curriculum sidebar"
+                  : "Collapse curriculum sidebar"
+              }
+              className={cn(
+                "rounded-lg hover:bg-white/5 transition-colors duration-200 flex items-center justify-center text-white/80 cursor-pointer",
+                isDesktopCollapsed ? "p-1.5" : "p-2"
+              )}
+            >
+              <SidebarToggleIcon className="w-5 h-5" />
+            </button>
+            {!isDesktopCollapsed && (
+              <h2 className="font-semibold text-white text-sm">Curriculum</h2>
+            )}
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto overscroll-contain">
-            {loading && <LoadingSkeleton />}
+          {!isDesktopCollapsed && (
+            <div className="flex-1 overflow-y-auto overscroll-contain">
+              {loading && <LoadingSkeleton />}
 
-            {error && (
-              <div className="p-4">
-                <div className="flex items-center gap-2 text-sm text-red-400">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>Failed to load units</span>
+              {error && (
+                <div className="p-4">
+                  <div className="flex items-center gap-2 text-sm text-red-400">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>Failed to load units</span>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {!loading && !error && sortedUnits.length === 0 && (
-              <div className="p-4 text-sm text-white/60">
-                No units available
-              </div>
-            )}
+              {!loading && !error && sortedUnits.length === 0 && (
+                <div className="p-4 text-sm text-white/60">
+                  No units available
+                </div>
+              )}
 
-            {!loading && !error && sortedUnits.length > 0 && (
-              <div className="py-2">
-                {sortedUnits.map((unit) => {
-                  const unitWithLessons = unitsWithLessons.get(unit.id) || unit;
-                  const isExpanded = expandedUnits.has(unit.id);
-                  const isCurrent = unit.id === currentUnitId;
-                  const isInitialAutoExpand =
-                    initialAutoExpandedUnitsRef.current.has(unit.id);
+              {!loading && !error && sortedUnits.length > 0 && (
+                <div className="py-2">
+                  {sortedUnits.map((unit) => {
+                    const unitWithLessons =
+                      unitsWithLessons.get(unit.id) || unit;
+                    const isExpanded = expandedUnits.has(unit.id);
+                    const isCurrent = unit.id === currentUnitId;
+                    const isInitialAutoExpand =
+                      initialAutoExpandedUnitsRef.current.has(unit.id);
 
-                  return (
-                    <UnitSection
-                      key={unit.id}
-                      unit={unitWithLessons}
-                      isExpanded={isExpanded}
-                      isCurrent={isCurrent}
-                      currentLessonId={currentLessonId}
-                      onToggle={() => toggleUnit(unit.id)}
-                      onLoadLessons={() => loadUnitLessons(unit.id)}
-                      onLessonNavigate={handleLessonNavigate}
-                      isInitialAutoExpand={isInitialAutoExpand}
-                    />
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                    return (
+                      <UnitSection
+                        key={unit.id}
+                        unit={unitWithLessons}
+                        isExpanded={isExpanded}
+                        isCurrent={isCurrent}
+                        currentLessonId={currentLessonId}
+                        onToggle={() => toggleUnit(unit.id)}
+                        onLoadLessons={() => loadUnitLessons(unit.id)}
+                        onLessonNavigate={handleLessonNavigate}
+                        isInitialAutoExpand={isInitialAutoExpand}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Screen reader announcements */}
           <div aria-live="polite" aria-atomic="true" className="sr-only">
             Navigation sidebar
           </div>
-        </nav>
+        </motion.nav>
       )}
     </>
   );

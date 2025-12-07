@@ -8,12 +8,14 @@ import {
   useMemo,
   useId,
 } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import {
   conversationsApi,
   type Message,
   type ConversationSummary,
   type ConversationHskLevel,
+  type ReplySuggestion,
 } from "@/lib/api/conversations";
 import { assessmentApi } from "@/lib/api/assessment";
 import { useConversationStream } from "@/lib/hooks/use-conversation-stream";
@@ -525,6 +527,7 @@ export default function ConversationsPage() {
 
   // Hooks
   const { streamAudio } = useConversationStream();
+  const queryClient = useQueryClient();
   const { data: conversationsList, refetch: refetchConversations } =
     useConversationsList();
   const { data: messagesData, refetch: refetchMessages } =
@@ -536,6 +539,144 @@ export default function ConversationsPage() {
 
   // Use query data directly
   const messages = useMemo(() => messagesData ?? [], [messagesData]);
+  type SuggestionsState = {
+    messageId: number;
+    suggestions: ReplySuggestion[];
+    showAt: number;
+    visible: boolean;
+  };
+  const currentStreamingAiIdRef = useRef<number | null>(null);
+  const latestSuggestionsRef = useRef<{
+    messageId: number;
+    suggestions: ReplySuggestion[];
+  } | null>(null);
+  const suggestionsShowTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+
+  const suggestionsQueryKey = useMemo(
+    () =>
+      typeof conversationId === "number" && conversationId > 0
+        ? ["conversations", conversationId, "reply-suggestions"]
+        : ["conversations", "none", "reply-suggestions"],
+    [conversationId]
+  );
+
+  const setSuggestionsState = useCallback(
+    (messageId: number, suggestions: ReplySuggestion[], visible: boolean) => {
+      if (!Array.isArray(suggestions) || suggestions.length === 0) return;
+      const timestamp = Date.now();
+      latestSuggestionsRef.current = { messageId, suggestions };
+      queryClient.setQueryData<SuggestionsState | null>(
+        suggestionsQueryKey,
+        (prev) => {
+          if (prev) {
+            // Preserve newer suggestions for the same message
+            if (
+              prev.messageId === messageId &&
+              typeof prev.showAt === "number" &&
+              prev.showAt >= timestamp
+            ) {
+              return prev;
+            }
+            // Preserve suggestions from a newer message (should be rare)
+            if (prev.messageId !== messageId && prev.showAt > timestamp) {
+              return prev;
+            }
+          }
+          return {
+            messageId,
+            suggestions,
+            showAt: timestamp,
+            visible,
+          };
+        }
+      );
+    },
+    [queryClient, suggestionsQueryKey]
+  );
+
+  const scheduleSuggestionsReveal = useCallback(
+    (messageId: number, delayMs: number) => {
+      if (suggestionsShowTimeoutRef.current) {
+        clearTimeout(suggestionsShowTimeoutRef.current);
+        suggestionsShowTimeoutRef.current = null;
+      }
+      suggestionsShowTimeoutRef.current = setTimeout(() => {
+        queryClient.setQueryData<SuggestionsState | null>(
+          suggestionsQueryKey,
+          (prev) => {
+            if (!prev || prev.messageId !== messageId) return prev;
+            return { ...prev, visible: true, showAt: Date.now() };
+          }
+        );
+      }, delayMs);
+    },
+    [queryClient, suggestionsQueryKey]
+  );
+
+  const { data: suggestionsState } = useQuery<SuggestionsState | null>({
+    queryKey: suggestionsQueryKey,
+    queryFn: async () => null,
+    enabled: typeof conversationId === "number" && conversationId > 0,
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 30,
+    initialData: null,
+  });
+
+  const visibleSuggestions = useMemo(() => {
+    if (!suggestionsState || !suggestionsState.visible) return null;
+    return suggestionsState;
+  }, [suggestionsState]);
+
+  const clearSuggestionsState = useCallback(() => {
+    queryClient.setQueryData(suggestionsQueryKey, null);
+    currentStreamingAiIdRef.current = null;
+    latestSuggestionsRef.current = null;
+    if (suggestionsShowTimeoutRef.current) {
+      clearTimeout(suggestionsShowTimeoutRef.current);
+      suggestionsShowTimeoutRef.current = null;
+    }
+  }, [queryClient, suggestionsQueryKey]);
+
+  // Hydrate suggestions from latest AI message when messages load (e.g., reload)
+  useEffect(() => {
+    if (
+      !conversationId ||
+      typeof conversationId !== "number" ||
+      conversationId <= 0
+    ) {
+      return;
+    }
+    if (suggestionsState) return; // already have suggestions in state
+    const latestAiWithSuggestions = [...messages]
+      .reverse()
+      .find(
+        (m) =>
+          m.role === "ai" &&
+          Array.isArray(m.suggestions) &&
+          m.suggestions.length > 0
+      );
+    if (!latestAiWithSuggestions) return;
+    if (
+      currentStreamingAiIdRef.current &&
+      latestAiWithSuggestions.id !== currentStreamingAiIdRef.current
+    ) {
+      // During streaming, avoid resurfacing older suggestions
+      return;
+    }
+    setSuggestionsState(
+      latestAiWithSuggestions.id,
+      latestAiWithSuggestions.suggestions as ReplySuggestion[],
+      true
+    );
+  }, [
+    setSuggestionsState,
+    conversationId,
+    messages,
+    suggestionsState,
+    currentStreamingAiIdRef,
+  ]);
 
   // Enriched conversations state (with previews)
   const [enrichedConversations, setEnrichedConversations] = useState<
@@ -556,6 +697,7 @@ export default function ConversationsPage() {
           onAiTranslation: () => {},
           onAiAudio: () => {},
           onAiNotes: () => {},
+          onReplySuggestions: () => {},
           onUserUpdate: () => {},
           onFinal: () => {},
           onError: async () => {},
@@ -567,6 +709,7 @@ export default function ConversationsPage() {
       return {
         onStart: ({ id, createdAt }: { id: number; createdAt: string }) => {
           targetId = id;
+          currentStreamingAiIdRef.current = id;
           updateMessagesCache(conversationId, (prev) => [
             ...prev,
             {
@@ -661,6 +804,18 @@ export default function ConversationsPage() {
             )
           );
         },
+        onReplySuggestions: (
+          messageId: number,
+          suggestions: ReplySuggestion[]
+        ) => {
+          // Attach to message cache
+          updateMessagesCache(conversationId, (prev) =>
+            prev.map((m) => (m.id === messageId ? { ...m, suggestions } : m))
+          );
+
+          // Store latest suggestions but keep hidden until final payload schedules reveal
+          setSuggestionsState(messageId, suggestions, false);
+        },
         // Let onError handle hydration fallback; final event is not strictly required here
         onUserUpdate: (update: {
           id: number;
@@ -699,6 +854,7 @@ export default function ConversationsPage() {
           audioUrl?: string;
           segments?: Message["segments"];
           notes?: unknown;
+          suggestions?: ReplySuggestion[];
         }) => {
           if (typeof final.id === "number" && final.id !== targetId) {
             const persistedId = final.id;
@@ -718,6 +874,17 @@ export default function ConversationsPage() {
               current === oldTargetId ? persistedId : current
             );
             targetId = persistedId;
+            // Move suggestions cache if it was associated to the temp id
+            queryClient.setQueryData<SuggestionsState | null>(
+              suggestionsQueryKey,
+              (prev) => {
+                if (!prev) return prev;
+                if (prev.messageId === oldTargetId) {
+                  return { ...prev, messageId: persistedId };
+                }
+                return prev;
+              }
+            );
           } else if (typeof final.id === "number" && final.id === targetId) {
             // If ID is already correct, just mark as persisted
             updateMessagesCache(conversationId, (prev) =>
@@ -772,6 +939,32 @@ export default function ConversationsPage() {
                 : m
             )
           );
+          // If suggestions arrived in final, attach and show immediately
+          if (
+            Array.isArray(final.suggestions) &&
+            final.suggestions.length > 0
+          ) {
+            const msgId = typeof final.id === "number" ? final.id : targetId;
+            updateMessagesCache(conversationId, (prev) =>
+              prev.map((m) =>
+                m.id === msgId ? { ...m, suggestions: final.suggestions } : m
+              )
+            );
+            setSuggestionsState(msgId, final.suggestions, false);
+            scheduleSuggestionsReveal(msgId, 10000);
+          } else if (
+            latestSuggestionsRef.current &&
+            latestSuggestionsRef.current.messageId === targetId
+          ) {
+            // Use the most recent reply-suggestions if final didn't include any
+            setSuggestionsState(
+              targetId,
+              latestSuggestionsRef.current.suggestions,
+              false
+            );
+            scheduleSuggestionsReveal(targetId, 10000);
+          }
+          currentStreamingAiIdRef.current = null;
         },
         onError: async () => {
           // Hydrate AI message if stream ended without explicit final
@@ -809,14 +1002,23 @@ export default function ConversationsPage() {
               // ignore
             }
           }
+          currentStreamingAiIdRef.current = null;
         },
       };
     },
-    [conversationId, updateMessagesCache, setPendingAutoPlayMessageId]
+    [
+      conversationId,
+      updateMessagesCache,
+      setPendingAutoPlayMessageId,
+      setSuggestionsState,
+      scheduleSuggestionsReveal,
+      queryClient,
+      suggestionsQueryKey,
+    ]
   );
 
   const {
-    start: startRecording,
+    start: startRecordingRaw,
     stop: stopRecording,
     cancel: cancelRecording,
     recording,
@@ -827,6 +1029,11 @@ export default function ConversationsPage() {
     onData: async (blob) => {
       if (!conversationId) return;
       try {
+        // Hide current suggestions once audio is sent
+        clearSuggestionsState();
+        currentStreamingAiIdRef.current = null;
+        latestSuggestionsRef.current = null;
+
         // Upload audio and get user message (with transcribed hanzi)
         // The mutation will add the user message to cache with loading flags
         const { user } = await sendAudioMutation.mutateAsync({
@@ -968,6 +1175,10 @@ export default function ConversationsPage() {
       }
     },
   });
+
+  const handleStartRecording = useCallback(() => {
+    startRecordingRaw();
+  }, [startRecordingRaw]);
 
   // Memoized date formatter utility
 
@@ -1310,7 +1521,7 @@ export default function ConversationsPage() {
       title="Conversations"
       subtitle="Practice natural dialogues"
     >
-      <div className="p-2 sm:p-4 h-full flex gap-4 relative">
+      <div className="p-2 pb-4 sm:p-4 h-full flex gap-4 relative">
         {/* Mobile Overlay */}
         {isMobile && showConversationsSidebar && (
           <div
@@ -1356,10 +1567,10 @@ export default function ConversationsPage() {
         {isMobile && (
           <button
             onClick={toggleConversationsSidebar}
-            className={`fixed z-30 p-3 rounded-lg transition-all duration-200 cursor-pointer md:hidden ${
+            className={`fixed min-h-[44px] z-30 p-3 rounded-lg transition-all duration-200 cursor-pointer md:hidden ${
               showConversationsSidebar
-                ? "bottom-16 right-2 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
-                : "bottom-19 right-2 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
+                ? "bottom-6 right-2 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
+                : "bottom-6 right-2 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
             }`}
             style={{ touchAction: "manipulation" }}
             title={
@@ -1514,13 +1725,22 @@ export default function ConversationsPage() {
             onGenerateNotes={handleGenerateNotes}
             conversationId={conversationId}
             resolveMediaUrl={resolveMediaUrl}
+            suggestionsForMessage={
+              visibleSuggestions
+                ? {
+                    messageId: visibleSuggestions.messageId,
+                    suggestions: visibleSuggestions.suggestions,
+                    showPinyin: true,
+                  }
+                : null
+            }
           />
 
           <MessageInput
             recording={recording}
             recPrompt={recPrompt}
             uploadingAudio={uploadingAudio}
-            onStartRecording={startRecording}
+            onStartRecording={handleStartRecording}
             onStopRecording={stopRecording}
             onCancelRecording={cancelRecording}
             audioStream={audioStream}
