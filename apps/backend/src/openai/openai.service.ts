@@ -100,6 +100,115 @@ export class OpenAIService {
     }
   }
 
+  async generateReplySuggestions(opts: {
+    conversationHistory: Array<{ role: 'user' | 'ai'; hanzi: string }>;
+    targetHskLevel?: string;
+  }): Promise<Array<{ zh: string; translation: string }>> {
+    const model = process.env.OPENAI_MODEL_CONVERSATION_REPLY || 'gpt-5-nano';
+
+    const history = Array.isArray(opts.conversationHistory)
+      ? opts.conversationHistory.slice(-4)
+      : [];
+    const renderedHistory =
+      history.length === 0
+        ? '(no prior turns)'
+        : history
+            .map(
+              (m) => `${m.role === 'user' ? 'User' : 'AI'}: ${m.hanzi || ''}`,
+            )
+            .join('\n');
+
+    const hskHint = opts.targetHskLevel
+      ? ` Use only vocabulary and grammar appropriate to ${opts.targetHskLevel.toUpperCase()}; if a simpler phrasing exists, prefer it.`
+      : '';
+
+    const response = await (this.openai as any).responses.create({
+      model,
+      reasoning: { effort: 'low' },
+      input: [
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'input_text',
+              text: `You are a native Mandarin tutor and friend continuing this exact conversation. Generate exactly TWO short follow-up suggestions that the *user* would plausibly say next in reply to the latest AI message, in Simplified Chinese plus an English gloss.
+              \nRules:
+              - Base suggestions ONLY on the last two turns; do NOT introduce new topics, activities, or invitations that were not mentioned.
+              - Each suggestion must naturally continue the current flow (a brief follow-up reply or question), not start a new branch, and must read as the user's next turn to the AI.
+              - Keep each Chinese suggestion concise (<=20 chars), friendly, on-topic, and coherent with the last AI message.
+              - ${hskHint}
+              - English gloss must be pure English (no Chinese chars or pinyin); no pinyin anywhere.
+              - No punctuation-only lines or extra formatting.
+              \nReturn STRICT JSON matching the schema.`,
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: `Recent turns (most recent last):\n${renderedHistory}`,
+            },
+          ],
+        },
+      ],
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'ConversationReplySuggestions',
+          schema: {
+            type: 'object',
+            properties: {
+              suggestions: {
+                type: 'array',
+                minItems: 2,
+                maxItems: 2,
+                items: {
+                  type: 'object',
+                  properties: {
+                    zh: { type: 'string' },
+                    translation: { type: 'string' },
+                  },
+                  required: ['zh', 'translation'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['suggestions'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+
+    const content = this.extractResponseText(response);
+    if (!content) return [];
+    try {
+      const parsed = JSON.parse(content);
+      const arr = Array.isArray(parsed?.suggestions)
+        ? parsed.suggestions
+        : Array.isArray(parsed)
+          ? parsed
+          : [];
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .map((item) => {
+          const zh = typeof item?.zh === 'string' ? item.zh.trim() : '';
+          const translation =
+            typeof item?.translation === 'string'
+              ? item.translation.trim()
+              : '';
+          if (!zh) return null;
+          return { zh, translation };
+        })
+        .filter(Boolean) as Array<{ zh: string; translation: string }>;
+    } catch (err) {
+      this.logger.warn('Failed to parse reply suggestions JSON', err as any);
+      return [];
+    }
+  }
+
   private extractResponseText(resp: any): string {
     if (!resp) return '';
     if (typeof resp.output_text === 'function') {

@@ -670,6 +670,55 @@ export class ConversationsService {
             } as any,
           });
 
+          // Generate reply suggestions (non-blocking: best-effort)
+          let suggestionsPayload: Array<{
+            zh: string;
+            pinyin: string;
+            translation: string;
+            segments: MessageSegment[];
+          }> | null = null;
+          try {
+            const conversationHistory = history.map((m) => ({
+              role: m.role === 'user' ? ('user' as const) : ('ai' as const),
+              hanzi: m.content,
+            }));
+            // Include the just-generated AI reply for better context; keep last 4 entries
+            conversationHistory.push({ role: 'ai', hanzi: finalHanzi });
+            const trimmedHistory = conversationHistory.slice(-4);
+            const rawSuggestions = await (
+              this.openai as any
+            ).generateReplySuggestions({
+              conversationHistory: trimmedHistory,
+              targetHskLevel,
+            });
+            const enriched = await Promise.all(
+              rawSuggestions.map(async (s) => {
+                const enrichedSug = await this.enrichSuggestion(s.zh);
+                return {
+                  ...enrichedSug,
+                  translation: s.translation,
+                };
+              }),
+            );
+            if (enriched.length > 0) {
+              suggestionsPayload = enriched;
+              await this.prisma.message.update({
+                where: { id: aiMsg.id },
+                data: { suggestions: enriched as any } as any,
+              } as any);
+              subscriber.next({
+                data: JSON.stringify({
+                  type: 'reply-suggestions',
+                  conversationId,
+                  messageId: aiMsg.id,
+                  suggestions: enriched,
+                }),
+              });
+            }
+          } catch (err) {
+            this.logger.warn('Reply suggestions generation failed', err as any);
+          }
+
           // Emit ai-audio when TTS completes
           const audioPromise = this.generateAndSaveAudio(
             finalHanzi,
@@ -705,6 +754,7 @@ export class ConversationsService {
             pinyin: pinyinPerChar || '',
             translation: assistantTranslation,
             segments,
+            suggestions: suggestionsPayload ?? undefined,
             complete: true,
           });
           subscriber.complete();
@@ -805,6 +855,65 @@ export class ConversationsService {
               } as any,
             });
 
+            // Generate reply suggestions (best-effort) for fallback path
+            let suggestionsPayload: Array<{
+              zh: string;
+              pinyin: string;
+              translation: string;
+              segments: MessageSegment[];
+            }> | null = null;
+            try {
+              const fallbackPrev = await this.prisma.message.findMany({
+                where: { conversationId },
+                orderBy: { createdAt: 'desc' },
+                take: 4,
+              });
+              const conversationHistory = fallbackPrev.reverse().map((m) => ({
+                role: m.role === 'user' ? ('user' as const) : ('ai' as const),
+                hanzi: m.hanzi,
+              }));
+              conversationHistory.push({
+                role: 'ai',
+                hanzi: finalHanziFallback,
+              });
+              const trimmedHistory = conversationHistory.slice(-4);
+              const rawSuggestions = await (
+                this.openai as any
+              ).generateReplySuggestions({
+                conversationHistory: trimmedHistory,
+                targetHskLevel,
+              });
+              const enriched = await Promise.all(
+                rawSuggestions.map(async (s) => {
+                  const enrichedSug = await this.enrichSuggestion(s.zh);
+                  return {
+                    ...enrichedSug,
+                    translation: s.translation,
+                  };
+                }),
+              );
+              if (enriched.length > 0) {
+                suggestionsPayload = enriched;
+                await this.prisma.message.update({
+                  where: { id: aiMsg.id },
+                  data: { suggestions: enriched as any } as any,
+                } as any);
+                subscriber.next({
+                  data: JSON.stringify({
+                    type: 'reply-suggestions',
+                    conversationId,
+                    messageId: aiMsg.id,
+                    suggestions: enriched,
+                  }),
+                });
+              }
+            } catch (err) {
+              this.logger.warn(
+                'Reply suggestions generation failed (fallback)',
+                err as any,
+              );
+            }
+
             subscriber.next({
               data: JSON.stringify({
                 type: 'ai-enrichment',
@@ -854,6 +963,7 @@ export class ConversationsService {
               pinyin: pinyinPerChar || '',
               translation: fallbackAssistantTranslation,
               segments: segments2,
+              suggestions: suggestionsPayload ?? undefined,
               complete: true,
             });
             subscriber.complete();
@@ -1053,6 +1163,23 @@ export class ConversationsService {
     });
 
     return segments;
+  }
+
+  private async enrichSuggestion(zh: string): Promise<{
+    zh: string;
+    pinyin: string;
+    segments: MessageSegment[];
+  }> {
+    if (!zh) {
+      return { zh: '', pinyin: '', segments: [] };
+    }
+    const pinyin = await this.computeSentencePinyinPerCharacter(zh);
+    const segments = (await this.computeAndFormatSegments(zh, pinyin)) || [];
+    return {
+      zh,
+      pinyin: pinyin || '',
+      segments,
+    };
   }
 
   private async enrichTextWithSegments(text?: string, pinyin?: string) {
