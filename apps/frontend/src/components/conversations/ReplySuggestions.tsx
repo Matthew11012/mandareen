@@ -52,7 +52,9 @@ export function ReplySuggestions({
             className="rounded-lg border border-[#404040] bg-[#1f2430] px-3 py-2 shadow-sm"
           >
             {renderPinyin(s)}
-            <div className="text-base text-white leading-snug">{s.zh}</div>
+            <div className="text-base sm:text-lg text-white leading-snug">
+              {s.zh}
+            </div>
             {s.translation ? (
               <div className="text-xs text-[#a6a6a6] leading-tight mt-1">
                 {s.translation}

@@ -1521,7 +1521,7 @@ export default function ConversationsPage() {
       title="Conversations"
       subtitle="Practice natural dialogues"
     >
-      <div className="p-2 sm:p-4 h-full flex gap-4 relative">
+      <div className="p-2 pb-4 sm:p-4 h-full flex gap-4 relative">
         {/* Mobile Overlay */}
         {isMobile && showConversationsSidebar && (
           <div
@@ -1567,10 +1567,10 @@ export default function ConversationsPage() {
         {isMobile && (
           <button
             onClick={toggleConversationsSidebar}
-            className={`fixed z-30 p-3 rounded-lg transition-all duration-200 cursor-pointer md:hidden ${
+            className={`fixed min-h-[44px] z-30 p-3 rounded-lg transition-all duration-200 cursor-pointer md:hidden ${
               showConversationsSidebar
-                ? "bottom-16 right-2 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
-                : "bottom-19 right-2 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
+                ? "bottom-6 right-2 bg-[#4040f2] hover:bg-[#3636d9] shadow-lg"
+                : "bottom-6 right-2 bg-[#1b1f26] border border-[#2a2e36] hover:bg-[#232838] hover:border-[#4040f2]"
             }`}
             style={{ touchAction: "manipulation" }}
             title={

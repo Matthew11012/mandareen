@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Volume2, Loader2, Sparkles, Plus } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { AiMessage } from "./AiMessage";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
@@ -179,6 +180,7 @@ export function MessageView({
                 fallbackZh={undefined}
                 showPinyin={showPinyin}
                 hoverClass="hover:bg-[#404040]"
+                textSizeClass="text-[16px] sm:text-[18px]"
                 keyPrefix={`suggestion-${suggestionsForMessage.messageId}-${idx}`}
                 openFromElement={(el, data) =>
                   handleToken(
@@ -209,7 +211,7 @@ export function MessageView({
   return (
     <div
       ref={scrollRef}
-      className="flex-1 overflow-y-auto space-y-3 sm:bg-[#20242b] sm:border sm:border-[#2e2f36] rounded-xl sm:p-4 relative pr-2"
+      className="flex-1 overflow-y-auto space-y-3 sm:bg-[#20242b] sm:border sm:border-[#2e2f36] sm:rounded-xl sm:p-4 relative pr-2"
       aria-live="polite"
       aria-relevant="additions text"
       role="log"
@@ -509,14 +511,7 @@ export function MessageView({
               {popup.data.definition}
             </div>
           ) : null}
-          {Array.isArray(popup.data?.definitions) &&
-          popup.data.definitions.length > 0 ? (
-            <ul className="text-xs text-[color:var(--text-secondary-strong)] mt-2 list-disc pl-4 space-y-0.5">
-              {popup.data.definitions.map((d, i) => (
-                <li key={i}>{d}</li>
-              ))}
-            </ul>
-          ) : null}
+          {/* Omit bullet list definitions to avoid duplicate rendering */}
           <div className="mt-3 pt-3 border-t border-[color:var(--border-strong)]">
             <button
               onClick={() => {
@@ -531,6 +526,70 @@ export function MessageView({
           </div>
         </div>
       ) : null}
+      {/* Mobile top sheet popup for suggestions */}
+      <AnimatePresence>
+        {popup.open && (
+          <motion.div
+            initial={{ y: "-100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "-100%" }}
+            transition={{
+              type: "spring",
+              stiffness: 300,
+              damping: 30,
+              duration: 0.3,
+            }}
+            className="sm:hidden fixed inset-x-0 top-0 z-40 bg-[#1a1d23]/95 backdrop-blur border-b border-[color:var(--border-muted)] p-4"
+          >
+            <div className="max-w-sm mx-auto">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="font-bold text-white text-lg truncate">
+                  {popup.data?.word}
+                </div>
+                {typeof popup.data?.hskLevel === "number" && (
+                  <span
+                    className={`text-[10px] leading-none px-2 py-[2px] rounded-full ${getHSKPillClasses(
+                      popup.data?.hskLevel
+                    )}`}
+                  >
+                    HSK {popup.data?.hskLevel}
+                  </span>
+                )}
+              </div>
+              {popup.data?.pinyin && (
+                <div className="text-[color:var(--text-highlight)] text-sm font-medium truncate mb-2">
+                  {popup.data.pinyin}
+                </div>
+              )}
+              {popup.data?.definition ? (
+                <div className="text-xs text-[color:var(--text-secondary-strong)] mb-3">
+                  {popup.data.definition}
+                </div>
+              ) : null}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    closePopup();
+                  }}
+                  className="px-3 py-2 bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-lg hover:border-[color:var(--color-accent-blue)] text-[color:var(--text-secondary-strong)] cursor-pointer text-sm"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={async () => {
+                    await addSingleToFlashcards(popup.data?.word || "");
+                    closePopup();
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-[var(--color-accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-strong)] transition-colors duration-200 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm font-inter">Add to Flashcards</span>
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
