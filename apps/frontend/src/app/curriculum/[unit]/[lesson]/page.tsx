@@ -811,7 +811,10 @@ function ExplainView({ content }: { content: ExplainContent }) {
                                       ✕
                                     </span>
                                     <div className="text-white/85 text-sm leading-relaxed">
-                                      {p.bad}
+                                      <MarkdownRenderer
+                                        content={p.bad || ""}
+                                        className="text-white/85 text-sm leading-relaxed [&>p]:mb-1"
+                                      />
                                     </div>
                                   </div>
                                   <div className="flex items-start gap-3 rounded-md bg-green-500/12 border border-green-500/25 px-3 py-2">
@@ -819,12 +822,18 @@ function ExplainView({ content }: { content: ExplainContent }) {
                                       ✓
                                     </span>
                                     <div className="text-white/85 text-sm leading-relaxed">
-                                      {p.good}
+                                      <MarkdownRenderer
+                                        content={p.good || ""}
+                                        className="text-white/85 text-sm leading-relaxed [&>p]:mb-1"
+                                      />
                                     </div>
                                   </div>
                                   {p.note && (
                                     <div className="pl-8 text-white/70 text-sm italic leading-relaxed">
-                                      {p.note}
+                                      <MarkdownRenderer
+                                        content={p.note}
+                                        className="text-white/70 text-sm italic leading-relaxed [&>p]:mb-1"
+                                      />
                                     </div>
                                   )}
                                 </div>
@@ -932,9 +941,9 @@ function ComprehensionView({
             >
               {/* Question Text */}
               <div className="mb-3">
-                <QuestionText
-                  text={question.prompt}
-                  segments={question.segments}
+                <MarkdownRenderer
+                  content={question.prompt || ""}
+                  className="text-white/90 text-sm sm:text-base [&>p]:mb-1"
                 />
                 {question.translation && (
                   <div className="text-white/60 text-xs sm:text-sm mt-1 italic">
@@ -1010,6 +1019,7 @@ function ComprehensionView({
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function QuestionText({
   text,
   segments,
