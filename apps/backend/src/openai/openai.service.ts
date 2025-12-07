@@ -132,7 +132,7 @@ export class OpenAIService {
             {
               type: 'input_text',
               text:
-                'You are a native Mandarin friend helping the user continue a casual chat. Generate exactly TWO short follow-up suggestions in Simplified Chinese plus an English gloss. Keep each Chinese suggestion concise (about 8–25 characters), natural, and friendly. Do NOT include pinyin, punctuation-only lines, or any extra formatting.' +
+                'You are a native Mandarin friend helping the user continue a casual chat. Generate exactly TWO short follow-up suggestions in Simplified Chinese plus an English gloss. Keep each Chinese suggestion concise (about 8–25 characters), natural, friendly, and appropriate natural suggestions to continue according to the level of the user. Do NOT include pinyin, punctuation-only lines, or any extra formatting.' +
                 hskHint +
                 '\n\nReturn STRICT JSON matching the provided schema.',
             },
@@ -153,18 +153,25 @@ export class OpenAIService {
           type: 'json_schema',
           name: 'ConversationReplySuggestions',
           schema: {
-            type: 'array',
-            minItems: 2,
-            maxItems: 2,
-            items: {
-              type: 'object',
-              properties: {
-                zh: { type: 'string' },
-                translation: { type: 'string' },
+            type: 'object',
+            properties: {
+              suggestions: {
+                type: 'array',
+                minItems: 2,
+                maxItems: 2,
+                items: {
+                  type: 'object',
+                  properties: {
+                    zh: { type: 'string' },
+                    translation: { type: 'string' },
+                  },
+                  required: ['zh', 'translation'],
+                  additionalProperties: false,
+                },
               },
-              required: ['zh', 'translation'],
-              additionalProperties: false,
             },
+            required: ['suggestions'],
+            additionalProperties: false,
           },
         },
       },
@@ -174,8 +181,13 @@ export class OpenAIService {
     if (!content) return [];
     try {
       const parsed = JSON.parse(content);
-      if (!Array.isArray(parsed)) return [];
-      return parsed
+      const arr = Array.isArray(parsed?.suggestions)
+        ? parsed.suggestions
+        : Array.isArray(parsed)
+          ? parsed
+          : [];
+      if (!Array.isArray(arr)) return [];
+      return arr
         .map((item) => {
           const zh = typeof item?.zh === 'string' ? item.zh.trim() : '';
           const translation =

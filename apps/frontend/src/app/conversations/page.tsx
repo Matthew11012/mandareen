@@ -558,7 +558,7 @@ export default function ConversationsPage() {
     null
   );
 
-  useQuery<SuggestionsState | null>({
+  const { data: suggestionsState } = useQuery<SuggestionsState | null>({
     queryKey: suggestionsQueryKey,
     queryFn: async () => null,
     enabled: typeof conversationId === "number" && conversationId > 0,
@@ -568,12 +568,49 @@ export default function ConversationsPage() {
   });
 
   const visibleSuggestions = useMemo(() => {
-    const state = queryClient.getQueryData<SuggestionsState | null>(
-      suggestionsQueryKey
+    if (!suggestionsState || !suggestionsState.visible) return null;
+    return suggestionsState;
+  }, [suggestionsState]);
+
+  const suggestionsFooter = useMemo(() => {
+    if (!visibleSuggestions) return null;
+    return (
+      <div>
+        <div className="text-xs font-semibold text-[#9aa6ff] mb-2 uppercase tracking-wide">
+          Suggestions
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {visibleSuggestions.suggestions.map((s, idx) => {
+            const pinyin =
+              Array.isArray(s.segments) && s.segments.length > 0
+                ? s.segments
+                    .map((seg) => (seg.pinyin || "").trim())
+                    .filter(Boolean)
+                    .join(" ")
+                : "";
+            return (
+              <div
+                key={`${s.zh}-${idx}`}
+                className="rounded-lg border border-[#404040] bg-[#1f2430] px-3 py-2 shadow-sm"
+              >
+                {pinyin ? (
+                  <div className="text-xs text-[#9aa6ff] leading-tight mb-1">
+                    {pinyin}
+                  </div>
+                ) : null}
+                <div className="text-base text-white leading-snug">{s.zh}</div>
+                {s.translation ? (
+                  <div className="text-xs text-[#a6a6a6] leading-tight mt-1">
+                    {s.translation}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     );
-    if (!state || !state.visible) return null;
-    return state;
-  }, [queryClient, suggestionsQueryKey]);
+  }, [visibleSuggestions]);
 
   const clearSuggestionsState = useCallback(() => {
     if (suggestionsTimeoutRef.current) {
@@ -1640,19 +1677,7 @@ export default function ConversationsPage() {
             onGenerateNotes={handleGenerateNotes}
             conversationId={conversationId}
             resolveMediaUrl={resolveMediaUrl}
-            suggestionsForMessage={
-              visibleSuggestions
-                ? {
-                    messageId: visibleSuggestions.messageId,
-                    suggestions: visibleSuggestions.suggestions,
-                  }
-                : null
-            }
-            showSuggestionsPinyin={
-              visibleSuggestions
-                ? !!aiShowPinyin[visibleSuggestions.messageId]
-                : false
-            }
+            footer={suggestionsFooter}
           />
 
           <MessageInput
