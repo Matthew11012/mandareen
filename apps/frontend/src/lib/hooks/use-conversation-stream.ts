@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import type { ConversationHskLevel, Message } from "@/lib/api/conversations";
+import type {
+  ConversationHskLevel,
+  Message,
+  ReplySuggestion,
+} from "@/lib/api/conversations";
 import { conversationsApi } from "@/lib/api/conversations";
 
 type Segment = NonNullable<Message["segments"]>[number];
@@ -28,6 +32,7 @@ type FinalPayload = {
   audioUrl?: string;
   segments?: Segment[];
   notes?: NotesPayload;
+  suggestions?: ReplySuggestion[];
 };
 
 type StreamCallbacks = {
@@ -37,6 +42,10 @@ type StreamCallbacks = {
   onAiTranslation?: (translation?: string) => void;
   onAiAudio?: (audioUrl?: string) => void;
   onAiNotes?: (notes?: NotesPayload) => void;
+  onReplySuggestions?: (
+    messageId: number,
+    suggestions: ReplySuggestion[]
+  ) => void;
   onUserUpdate?: (update: UserUpdatePayload) => void;
   onFinal?: (final: FinalPayload) => void;
   onClose?: () => void;
@@ -111,6 +120,21 @@ export function useConversationStream() {
           notes = { grammarNotes, tipsRich };
         }
         cb.onAiNotes?.(notes);
+        return;
+      }
+      if (isRecord(payload) && payload.type === "reply-suggestions") {
+        const suggestions = Array.isArray(payload.suggestions)
+          ? (payload.suggestions as ReplySuggestion[])
+          : [];
+        const messageId =
+          typeof payload.messageId === "number"
+            ? payload.messageId
+            : typeof payload.id === "number"
+              ? (payload.id as number)
+              : undefined;
+        if (messageId && suggestions.length > 0) {
+          cb.onReplySuggestions?.(messageId, suggestions);
+        }
         return;
       }
       if (
@@ -202,6 +226,7 @@ export function useConversationStream() {
       "ai-translation",
       "ai-audio",
       "ai-notes",
+      "reply-suggestions",
       "user-update",
       "final",
     ].forEach((evt) =>
