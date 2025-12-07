@@ -1194,7 +1194,7 @@ export class OpenAIService {
     - "examples": array of representative examples from the context. Each example: { "zh": "...", "pinyin": "...", "en": "..." } in simplified form only (omit traditional variants).
       - When the context is an inventory/list (e.g., initials/finals), show the full set in a compact table, and include only 2-6 illustrative examples (not one per item).
       - Otherwise, include up to 6 examples total; avoid near-duplicate examples. Do NOT repeat examples already shown verbatim inside conceptMd tables or bullets—use distinct examples or omit.
-    - "pitfalls": array of common mistakes. Each: { "bad": "...", "good": "...", "note": "..." }. Include ALL that apply from context. Can be empty array if none. Note should always be in an english first explanation.
+    - "pitfalls": array of common mistakes. Each: { "bad": "...", "good": "...", "note": "..." }. Include ALL that apply from context. Can be empty array if none. bad, good, and note should always be in an english first explanation.
     - "checks": array of 1-3 comprehension checks (decide the amount based on the section's complexity). Use T/F style: { "type": "tf", "prompt": "...", "answer": "T"|"F" }. Keep them concise and directly tied to the section’s points.
 
     \nReturn ONLY valid JSON with keys: overview, sections. No additional text.
@@ -1213,7 +1213,7 @@ export class OpenAIService {
             { "zh": "我们学中文。", "pinyin": "wǒmen xué zhōngwén", "en": "We study Chinese." }
           ],
           "pitfalls": [
-            { "bad": "我苹果吃。", "good": "我吃苹果。", "note": "Do not place the object before the verb." }
+            { "bad": "I apple eat. (我苹果吃。)", "good": "I eat apples. (我吃苹果。)", "note": "Explain pitfalls in English first; include the Chinese form in parentheses." }
           ],
           "checks": [
             { "type": "tf", "prompt": "Mandarin uses SVO order by default.", "answer": "T" }       
