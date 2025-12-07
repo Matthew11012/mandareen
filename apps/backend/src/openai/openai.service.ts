@@ -100,6 +100,98 @@ export class OpenAIService {
     }
   }
 
+  async generateReplySuggestions(opts: {
+    conversationHistory: Array<{ role: 'user' | 'ai'; hanzi: string }>;
+    targetHskLevel?: string;
+  }): Promise<Array<{ zh: string; translation: string }>> {
+    const model = process.env.OPENAI_MODEL_CONVERSATION_REPLY || 'gpt-5-nano';
+
+    const history = Array.isArray(opts.conversationHistory)
+      ? opts.conversationHistory.slice(-4)
+      : [];
+    const renderedHistory =
+      history.length === 0
+        ? '(no prior turns)'
+        : history
+            .map(
+              (m) => `${m.role === 'user' ? 'User' : 'AI'}: ${m.hanzi || ''}`,
+            )
+            .join('\n');
+
+    const hskHint = opts.targetHskLevel
+      ? ` Keep difficulty and vocabulary around ${opts.targetHskLevel.toUpperCase()}.`
+      : '';
+
+    const response = await (this.openai as any).responses.create({
+      model,
+      reasoning: { effort: 'minimal' },
+      input: [
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'input_text',
+              text:
+                'You are a native Mandarin friend helping the user continue a casual chat. Generate exactly TWO short follow-up suggestions in Simplified Chinese plus an English gloss. Keep each Chinese suggestion concise (about 8–25 characters), natural, and friendly. Do NOT include pinyin, punctuation-only lines, or any extra formatting.' +
+                hskHint +
+                '\n\nReturn STRICT JSON matching the provided schema.',
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: `Recent turns (most recent last):\n${renderedHistory}`,
+            },
+          ],
+        },
+      ],
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'ConversationReplySuggestions',
+          schema: {
+            type: 'array',
+            minItems: 2,
+            maxItems: 2,
+            items: {
+              type: 'object',
+              properties: {
+                zh: { type: 'string' },
+                translation: { type: 'string' },
+              },
+              required: ['zh', 'translation'],
+              additionalProperties: false,
+            },
+          },
+        },
+      },
+    });
+
+    const content = this.extractResponseText(response);
+    if (!content) return [];
+    try {
+      const parsed = JSON.parse(content);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .map((item) => {
+          const zh = typeof item?.zh === 'string' ? item.zh.trim() : '';
+          const translation =
+            typeof item?.translation === 'string'
+              ? item.translation.trim()
+              : '';
+          if (!zh) return null;
+          return { zh, translation };
+        })
+        .filter(Boolean) as Array<{ zh: string; translation: string }>;
+    } catch (err) {
+      this.logger.warn('Failed to parse reply suggestions JSON', err as any);
+      return [];
+    }
+  }
+
   private extractResponseText(resp: any): string {
     if (!resp) return '';
     if (typeof resp.output_text === 'function') {
