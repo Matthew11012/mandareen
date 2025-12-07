@@ -545,6 +545,14 @@ export default function ConversationsPage() {
     showAt: number;
     visible: boolean;
   };
+  const currentStreamingAiIdRef = useRef<number | null>(null);
+  const latestSuggestionsRef = useRef<{
+    messageId: number;
+    suggestions: ReplySuggestion[];
+  } | null>(null);
+  const suggestionsShowTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
 
   const suggestionsQueryKey = useMemo(
     () =>
@@ -554,8 +562,57 @@ export default function ConversationsPage() {
     [conversationId]
   );
 
-  const suggestionsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
+  const setSuggestionsState = useCallback(
+    (messageId: number, suggestions: ReplySuggestion[], visible: boolean) => {
+      if (!Array.isArray(suggestions) || suggestions.length === 0) return;
+      const timestamp = Date.now();
+      latestSuggestionsRef.current = { messageId, suggestions };
+      queryClient.setQueryData<SuggestionsState | null>(
+        suggestionsQueryKey,
+        (prev) => {
+          if (prev) {
+            // Preserve newer suggestions for the same message
+            if (
+              prev.messageId === messageId &&
+              typeof prev.showAt === "number" &&
+              prev.showAt >= timestamp
+            ) {
+              return prev;
+            }
+            // Preserve suggestions from a newer message (should be rare)
+            if (prev.messageId !== messageId && prev.showAt > timestamp) {
+              return prev;
+            }
+          }
+          return {
+            messageId,
+            suggestions,
+            showAt: timestamp,
+            visible,
+          };
+        }
+      );
+    },
+    [queryClient, suggestionsQueryKey]
+  );
+
+  const scheduleSuggestionsReveal = useCallback(
+    (messageId: number, delayMs: number) => {
+      if (suggestionsShowTimeoutRef.current) {
+        clearTimeout(suggestionsShowTimeoutRef.current);
+        suggestionsShowTimeoutRef.current = null;
+      }
+      suggestionsShowTimeoutRef.current = setTimeout(() => {
+        queryClient.setQueryData<SuggestionsState | null>(
+          suggestionsQueryKey,
+          (prev) => {
+            if (!prev || prev.messageId !== messageId) return prev;
+            return { ...prev, visible: true, showAt: Date.now() };
+          }
+        );
+      }, delayMs);
+    },
+    [queryClient, suggestionsQueryKey]
   );
 
   const { data: suggestionsState } = useQuery<SuggestionsState | null>({
@@ -572,61 +629,15 @@ export default function ConversationsPage() {
     return suggestionsState;
   }, [suggestionsState]);
 
-  const suggestionsFooter = useMemo(() => {
-    if (!visibleSuggestions) return null;
-    return (
-      <div>
-        <div className="text-xs font-semibold text-[#9aa6ff] mb-2 uppercase tracking-wide">
-          Suggestions
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {visibleSuggestions.suggestions.map((s, idx) => {
-            const pinyin =
-              Array.isArray(s.segments) && s.segments.length > 0
-                ? s.segments
-                    .map((seg) => (seg.pinyin || "").trim())
-                    .filter(Boolean)
-                    .join(" ")
-                : "";
-            return (
-              <div
-                key={`${s.zh}-${idx}`}
-                className="rounded-lg border border-[#404040] bg-[#1f2430] px-3 py-2 shadow-sm"
-              >
-                {pinyin ? (
-                  <div className="text-xs text-[#9aa6ff] leading-tight mb-1">
-                    {pinyin}
-                  </div>
-                ) : null}
-                <div className="text-base text-white leading-snug">{s.zh}</div>
-                {s.translation ? (
-                  <div className="text-xs text-[#a6a6a6] leading-tight mt-1">
-                    {s.translation}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }, [visibleSuggestions]);
-
   const clearSuggestionsState = useCallback(() => {
-    if (suggestionsTimeoutRef.current) {
-      clearTimeout(suggestionsTimeoutRef.current);
-      suggestionsTimeoutRef.current = null;
-    }
     queryClient.setQueryData(suggestionsQueryKey, null);
+    currentStreamingAiIdRef.current = null;
+    latestSuggestionsRef.current = null;
+    if (suggestionsShowTimeoutRef.current) {
+      clearTimeout(suggestionsShowTimeoutRef.current);
+      suggestionsShowTimeoutRef.current = null;
+    }
   }, [queryClient, suggestionsQueryKey]);
-
-  useEffect(() => {
-    return () => {
-      if (suggestionsTimeoutRef.current) {
-        clearTimeout(suggestionsTimeoutRef.current);
-      }
-    };
-  }, []);
 
   // Hydrate suggestions from latest AI message when messages load (e.g., reload)
   useEffect(() => {
@@ -637,6 +648,7 @@ export default function ConversationsPage() {
     ) {
       return;
     }
+    if (suggestionsState) return; // already have suggestions in state
     const latestAiWithSuggestions = [...messages]
       .reverse()
       .find(
@@ -646,17 +658,25 @@ export default function ConversationsPage() {
           m.suggestions.length > 0
       );
     if (!latestAiWithSuggestions) return;
-    const existing = queryClient.getQueryData<SuggestionsState | null>(
-      suggestionsQueryKey
+    if (
+      currentStreamingAiIdRef.current &&
+      latestAiWithSuggestions.id !== currentStreamingAiIdRef.current
+    ) {
+      // During streaming, avoid resurfacing older suggestions
+      return;
+    }
+    setSuggestionsState(
+      latestAiWithSuggestions.id,
+      latestAiWithSuggestions.suggestions as ReplySuggestion[],
+      true
     );
-    if (existing && existing.messageId === latestAiWithSuggestions.id) return;
-    queryClient.setQueryData<SuggestionsState | null>(suggestionsQueryKey, {
-      messageId: latestAiWithSuggestions.id,
-      suggestions: latestAiWithSuggestions.suggestions as ReplySuggestion[],
-      showAt: Date.now(),
-      visible: true,
-    });
-  }, [conversationId, messages, queryClient, suggestionsQueryKey]);
+  }, [
+    setSuggestionsState,
+    conversationId,
+    messages,
+    suggestionsState,
+    currentStreamingAiIdRef,
+  ]);
 
   // Enriched conversations state (with previews)
   const [enrichedConversations, setEnrichedConversations] = useState<
@@ -689,7 +709,7 @@ export default function ConversationsPage() {
       return {
         onStart: ({ id, createdAt }: { id: number; createdAt: string }) => {
           targetId = id;
-          clearSuggestionsState();
+          currentStreamingAiIdRef.current = id;
           updateMessagesCache(conversationId, (prev) => [
             ...prev,
             {
@@ -793,29 +813,8 @@ export default function ConversationsPage() {
             prev.map((m) => (m.id === messageId ? { ...m, suggestions } : m))
           );
 
-          // Schedule visibility with 5s delay
-          if (suggestionsTimeoutRef.current) {
-            clearTimeout(suggestionsTimeoutRef.current);
-          }
-          const showAt = Date.now() + 5000;
-          queryClient.setQueryData<SuggestionsState | null>(
-            suggestionsQueryKey,
-            {
-              messageId,
-              suggestions,
-              showAt,
-              visible: false,
-            }
-          );
-          suggestionsTimeoutRef.current = setTimeout(() => {
-            queryClient.setQueryData<SuggestionsState | null>(
-              suggestionsQueryKey,
-              (prev) => {
-                if (!prev || prev.messageId !== messageId) return prev;
-                return { ...prev, visible: true };
-              }
-            );
-          }, 5000);
+          // Store latest suggestions but keep hidden until final payload schedules reveal
+          setSuggestionsState(messageId, suggestions, false);
         },
         // Let onError handle hydration fallback; final event is not strictly required here
         onUserUpdate: (update: {
@@ -855,6 +854,7 @@ export default function ConversationsPage() {
           audioUrl?: string;
           segments?: Message["segments"];
           notes?: unknown;
+          suggestions?: ReplySuggestion[];
         }) => {
           if (typeof final.id === "number" && final.id !== targetId) {
             const persistedId = final.id;
@@ -874,6 +874,17 @@ export default function ConversationsPage() {
               current === oldTargetId ? persistedId : current
             );
             targetId = persistedId;
+            // Move suggestions cache if it was associated to the temp id
+            queryClient.setQueryData<SuggestionsState | null>(
+              suggestionsQueryKey,
+              (prev) => {
+                if (!prev) return prev;
+                if (prev.messageId === oldTargetId) {
+                  return { ...prev, messageId: persistedId };
+                }
+                return prev;
+              }
+            );
           } else if (typeof final.id === "number" && final.id === targetId) {
             // If ID is already correct, just mark as persisted
             updateMessagesCache(conversationId, (prev) =>
@@ -928,6 +939,32 @@ export default function ConversationsPage() {
                 : m
             )
           );
+          // If suggestions arrived in final, attach and show immediately
+          if (
+            Array.isArray(final.suggestions) &&
+            final.suggestions.length > 0
+          ) {
+            const msgId = typeof final.id === "number" ? final.id : targetId;
+            updateMessagesCache(conversationId, (prev) =>
+              prev.map((m) =>
+                m.id === msgId ? { ...m, suggestions: final.suggestions } : m
+              )
+            );
+            setSuggestionsState(msgId, final.suggestions, false);
+            scheduleSuggestionsReveal(msgId, 10000);
+          } else if (
+            latestSuggestionsRef.current &&
+            latestSuggestionsRef.current.messageId === targetId
+          ) {
+            // Use the most recent reply-suggestions if final didn't include any
+            setSuggestionsState(
+              targetId,
+              latestSuggestionsRef.current.suggestions,
+              false
+            );
+            scheduleSuggestionsReveal(targetId, 10000);
+          }
+          currentStreamingAiIdRef.current = null;
         },
         onError: async () => {
           // Hydrate AI message if stream ended without explicit final
@@ -965,6 +1002,7 @@ export default function ConversationsPage() {
               // ignore
             }
           }
+          currentStreamingAiIdRef.current = null;
         },
       };
     },
@@ -972,14 +1010,15 @@ export default function ConversationsPage() {
       conversationId,
       updateMessagesCache,
       setPendingAutoPlayMessageId,
-      clearSuggestionsState,
+      setSuggestionsState,
+      scheduleSuggestionsReveal,
       queryClient,
       suggestionsQueryKey,
     ]
   );
 
   const {
-    start: startRecording,
+    start: startRecordingRaw,
     stop: stopRecording,
     cancel: cancelRecording,
     recording,
@@ -990,6 +1029,11 @@ export default function ConversationsPage() {
     onData: async (blob) => {
       if (!conversationId) return;
       try {
+        // Hide current suggestions once audio is sent
+        clearSuggestionsState();
+        currentStreamingAiIdRef.current = null;
+        latestSuggestionsRef.current = null;
+
         // Upload audio and get user message (with transcribed hanzi)
         // The mutation will add the user message to cache with loading flags
         const { user } = await sendAudioMutation.mutateAsync({
@@ -1131,6 +1175,10 @@ export default function ConversationsPage() {
       }
     },
   });
+
+  const handleStartRecording = useCallback(() => {
+    startRecordingRaw();
+  }, [startRecordingRaw]);
 
   // Memoized date formatter utility
 
@@ -1677,14 +1725,22 @@ export default function ConversationsPage() {
             onGenerateNotes={handleGenerateNotes}
             conversationId={conversationId}
             resolveMediaUrl={resolveMediaUrl}
-            footer={suggestionsFooter}
+            suggestionsForMessage={
+              visibleSuggestions
+                ? {
+                    messageId: visibleSuggestions.messageId,
+                    suggestions: visibleSuggestions.suggestions,
+                    showPinyin: true,
+                  }
+                : null
+            }
           />
 
           <MessageInput
             recording={recording}
             recPrompt={recPrompt}
             uploadingAudio={uploadingAudio}
-            onStartRecording={startRecording}
+            onStartRecording={handleStartRecording}
             onStopRecording={stopRecording}
             onCancelRecording={cancelRecording}
             audioStream={audioStream}
