@@ -3,7 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Volume2, Loader2, Sparkles } from "lucide-react";
 import { AiMessage } from "./AiMessage";
-import type { Message, MessageNotes } from "@/lib/api/conversations";
+import { ReplySuggestions } from "./ReplySuggestions";
+import type {
+  Message,
+  MessageNotes,
+  ReplySuggestion,
+} from "@/lib/api/conversations";
 
 const INT32_MAX = 2147483647;
 const isPersistedMessageId = (id: number) =>
@@ -29,6 +34,11 @@ interface MessageViewProps {
   onGenerateNotes?: (messageId: number) => Promise<void>;
   conversationId: number | null;
   resolveMediaUrl: (url?: string) => string | undefined;
+  suggestionsForMessage?: {
+    messageId: number;
+    suggestions: ReplySuggestion[];
+  } | null;
+  showSuggestionsPinyin?: boolean;
 }
 
 export function MessageView({
@@ -45,6 +55,8 @@ export function MessageView({
   onGenerateNotes,
   conversationId,
   resolveMediaUrl,
+  suggestionsForMessage,
+  showSuggestionsPinyin = false,
 }: MessageViewProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [generatingNotes, setGeneratingNotes] = useState<
@@ -316,6 +328,16 @@ export function MessageView({
                 onOpenNotesModal={onOpenNotesModal}
                 containerRef={scrollRef}
               />
+              {m.role === "ai" &&
+              suggestionsForMessage &&
+              suggestionsForMessage.messageId === m.id &&
+              Array.isArray(suggestionsForMessage.suggestions) &&
+              suggestionsForMessage.suggestions.length > 0 ? (
+                <ReplySuggestions
+                  suggestions={suggestionsForMessage.suggestions}
+                  showPinyin={showSuggestionsPinyin}
+                />
+              ) : null}
               <div className="text-[10px] text-[#808080] mt-1">
                 {new Date(m.createdAt).toLocaleTimeString()}
               </div>

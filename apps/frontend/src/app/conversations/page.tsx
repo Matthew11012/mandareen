@@ -539,7 +539,6 @@ export default function ConversationsPage() {
 
   // Use query data directly
   const messages = useMemo(() => messagesData ?? [], [messagesData]);
-
   type SuggestionsState = {
     messageId: number;
     suggestions: ReplySuggestion[];
@@ -567,6 +566,14 @@ export default function ConversationsPage() {
     gcTime: 1000 * 60 * 30,
     initialData: null,
   });
+
+  const visibleSuggestions = useMemo(() => {
+    const state = queryClient.getQueryData<SuggestionsState | null>(
+      suggestionsQueryKey
+    );
+    if (!state || !state.visible) return null;
+    return state;
+  }, [queryClient, suggestionsQueryKey]);
 
   const clearSuggestionsState = useCallback(() => {
     if (suggestionsTimeoutRef.current) {
@@ -1633,6 +1640,19 @@ export default function ConversationsPage() {
             onGenerateNotes={handleGenerateNotes}
             conversationId={conversationId}
             resolveMediaUrl={resolveMediaUrl}
+            suggestionsForMessage={
+              visibleSuggestions
+                ? {
+                    messageId: visibleSuggestions.messageId,
+                    suggestions: visibleSuggestions.suggestions,
+                  }
+                : null
+            }
+            showSuggestionsPinyin={
+              visibleSuggestions
+                ? !!aiShowPinyin[visibleSuggestions.messageId]
+                : false
+            }
           />
 
           <MessageInput
