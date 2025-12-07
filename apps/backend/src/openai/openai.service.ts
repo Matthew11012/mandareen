@@ -119,22 +119,27 @@ export class OpenAIService {
             .join('\n');
 
     const hskHint = opts.targetHskLevel
-      ? ` Keep difficulty and vocabulary around ${opts.targetHskLevel.toUpperCase()}.`
+      ? ` Use only vocabulary and grammar appropriate to ${opts.targetHskLevel.toUpperCase()}; if a simpler phrasing exists, prefer it.`
       : '';
 
     const response = await (this.openai as any).responses.create({
       model,
-      reasoning: { effort: 'minimal' },
+      reasoning: { effort: 'low' },
       input: [
         {
           role: 'system',
           content: [
             {
               type: 'input_text',
-              text:
-                'You are a native Mandarin friend helping the user continue a casual chat. Generate exactly TWO short follow-up suggestions in Simplified Chinese plus an English gloss. Keep each Chinese suggestion concise (about 8–25 characters), natural, friendly, and appropriate natural suggestions to continue according to the level of the user. Do NOT include pinyin, punctuation-only lines, or any extra formatting.' +
-                hskHint +
-                '\n\nReturn STRICT JSON matching the provided schema.',
+              text: `You are a native Mandarin tutor and friend continuing this exact conversation. Generate exactly TWO short follow-up suggestions that the *user* would plausibly say next in reply to the latest AI message, in Simplified Chinese plus an English gloss.
+              \nRules:
+              - Base suggestions ONLY on the last two turns; do NOT introduce new topics, activities, or invitations that were not mentioned.
+              - Each suggestion must naturally continue the current flow (a brief follow-up reply or question), not start a new branch, and must read as the user's next turn to the AI.
+              - Keep each Chinese suggestion concise (<=20 chars), friendly, on-topic, and coherent with the last AI message.
+              - ${hskHint}
+              - English gloss must be pure English (no Chinese chars or pinyin); no pinyin anywhere.
+              - No punctuation-only lines or extra formatting.
+              \nReturn STRICT JSON matching the schema.`,
             },
           ],
         },
