@@ -6,11 +6,24 @@ import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
+const baseURL =
+  process.env.BETTER_AUTH_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  'http://localhost:3000';
+
+const baseHost = new URL(baseURL).hostname;
+const isLocalhost = baseHost === 'localhost' || baseHost === '127.0.0.1';
+const cookieDomain =
+  process.env.BETTER_AUTH_COOKIE_DOMAIN ||
+  (isLocalhost ? '.localhost' : baseHost);
+const cookieSameSite = isLocalhost ? 'lax' : 'none';
+const cookieSecure =
+  process.env.BETTER_AUTH_COOKIE_SECURE === 'true' ||
+  (!isLocalhost && baseURL.startsWith('https://')) ||
+  process.env.NODE_ENV === 'production';
+
 export const auth = betterAuth({
-  baseURL:
-    process.env.BETTER_AUTH_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    'http://localhost:3000',
+  baseURL,
   database: prismaAdapter(prisma, {
     provider: 'postgresql',
   }),
@@ -21,6 +34,7 @@ export const auth = betterAuth({
         process.env.NEXT_PUBLIC_API_URL,
         'http://localhost:3000',
         'http://localhost:3001',
+        'https://unartificial-marion-enrapturedly.ngrok-free.dev',
       ].filter(Boolean) as string[],
     ),
   ),
@@ -68,12 +82,10 @@ export const auth = betterAuth({
     cookiePrefix: 'mandareen',
     defaultCookieAttributes: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: cookieSecure,
+      sameSite: cookieSameSite,
       path: '/',
-      domain:
-        process.env.BETTER_AUTH_COOKIE_DOMAIN ??
-        (process.env.NODE_ENV !== 'production' ? '.localhost' : undefined),
+      domain: cookieDomain,
     },
   },
   secret: process.env.BETTER_AUTH_SECRET!,
