@@ -1,55 +1,74 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Plus } from "lucide-react";
 
-const faqs = [
+const FAQ_ITEMS = [
   {
-    q: "How does Mandareen help me learn?",
-    a: "AI generates lessons and conversations tailored to your level, and you review with spaced repetition.",
+    q: "How is my HSK level determined?",
+    a: "We use a 4-part AI placement test with rising difficulty. You simply read passages and tap words you don't know. Our algorithm calculates your vocabulary coverage and assigns a precise HSK level (1-9)."
   },
   {
-    q: "Is it free to start?",
-    a: "Yes. You can create an account and start learning for free.",
+    q: "Can I adjust the difficulty of lessons?",
+    a: "Yes. While we recommend content at your detected level, you can manually set the target HSK level for any generated lesson or conversation. You can also control the 'timeframe' (e.g., modern vs. imperial/mythic) to change the flavor of the language."
   },
   {
-    q: "Can I practice speaking?",
-    a: "Yes. Talk to the AI partner and get real-time feedback and tips.",
+    q: "Do lessons include pinyin and translations?",
+    a: "Absolutely. Every AI lesson and conversation message has toggleable pinyin and full English translations. You can also click any individual word to see its definition and add it to your flashcards."
   },
+  {
+    q: "How does the flashcard system work?",
+    a: "We use the SM-2 spaced repetition algorithm. Words are scheduled for review based on how well you know them (Strong, Partial, Weak). You can add words from lessons, dictionary lookups, or conversations instantly."
+  },
+  {
+    q: "Is speaking supported?",
+    a: "Yes! The Conversations feature lets you speak (audio-only) with an AI tutor. It provides transcriptions, pinyin overlays, and even generates grammar notes based on the tutor's replies to help you understand sentence structures."
+  },
+  {
+    q: "What is included in the Curriculum?",
+    a: "The curriculum contains over 60 grammar units and 300+ lessons grounded in the 'Modern Mandarin Chinese Grammar' book. It covers everything from basic sentence structures to advanced patterns, available on-demand."
+  }
 ];
 
 export function FAQ() {
-  const [open, setOpen] = useState<number | null>(0);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <section id="faq" className="max-w-3xl mx-auto px-4 py-10">
-      <h2 className="font-inter text-2xl font-semibold mb-4">FAQ</h2>
-      <div className="divide-y divide-[var(--color-surface-2)]">
-        {faqs.map((f, idx) => (
-          <button
-            key={idx}
-            className="w-full text-left py-4 focus:outline-none cursor-pointer"
-            onClick={() => setOpen(open === idx ? null : idx)}
-            aria-expanded={open === idx}
+    <section className="py-24 px-4 max-w-3xl mx-auto" id="faq">
+      <h2 className="text-3xl font-bold text-white mb-12 text-center font-inter">Common Questions</h2>
+      
+      <div className="space-y-4">
+        {FAQ_ITEMS.map((item, i) => (
+          <div 
+            key={i}
+            className="rounded-2xl border border-white/5 bg-neutral-900/30 overflow-hidden"
           >
-            <div className="flex items-center justify-between">
-              <span className="font-inter">{f.q}</span>
-              <ChevronDown
-                className={`w-4 h-4 transition-transform ${open === idx ? "rotate-180" : ""}`}
-              />
-            </div>
-            <div
-              className={`grid transition-all duration-300 ease-[var(--motion-ease)] ${
-                open === idx
-                  ? "grid-rows-[1fr] opacity-100"
-                  : "grid-rows-[0fr] opacity-70"
-              }`}
+            <button
+              onClick={() => setOpenIndex(openIndex === i ? null : i)}
+              className="w-full flex items-center justify-between p-4 text-left hover:bg-white/5 transition-colors cursor-pointer"
             >
-              <div className="overflow-hidden">
-                <p className="mt-2 text-[var(--color-text-secondary)]">{f.a}</p>
-              </div>
-            </div>
-          </button>
+              <span className="font-semibold text-white/90 pr-8">{item.q}</span>
+              <Plus 
+                className={`w-5 h-5 text-white/50 transition-transform duration-300 ${openIndex === i ? "rotate-45" : ""}`} 
+              />
+            </button>
+            
+            <AnimatePresence>
+              {openIndex === i && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="px-6 pb-6 text-[var(--color-text-secondary)] leading-relaxed text-sm">
+                    {item.a}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         ))}
       </div>
     </section>
