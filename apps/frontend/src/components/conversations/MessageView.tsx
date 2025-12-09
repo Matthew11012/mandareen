@@ -69,11 +69,46 @@ export function MessageView({
   const [generatingNotes, setGeneratingNotes] = useState<
     Record<number, boolean>
   >({});
+  const prevScrollState = useRef<{
+    conversationId: number | null;
+    lastMessageKey: string | null;
+    length: number;
+  }>({
+    conversationId: null,
+    lastMessageKey: null,
+    length: 0,
+  });
+  const prevSuggestionsState = useRef<{
+    messageId: number | null;
+    count: number;
+  }>({ messageId: null, count: 0 });
 
   // Auto-scroll to bottom when messages update
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    const lastMessage = messages[messages.length - 1];
+    const lastMessageKey =
+      lastMessage && typeof lastMessage.id !== "undefined"
+        ? String(lastMessage.id)
+        : `len-${messages.length}`;
+
+    const conversationChanged =
+      prevScrollState.current.conversationId !== conversationId;
+    const lengthChanged = messages.length !== prevScrollState.current.length;
+    const lastKeyChanged =
+      lastMessageKey !== prevScrollState.current.lastMessageKey;
+
+    const shouldScroll = conversationChanged || lengthChanged || lastKeyChanged;
+
+    prevScrollState.current = {
+      conversationId,
+      lastMessageKey,
+      length: messages.length,
+    };
+
+    if (!shouldScroll) return;
+
     try {
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     } catch {
@@ -85,6 +120,19 @@ export function MessageView({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !suggestionsForMessage) return;
+
+    const count = Array.isArray(suggestionsForMessage.suggestions)
+      ? suggestionsForMessage.suggestions.length
+      : 0;
+    const messageId = suggestionsForMessage.messageId ?? null;
+
+    const shouldScroll =
+      messageId !== prevSuggestionsState.current.messageId ||
+      count !== prevSuggestionsState.current.count;
+
+    prevSuggestionsState.current = { messageId, count };
+    if (!shouldScroll) return;
+
     try {
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     } catch {
