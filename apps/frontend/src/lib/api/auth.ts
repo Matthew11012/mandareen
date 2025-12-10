@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { get, post, put } from "../http/http";
+import { get, post, put, patch } from "../http/http";
 
 // Validation schemas matching backend DTOs
 export const registerSchema = z.object({
@@ -10,6 +10,15 @@ export const registerSchema = z.object({
     .regex(
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
       "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+    ),
+  username: z
+    .string()
+    .min(3, "Username must be at least 3 characters")
+    .max(30, "Username cannot exceed 30 characters")
+    .transform((val) => val.trim())
+    .refine(
+      (val) => !/[\u0000-\u001f\u007f]/.test(val),
+      "Username contains invalid characters"
     ),
 });
 
@@ -25,6 +34,7 @@ export type LoginData = z.infer<typeof loginSchema>;
 export interface MeResponse {
   id: number;
   email: string;
+  username: string;
   createdAt: string;
   currentLevel: number | null;
   weeklyGoalLessons: number | null;
@@ -69,5 +79,14 @@ export const authApi = {
     return put<{ weeklyGoalLessons: number | null }>("users/weekly-goal", {
       weeklyGoalLessons,
     });
+  },
+
+  /**
+   * Update username
+   * @returns Updated username
+   * @throws 409 if username taken, 400 if invalid
+   */
+  updateUsername: async (username: string): Promise<{ username: string }> => {
+    return patch<{ username: string }>("users/username", { username });
   },
 };
