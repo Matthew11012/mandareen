@@ -136,7 +136,7 @@ export function ConversationList({
               </div>
               <button
                 type="button"
-                className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10] ${
+                className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10] cursor-pointer ${
                   activeConversationId === c.id
                     ? "opacity-100"
                     : "opacity-0 group-hover:opacity-100"

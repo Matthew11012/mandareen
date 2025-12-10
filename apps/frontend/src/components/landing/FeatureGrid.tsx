@@ -18,6 +18,7 @@ import {
   Volume2,
   Check,
   MousePointer2,
+  Sparkles,
   X,
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
@@ -276,8 +277,39 @@ const ConversationVisual = () => {
               exit={{ opacity: 0, scale: 0.95 }}
               className="ml-auto w-fit max-w-[85%]"
             >
+              {/* Toggles Row (user) */}
+              <div className="mb-2 flex items-center gap-2 justify-end">
+                <div className="px-2.5 py-1 h-9 w-9 text-[11px] font-semibold rounded-full border bg-blue-500/10 border-blue-500/40 text-blue-300 flex items-center justify-center">
+                  PY
+                </div>
+                <div className="px-2.5 py-1 h-9 w-9 text-[11px] font-semibold rounded-full border bg-blue-500/10 border-blue-500/40 text-blue-300 flex items-center justify-center">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 26 25"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M1 3.46154H9.61539M9.61539 3.46154H15.1539M9.61539 3.46154V1M18.2308 3.46154H15.1539M15.1539 3.46154C14.144 6.82785 12.0292 10.01 9.61539 12.8066M9.61539 12.8066C7.61662 15.1223 5.41282 17.1737 3.46154 18.8462M9.61539 12.8066C8.38462 11.4615 6.41539 8.75385 5.92308 7.76923M9.61539 12.8066L13.3077 16.3846"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M15.1538 23.1538L16.5605 19.4615M16.5605 19.4615L20.0769 10.2307L23.5933 19.4615M16.5605 19.4615H23.5933M25 23.1538L23.5933 19.4615"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+              </div>
               {/* User Bubble */}
-              <div className="rounded-lg px-3 py-2 border border-[#3a3f47] bg-[#2e323a] text-white shadow-sm">
+              <div className="rounded-3xl px-4 py-3 shadow-sm bg-[#4040f2] text-white">
                 <div className="leading-6">
                   {/* Simplified Token Renderer for User */}
                   <div className="flex flex-wrap gap-x-0.5 items-end">
@@ -314,24 +346,47 @@ const ConversationVisual = () => {
               exit={{ opacity: 0, scale: 0.95 }}
               className="mr-auto w-fit max-w-[85%]"
             >
-              {/* Toggles Row */}
-              <div className="mb-1 flex gap-2">
-                {/* Audio */}
-                <div className="px-2 py-1 text-[10px] rounded border border-[#4040f2] text-[#9aa6ff] flex items-center gap-1 bg-[#20242b] shadow-sm">
-                  <Volume2 className="w-3 h-3" />
+              {/* Toggles Row (mirrors conversations UI) */}
+              <div className="mb-2 flex items-center gap-2">
+                <div className="px-3 py-2 flex items-center gap-1 rounded-full border border-amber-400/50 bg-amber-500/10 text-amber-200 text-[11px] font-semibold">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Notes</span>
                 </div>
-                {/* Pinyin Toggle */}
-                <div className="px-2 py-1 text-[10px] rounded border border-[#4040f2] text-[#9aa6ff] flex items-center gap-1 bg-[#20242b] shadow-sm">
-                  <span>Pinyin On</span>
+                <div className="px-2.5 py-1 h-9 w-9 text-[11px] font-semibold rounded-full border bg-blue-500/10 border-blue-500/40 text-blue-300 flex items-center justify-center">
+                  PY
                 </div>
-                {/* Translation Toggle */}
-                <div className="px-2 py-1 text-[10px] rounded border border-[#4040f2] text-[#9aa6ff] flex items-center gap-1 bg-[#20242b] shadow-sm">
-                  <span className="font-bold">文</span>
+                <div className="px-2.5 py-1 h-9 w-9 text-[11px] font-semibold rounded-full border bg-blue-500/10 border-blue-500/40 text-blue-300 flex items-center justify-center">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 26 25"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M1 3.46154H9.61539M9.61539 3.46154H15.1539M9.61539 3.46154V1M18.2308 3.46154H15.1539M15.1539 3.46154C14.144 6.82785 12.0292 10.01 9.61539 12.8066M9.61539 12.8066C7.61662 15.1223 5.41282 17.1737 3.46154 18.8462M9.61539 12.8066C8.38462 11.4615 6.41539 8.75385 5.92308 7.76923M9.61539 12.8066L13.3077 16.3846"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M15.1538 23.1538L16.5605 19.4615M16.5605 19.4615L20.0769 10.2307L23.5933 19.4615M16.5605 19.4615H23.5933M25 23.1538L23.5933 19.4615"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+                <div className="p-2 h-9 w-9 flex justify-center items-center rounded-full border border-blue-500/50 bg-blue-500/10 text-blue-300">
+                  <Volume2 className="w-4 h-4" />
                 </div>
               </div>
 
               {/* AI Bubble */}
-              <div className="rounded-lg px-3 py-2 border border-[#35503c] bg-[#26322b] text-white shadow-sm">
+              <div className="rounded-3xl px-4 py-3 border border-white/5 bg-[#22252a] text-zinc-100 shadow-sm">
                 {step === "ai_thinking" ? (
                   <div className="flex gap-1 h-6 items-center px-2">
                     <motion.div
@@ -382,7 +437,7 @@ const ConversationVisual = () => {
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="text-[#a6a6a6] text-xs mt-1 pt-1 border-t border-[#35503c]/50"
+                        className="text-[#a6a6a6] text-xs mt-1 pt-1 border-t border-white/10"
                       >
                         {AI_MSG.translation}
                       </motion.div>
