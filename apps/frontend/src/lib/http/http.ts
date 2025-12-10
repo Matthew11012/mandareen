@@ -87,7 +87,11 @@ async function normalizeError(res: Response): Promise<Error> {
     const ct = res.headers.get("content-type") || "";
     if (ct.includes("application/json")) {
       errorData = await res.json();
-      const data = errorData as { message?: string; error?: string; code?: string };
+      const data = errorData as {
+        message?: string;
+        error?: string;
+        code?: string;
+      };
       message = data?.message || data?.error || message;
     } else {
       const text = await res.text();
@@ -174,6 +178,11 @@ export const put = <T>(
   body?: unknown,
   opts?: Omit<HttpOptions, "path" | "method" | "body">
 ) => http<T>({ path, method: "PUT", body, ...opts });
+export const patch = <T>(
+  path: string,
+  body?: unknown,
+  opts?: Omit<HttpOptions, "path" | "method" | "body">
+) => http<T>({ path, method: "PATCH", body, ...opts });
 export const del = <T>(
   path: string,
   opts?: Omit<HttpOptions, "path" | "method">
