@@ -24,14 +24,12 @@ import { EmailService } from '../email/email.service';
     BetterAuthModule.forRootAsync({
       imports: [EmailModule],
       inject: [EmailService],
-      useFactory: (emailService: EmailService) => createAuthConfig(emailService),
+      useFactory: (emailService: EmailService) => ({
+        auth: createAuthConfig(emailService),
+      }),
     }),
   ],
-  providers: [
-    AuthService,
-    GoogleStrategy,
-    UserMigrationService,
-  ],
+  providers: [AuthService, GoogleStrategy, UserMigrationService],
   controllers: [AuthController],
   exports: [AuthService, UserMigrationService],
 })
