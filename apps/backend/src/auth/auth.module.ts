@@ -6,19 +6,26 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { GoogleStrategy } from './strategies/google.strategy';
-import { auth } from './lib/auth';
+import { createAuthConfig } from './lib/auth';
 import { UserMigrationService } from './user-migration.service';
+import { EmailModule } from '../email/email.module';
+import { EmailService } from '../email/email.service';
 
 @Global()
 @Module({
   imports: [
     PassportModule,
     PrismaModule,
+    EmailModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: { expiresIn: '1d' }, // Token expires in 1 day
     }),
-    BetterAuthModule.forRoot(auth),
+    BetterAuthModule.forRootAsync({
+      imports: [EmailModule],
+      inject: [EmailService],
+      useFactory: (emailService: EmailService) => createAuthConfig(emailService),
+    }),
   ],
   providers: [
     AuthService,

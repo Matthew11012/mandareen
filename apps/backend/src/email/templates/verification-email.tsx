@@ -69,8 +69,8 @@ export const VerificationEmail = ({
 
               <Section className="mb-6">
                 <Text className="text-[#a6a6a6] text-sm m-0 mb-2">
-                  If the button does not work, copy and paste this link into your
-                  browser:
+                  If the button does not work, copy and paste this link into
+                  your browser:
                 </Text>
                 <Link
                   href={verificationUrl}
@@ -82,8 +82,8 @@ export const VerificationEmail = ({
 
               <Section className="border-t border-[#393e46] pt-6 mt-6">
                 <Text className="text-[#a6a6a6] text-xs m-0 text-center">
-                  If you did not create an account with Mandareen, you can safely
-                  ignore this email.
+                  If you did not create an account with Mandareen, you can
+                  safely ignore this email.
                 </Text>
               </Section>
             </Section>
@@ -95,4 +95,3 @@ export const VerificationEmail = ({
 };
 
 export default VerificationEmail;
-
