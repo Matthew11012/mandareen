@@ -23,7 +23,8 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": false,
-    "lib": ["ES2023"]
+    "lib": ["ES2023"],
+    "jsx": "react-jsx"
   },
   "include": [
     "src/**/*",
