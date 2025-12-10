@@ -107,10 +107,39 @@ function AuthCallbackContent() {
           throw new Error("No session found after OAuth callback");
         }
 
+        const email = session.data.user.email;
         if (!session.data.user.emailVerified) {
           toast.info(
             "Welcome! Please verify your email to secure your account."
           );
+          // Fire-and-forget resend for social users if not verified
+          const apiBase =
+            process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ??
+            "http://localhost:3000";
+          const params = new URLSearchParams({ email, mode: "verify-email" });
+          const storedSignupRedirectUrl =
+            sessionStorage.getItem("signup_redirect_url");
+          if (storedSignupRedirectUrl) {
+            params.set("redirect", storedSignupRedirectUrl);
+            const planInfo = parseRedirectUrl(storedSignupRedirectUrl);
+            if (planInfo) {
+              params.set("plan", planInfo.planCode);
+              params.set("billingPeriod", planInfo.billingPeriod);
+            }
+          }
+          void fetch(`${apiBase}/auth/send-verification-email`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+              email,
+              redirect: params.get("redirect") ?? undefined,
+              plan: params.get("plan") ?? undefined,
+              billingPeriod: params.get("billingPeriod") ?? undefined,
+            }),
+          });
         }
 
         // Update auth store with Better Auth user info
