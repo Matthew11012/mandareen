@@ -8,6 +8,9 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 
+const EMAIL_VERIFICATION_ENABLED =
+  process.env.EMAIL_VERIFICATION_ENABLED !== "false";
+
 function PendingContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -26,12 +29,16 @@ function PendingContent() {
       billingPeriod === "YEARLY"
         ? "billed yearly"
         : billingPeriod === "MONTHLY"
-        ? "billed monthly"
-        : "billing selected";
+          ? "billed monthly"
+          : "billing selected";
     return `${planLabel} • ${billingLabel}`;
   }, [plan, billingPeriod]);
 
   const handleResend = async () => {
+    if (!EMAIL_VERIFICATION_ENABLED) {
+      toast.info("Email verification is currently disabled.");
+      return;
+    }
     if (!email) {
       toast.error("Missing email to resend verification.");
       return;
@@ -109,37 +116,55 @@ function PendingContent() {
 
         <div className="bg-[#2a3039] rounded-2xl shadow-xl p-6 space-y-6">
           <div className="space-y-2">
-            <p className="text-white font-medium text-sm">Didn&apos;t get it?</p>
+            <p className="text-white font-medium text-sm">
+              Didn&apos;t get it?
+            </p>
             <p className="text-[#a6a6a6] text-sm">
-              Check your spam folder, or resend the verification email.
+              {EMAIL_VERIFICATION_ENABLED
+                ? "Check your spam folder, or resend the verification email."
+                : "Email verification is currently disabled. You can continue without resending."}
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              type="button"
-              onClick={handleResend}
-              disabled={isResending}
-              loading={isResending}
-              className="min-h-[44px] w-full sm:w-auto"
-              aria-label="Resend verification email"
-            >
-              <span className="inline-flex items-center gap-2">
-                <RefreshCw size={16} aria-hidden="true" />
-                Resend email
-              </span>
-            </Button>
+          {EMAIL_VERIFICATION_ENABLED ? (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <Button
+                type="button"
+                onClick={handleResend}
+                disabled={isResending}
+                loading={isResending}
+                className="min-h-[44px] w-full sm:w-auto"
+                aria-label="Resend verification email"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <RefreshCw size={16} aria-hidden="true" />
+                  Resend email
+                </span>
+              </Button>
 
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => router.push("/login")}
-              className="min-h-[44px] w-full sm:w-auto"
-              aria-label="Return to login"
-            >
-              Back to login
-            </Button>
-          </div>
+              <Button
+                type="button"
+                variant="accent"
+                onClick={() => router.push("/login")}
+                className="min-h-[44px] w-full sm:w-auto"
+                aria-label="Return to login"
+              >
+                Back to login
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <Button
+                type="button"
+                variant="accent"
+                onClick={() => router.push("/dashboard")}
+                className="min-h-[44px] w-full sm:w-auto"
+                aria-label="Return to dashboard"
+              >
+                Continue to dashboard
+              </Button>
+            </div>
+          )}
 
           <div className="text-xs text-[#8b8f9c] space-y-1">
             <p>
@@ -147,8 +172,9 @@ function PendingContent() {
               go back and sign up again with the right address.
             </p>
             <p>
-              Verification links expire in 1 hour. Resending will generate a new
-              link.
+              {EMAIL_VERIFICATION_ENABLED
+                ? "Verification links expire in 1 hour. Resending will generate a new link."
+                : "Verification is currently disabled by configuration."}
             </p>
           </div>
         </div>
@@ -194,4 +220,3 @@ export default function VerifyEmailPendingPage() {
     </Suspense>
   );
 }
-

@@ -10,7 +10,7 @@ import { useCheckoutMutation } from "@/lib/hooks/use-billing";
 import { BillingPeriod } from "@/lib/api/billing";
 
 const EMAIL_VERIFICATION_ENABLED =
-  process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED !== "false";
+  process.env.EMAIL_VERIFICATION_ENABLED !== "false";
 
 /**
  * Google OAuth Callback Handler

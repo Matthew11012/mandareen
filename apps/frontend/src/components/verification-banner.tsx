@@ -10,7 +10,7 @@ import { useSession } from "@/lib/auth-client";
 const DISMISS_KEY = "verification-banner-dismissed";
 const FORCE_SHOW = false; // Set to true only for manual testing
 const EMAIL_VERIFICATION_ENABLED =
-  process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED !== "false";
+  process.env.EMAIL_VERIFICATION_ENABLED !== "false";
 
 export function VerificationBanner() {
   const { data: session } = useSession();
