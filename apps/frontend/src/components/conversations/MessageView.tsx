@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { usePopup } from "@/hooks/usePopup";
 import { TokenRenderer } from "@/components/lessons/TokenRenderer";
+import type { TokenRendererProps } from "@/components/lessons/TokenRenderer";
 import type {
   Message,
   MessageNotes,
@@ -15,12 +16,20 @@ import type {
 } from "@/lib/api/conversations";
 import { addSingleToFlashcards } from "@/lib/utils/flashcards";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
+import { buildFallbackSegments } from "@/lib/utils/segments";
 
 const INT32_MAX = 2147483647;
 const isPersistedMessageId = (id: number) =>
   Number.isFinite(id) && Math.abs(id) <= INT32_MAX;
 
 type MessageWithPersistFlag = Message & { _persisted?: boolean };
+type TokenData = {
+  word?: string;
+  pinyin?: string;
+  definition?: string;
+  definitions?: string[];
+  hskLevel?: number;
+};
 
 interface MessageViewProps {
   messages: MessageWithPersistFlag[];
@@ -69,22 +78,70 @@ export function MessageView({
   const [generatingNotes, setGeneratingNotes] = useState<
     Record<number, boolean>
   >({});
+  const prevScrollState = useRef<{
+    conversationId: number | null;
+    lastMessageKey: string | null;
+    length: number;
+  }>({
+    conversationId: null,
+    lastMessageKey: null,
+    length: 0,
+  });
+  const prevSuggestionsState = useRef<{
+    messageId: number | null;
+    count: number;
+  }>({ messageId: null, count: 0 });
 
   // Auto-scroll to bottom when messages update
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    const lastMessage = messages[messages.length - 1];
+    const lastMessageKey =
+      lastMessage && typeof lastMessage.id !== "undefined"
+        ? String(lastMessage.id)
+        : `len-${messages.length}`;
+
+    const conversationChanged =
+      prevScrollState.current.conversationId !== conversationId;
+    const lengthChanged = messages.length !== prevScrollState.current.length;
+    const lastKeyChanged =
+      lastMessageKey !== prevScrollState.current.lastMessageKey;
+
+    const shouldScroll = conversationChanged || lengthChanged || lastKeyChanged;
+
+    prevScrollState.current = {
+      conversationId,
+      lastMessageKey,
+      length: messages.length,
+    };
+
+    if (!shouldScroll) return;
+
     try {
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     } catch {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, conversationId]);
 
   // Auto-scroll when suggestions footer appears/updates
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !suggestionsForMessage) return;
+
+    const count = Array.isArray(suggestionsForMessage.suggestions)
+      ? suggestionsForMessage.suggestions.length
+      : 0;
+    const messageId = suggestionsForMessage.messageId ?? null;
+
+    const shouldScroll =
+      messageId !== prevSuggestionsState.current.messageId ||
+      count !== prevSuggestionsState.current.count;
+
+    prevSuggestionsState.current = { messageId, count };
+    if (!shouldScroll) return;
+
     try {
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     } catch {
@@ -147,15 +204,18 @@ export function MessageView({
       });
     };
     return (
-      <div className="mt-3">
-        <div className="text-xs font-semibold text-[#9aa6ff] mb-2 uppercase tracking-wide">
-          Suggestions
+      <div className="mt-6 mb-2">
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles className="w-3.5 h-3.5 text-[#9aa6ff]" />
+          <div className="text-xs font-semibold text-[#9aa6ff] uppercase tracking-wide">
+            Suggestions
+          </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {suggestionsForMessage.suggestions.map((s, idx) => (
             <div
               key={`${s.zh}-${idx}`}
-              className="rounded-lg border border-[#404040] bg-[#1f2430] px-3 py-2 shadow-sm"
+              className="group rounded-xl border border-[#2e2f36] bg-[#252830] p-4 shadow-sm hover:border-[#4040f2]/50 hover:bg-[#2a2e36] transition-all duration-200 cursor-default"
             >
               <TokenRenderer
                 segments={
@@ -179,7 +239,7 @@ export function MessageView({
                 }
                 fallbackZh={undefined}
                 showPinyin={showPinyin}
-                hoverClass="hover:bg-[#404040]"
+                hoverClass="hover:bg-[#404040] rounded"
                 textSizeClass="text-[16px] sm:text-[18px]"
                 keyPrefix={`suggestion-${suggestionsForMessage.messageId}-${idx}`}
                 openFromElement={(el, data) =>
@@ -197,7 +257,7 @@ export function MessageView({
                 contentRef={scrollRef}
               />
               {s.translation ? (
-                <div className="text-xs text-[#a6a6a6] leading-tight mt-1">
+                <div className="text-xs text-[#a6a6a6] leading-relaxed mt-2 pt-2 border-t border-white/5 group-hover:border-white/10 transition-colors">
                   {s.translation}
                 </div>
               ) : null}
@@ -211,127 +271,140 @@ export function MessageView({
   return (
     <div
       ref={scrollRef}
-      className="flex-1 overflow-y-auto space-y-3 sm:bg-[#20242b] sm:border sm:border-[#2e2f36] sm:rounded-xl sm:p-4 relative pr-2"
+      className="flex-1 overflow-y-auto space-y-6 relative pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent py-4"
       aria-live="polite"
       aria-relevant="additions text"
       role="log"
     >
       {messages.map((m) => {
+        const showPinyin = !!aiShowPinyin[m.id];
+        const showTranslation = !!aiShowTrans[m.id];
         const messageIsPersisted =
           m._persisted ||
           (typeof m.id === "number" && isPersistedMessageId(m.id));
         return (
           <div
             key={`${m.id}-${m.role}`}
-            className={m.role === "user" ? "ml-auto" : "mr-auto"}
+            className={`group flex flex-col ${m.role === "user" ? "items-end" : "items-start"} gap-2.5 max-w-[90%] sm:max-w-[85%] ${m.role === "user" ? "ml-auto" : "mr-auto"}`}
           >
             <div
-              className={`mb-1 flex gap-2 w-fit ${
-                m.role === "user" ? "ml-auto" : ""
+              className={`text-xs  font-semibold uppercase tracking-wide ${
+                m.role === "user" ? "text-white" : "text-white"
               }`}
             >
-              {m.role === "ai" && m.audioUrl ? (
-                <audio
-                  id={`audio-${m.id}`}
-                  src={resolveMediaUrl(m.audioUrl) || ""}
-                  preload="metadata"
-                />
-              ) : null}
-              {/* Always show toggles, disable + spinner if loading */}
-              <>
-                {/* Audio toggle (AI only) */}
-                {m.role === "ai" && (
+              {m.role === "user" ? "You" : "Mandareen"}
+            </div>
+            {/* Toggles Row (desktop above bubble) */}
+            <div className="hidden sm:flex sm:flex-shrink-0 w-full sm:w-auto items-center gap-3 px-1 h-7 justify-start">
+              {m.role === "ai" ? (
+                <div className="flex items-center gap-2 opacity-100 transition-opacity duration-200">
+                  {/* Notes Toggle */}
+                  {m.notes?.grammarNotes?.length ||
+                  (m.notes as MessageNotes)?.tipsRich?.length ? (
+                    <button
+                      type="button"
+                      onClick={() => onToggleNotes(m.id)}
+                      className={`px-3 py-2 flex items-center gap-1 rounded-full border transition-colors cursor-pointer ${
+                        aiShowNotes[m.id]
+                          ? "border-amber-400/50 bg-amber-500/10 text-amber-300"
+                          : "border-zinc-700 bg-[#1f2229] text-zinc-300 hover:border-zinc-500 hover:text-white"
+                      } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                      title="Toggle notes"
+                      aria-label={
+                        aiShowNotes[m.id] ? "Hide notes" : "Show notes"
+                      }
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span className="text-[11px] font-semibold">Notes</span>
+                    </button>
+                  ) : (
+                    onGenerateNotes &&
+                    conversationId && (
+                      <button
+                        type="button"
+                        disabled={generatingNotes[m.id] || !messageIsPersisted}
+                        onClick={async () => {
+                          if (
+                            generatingNotes[m.id] ||
+                            !onGenerateNotes ||
+                            !messageIsPersisted
+                          )
+                            return;
+                          setGeneratingNotes((prev) => ({
+                            ...prev,
+                            [m.id]: true,
+                          }));
+                          try {
+                            await onGenerateNotes(m.id);
+                          } catch (err) {
+                            console.error("Failed to generate notes:", err);
+                          } finally {
+                            setGeneratingNotes((prev) => {
+                              const next = { ...prev };
+                              delete next[m.id];
+                              return next;
+                            });
+                          }
+                        }}
+                        className={`px-3 py-2 flex items-center gap-1 rounded-full border transition-colors cursor-pointer ${
+                          generatingNotes[m.id]
+                            ? "border-blue-500 bg-blue-500 text-white"
+                            : "border-blue-500 bg-blue-600 text-white hover:bg-blue-500"
+                        } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                        title="Generate notes"
+                        aria-label={
+                          generatingNotes[m.id]
+                            ? "Generating notes…"
+                            : "Generate notes"
+                        }
+                      >
+                        {generatingNotes[m.id] ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Plus className="w-4 h-4" />
+                        )}
+                        <span className="text-[11px] font-semibold">
+                          Generate notes
+                        </span>
+                      </button>
+                    )
+                  )}
+
+                  {/* Pinyin Toggle */}
                   <button
                     type="button"
-                    disabled={m._loadingAudio}
-                    onClick={() => {
-                      if (!m._loadingAudio) {
-                        const el = document.getElementById(
-                          `audio-${m.id}`
-                        ) as HTMLAudioElement | null;
-                        void onToggleAudio(m.id, el, "manual");
-                      }
-                    }}
-                    className={`px-2 py-1 text-xs rounded border cursor-pointer ${
-                      m._loadingAudio
-                        ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
-                        : playing[m.id]
-                          ? "border-[#4040f2] text-[#9aa6ff]"
-                          : "border-[#404040] text-[#a6a6a6]"
-                    }`}
-                    title={
-                      m._loadingAudio
-                        ? "Generating audio..."
-                        : playing[m.id]
-                          ? "Pause audio"
-                          : "Play audio"
+                    disabled={m._loadingPinyin}
+                    onClick={() => !m._loadingPinyin && onTogglePinyin(m.id)}
+                    className={`px-2.5 py-1 h-9 w-9 text-[11px] font-semibold rounded-full border transition-all cursor-pointer ${
+                      aiShowPinyin[m.id]
+                        ? "bg-blue-500/10 border-blue-500/40 text-blue-300"
+                        : "bg-[#1f2229] border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                    aria-label={
+                      aiShowPinyin[m.id] ? "Hide pinyin" : "Show pinyin"
                     }
                   >
-                    <div className="flex items-center gap-1">
-                      {m._loadingAudio && (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      )}
-                      <Volume2 className="w-4 h-4" />
-                    </div>
+                    PY
                   </button>
-                )}
 
-                {/* Pinyin toggle */}
-                <button
-                  type="button"
-                  disabled={m._loadingPinyin}
-                  onClick={() => !m._loadingPinyin && onTogglePinyin(m.id)}
-                  className={`px-2 py-1 text-xs rounded border ${
-                    m._loadingPinyin
-                      ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
-                      : aiShowPinyin[m.id]
-                        ? "border-[#4040f2] text-[#9aa6ff]"
-                        : "border-[#404040] text-[#a6a6a6]"
-                  } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
-                  aria-pressed={!!aiShowPinyin[m.id]}
-                  aria-label={
-                    m._loadingPinyin
-                      ? "Loading pinyin..."
-                      : aiShowPinyin[m.id]
-                        ? "Hide pinyin"
-                        : "Show pinyin"
-                  }
-                >
-                  <div className="flex items-center gap-1">
-                    {m._loadingPinyin && (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    )}
-                    <span>Pinyin {aiShowPinyin[m.id] ? "On" : "Off"}</span>
-                  </div>
-                </button>
-
-                {/* Translation toggle */}
-                <button
-                  type="button"
-                  disabled={m._loadingTranslation}
-                  onClick={() =>
-                    !m._loadingTranslation && onToggleTranslation(m.id)
-                  }
-                  className={`px-2 py-1 text-xs rounded border ${
-                    m._loadingTranslation
-                      ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
-                      : aiShowTrans[m.id]
-                        ? "border-[#4040f2] text-[#9aa6ff]"
-                        : "border-[#404040] text-[#a6a6a6]"
-                  } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
-                  aria-pressed={!!aiShowTrans[m.id]}
-                  aria-label={
-                    m._loadingTranslation
-                      ? "Loading translation..."
-                      : aiShowTrans[m.id]
+                  {/* Translation Toggle */}
+                  <button
+                    type="button"
+                    disabled={m._loadingTranslation}
+                    onClick={() =>
+                      !m._loadingTranslation && onToggleTranslation(m.id)
+                    }
+                    className={`px-2.5 py-1 h-9 w-9 text-[11px] font-semibold rounded-full border transition-all cursor-pointer ${
+                      aiShowTrans[m.id]
+                        ? "bg-blue-500/10 border-blue-500/40 text-blue-300"
+                        : "bg-[#1f2229] border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                    aria-label={
+                      aiShowTrans[m.id]
                         ? "Hide translation"
                         : "Show translation"
-                  }
-                >
-                  <div className="flex items-center gap-1">
-                    {m._loadingTranslation && (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    )}
+                    }
+                  >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       width="16"
@@ -355,116 +428,401 @@ export function MessageView({
                         strokeLinejoin="round"
                       />
                     </svg>
-                  </div>
-                </button>
+                  </button>
 
-                {/* Notes toggle / Generate Notes button (AI only) */}
-                {m.role === "ai" && (
-                  <>
-                    {/* Show notes toggle if notes exist */}
-                    {m.notes?.grammarNotes?.length ||
-                    (m.notes as MessageNotes)?.tipsRich?.length ? (
-                      <button
-                        type="button"
-                        onClick={() => onToggleNotes(m.id)}
-                        className={`px-2 py-1 text-xs rounded border ${
-                          aiShowNotes[m.id]
-                            ? "border-[#4040f2] text-[#9aa6ff]"
-                            : "border-[#404040] text-[#a6a6a6]"
-                        } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#20242b]`}
-                        aria-pressed={!!aiShowNotes[m.id]}
-                        aria-label={
-                          aiShowNotes[m.id] ? "Hide notes" : "Show notes"
-                        }
-                      >
-                        <span>Notes {aiShowNotes[m.id] ? "On" : "Off"}</span>
-                      </button>
+                  {/* Audio Player Hidden Element */}
+                  {m.audioUrl && (
+                    <audio
+                      id={`audio-${m.id}`}
+                      src={resolveMediaUrl(m.audioUrl) || ""}
+                      preload="metadata"
+                    />
+                  )}
+
+                  {/* Audio Toggle */}
+                  <button
+                    type="button"
+                    disabled={m._loadingAudio}
+                    onClick={() => {
+                      if (!m._loadingAudio) {
+                        const el = document.getElementById(
+                          `audio-${m.id}`
+                        ) as HTMLAudioElement | null;
+                        void onToggleAudio(m.id, el, "manual");
+                      }
+                    }}
+                    className={`p-2 h-9 w-9 flex justify-center items-center rounded-full border transition-colors cursor-pointer ${
+                      playing[m.id]
+                        ? "border-blue-500/50 bg-blue-500/10 text-blue-300"
+                        : "border-zinc-700 bg-[#1f2229] text-zinc-300 hover:border-zinc-500 hover:text-white"
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                    title={playing[m.id] ? "Pause audio" : "Play audio"}
+                    aria-label={playing[m.id] ? "Pause audio" : "Play audio"}
+                  >
+                    {m._loadingAudio ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      /* Show Generate Notes button if no notes exist */
-                      onGenerateNotes &&
-                      conversationId && (
-                        <button
-                          type="button"
-                          disabled={
-                            generatingNotes[m.id] || !messageIsPersisted
-                          }
-                          onClick={async () => {
-                            if (
-                              generatingNotes[m.id] ||
-                              !onGenerateNotes ||
-                              !messageIsPersisted
-                            ) {
-                              return;
-                            }
-                            setGeneratingNotes((prev) => ({
-                              ...prev,
-                              [m.id]: true,
-                            }));
-                            try {
-                              await onGenerateNotes(m.id);
-                            } catch (err) {
-                              console.error("Failed to generate notes:", err);
-                            } finally {
-                              setGeneratingNotes((prev) => {
-                                const next = { ...prev };
-                                delete next[m.id];
-                                return next;
-                              });
-                            }
-                          }}
-                          className={`px-2 py-1 text-xs rounded border ${
-                            generatingNotes[m.id] || !messageIsPersisted
-                              ? "border-[#404040] text-[#a6a6a6] opacity-50 cursor-not-allowed"
-                              : "border-blue-500/40 text-blue-400 bg-blue-500/10"
-                          } cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 focus-visible:ring-offset-[#20242b]`}
-                          title={
-                            messageIsPersisted
-                              ? undefined
-                              : "Available once this reply finishes saving"
-                          }
-                          aria-label={
-                            generatingNotes[m.id]
-                              ? "Generating notes..."
-                              : "Generate notes"
-                          }
-                        >
-                          <div className="flex items-center gap-1">
-                            {generatingNotes[m.id] ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Sparkles className="w-3 h-3" />
-                            )}
-                            <span>
-                              {generatingNotes[m.id]
-                                ? "Generating..."
-                                : "Generate Notes"}
-                            </span>
-                          </div>
-                        </button>
-                      )
+                      <Volume2 className="w-4 h-4" />
                     )}
-                  </>
-                )}
-              </>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 opacity-100 transition-opacity duration-200">
+                  {/* Pinyin Toggle for user */}
+                  <button
+                    type="button"
+                    disabled={m._loadingPinyin}
+                    onClick={() => !m._loadingPinyin && onTogglePinyin(m.id)}
+                    className={`px-2.5 py-1 h-9 w-9 text-[11px] font-semibold rounded-full border transition-all cursor-pointer ${
+                      showPinyin
+                        ? "bg-blue-500/10 border-blue-500/40 text-blue-300"
+                        : "bg-[#1f2229] border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                    aria-label={showPinyin ? "Hide pinyin" : "Show pinyin"}
+                  >
+                    PY
+                  </button>
+
+                  {/* Translation Toggle for user */}
+                  <button
+                    type="button"
+                    disabled={m._loadingTranslation}
+                    onClick={() =>
+                      !m._loadingTranslation && onToggleTranslation(m.id)
+                    }
+                    className={`px-2.5 py-1 h-9 w-9 text-[11px] font-semibold rounded-full border transition-all cursor-pointer ${
+                      showTranslation
+                        ? "bg-blue-500/10 border-blue-500/40 text-blue-300"
+                        : "bg-[#1f2229] border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                    aria-label={
+                      showTranslation ? "Hide translation" : "Show translation"
+                    }
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 26 25"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M1 3.46154H9.61539M9.61539 3.46154H15.1539M9.61539 3.46154V1M18.2308 3.46154H15.1539M15.1539 3.46154C14.144 6.82785 12.0292 10.01 9.61539 12.8066M9.61539 12.8066C7.61662 15.1223 5.41282 17.1737 3.46154 18.8462M9.61539 12.8066C8.38462 11.4615 6.41539 8.75385 5.92308 7.76923M9.61539 12.8066L13.3077 16.3846"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M15.1538 23.1538L16.5605 19.4615M16.5605 19.4615L20.0769 10.2307L23.5933 19.4615M16.5605 19.4615H23.5933M25 23.1538L23.5933 19.4615"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
+
+            {/* Message Bubble */}
             <div
-              className={`max-w-[85%] w-fit rounded-lg px-3 py-2 border ${
+              className={`relative px-5 py-3.5 shadow-sm text-base leading-relaxed ${
                 m.role === "user"
-                  ? "ml-auto bg-[#2e323a] border-[#3a3f47]"
-                  : "mr-auto bg-[#26322b] border-[#35503c]"
+                  ? "bg-[#4040f2] text-white rounded-3xl"
+                  : "bg-[#22252a] text-zinc-100 border border-white/5 rounded-3xl"
               }`}
             >
-              <AiMessage
-                message={m}
-                showPinyin={!!aiShowPinyin[m.id]}
-                showTranslation={!!aiShowTrans[m.id]}
-                showNotes={!!aiShowNotes[m.id]}
-                onOpenNotesModal={onOpenNotesModal}
-                containerRef={scrollRef}
-              />
-              <div className="text-[10px] text-[#808080] mt-1">
-                {new Date(m.createdAt).toLocaleTimeString()}
-              </div>
+              {m.role === "user" ? (
+                (() => {
+                  const segmentsForUser: TokenRendererProps["segments"] =
+                    Array.isArray(m.segments) && m.segments.length > 0
+                      ? (m.segments as TokenRendererProps["segments"])
+                      : (buildFallbackSegments(
+                          m.hanzi || "",
+                          m.pinyin || ""
+                        ) as TokenRendererProps["segments"]);
+
+                  return (
+                    <>
+                      <TokenRenderer
+                        segments={segmentsForUser}
+                        fallbackZh={m.hanzi}
+                        showPinyin={showPinyin}
+                        textSizeClass="text-base"
+                        hoverClass="hover:bg-[#404040] rounded"
+                        openFromElement={(el, data) => {
+                          const rect = el.getBoundingClientRect();
+                          const token = data as TokenData | undefined;
+                          openPopupAtPoint({
+                            clientX: rect.left + rect.width / 2,
+                            clientY: rect.top,
+                            anchorHeight: rect.height,
+                            data: {
+                              word: token?.word || "",
+                              pinyin: token?.pinyin,
+                              definition: token?.definition,
+                              definitions: token?.definitions,
+                              hskLevel: token?.hskLevel,
+                            },
+                          });
+                        }}
+                        contentRef={scrollRef}
+                        keyPrefix={`user-msg-${m.id}`}
+                      />
+                      {showTranslation && m.translation ? (
+                        <div className="text-sm text-zinc-200 mt-2 leading-relaxed">
+                          {m.translation}
+                        </div>
+                      ) : null}
+                    </>
+                  );
+                })()
+              ) : (
+                <AiMessage
+                  message={m}
+                  showPinyin={showPinyin}
+                  showTranslation={showTranslation}
+                  showNotes={!!aiShowNotes[m.id]}
+                  onOpenNotesModal={onOpenNotesModal}
+                  containerRef={scrollRef}
+                />
+              )}
+            </div>
+
+            {/* Toggles Row (mobile below bubble) */}
+            <div className="flex sm:hidden w-full items-center gap-3 px-1 h-7 justify-end">
+              {m.role === "ai" ? (
+                <div className="flex items-center gap-2 opacity-100 transition-opacity duration-200">
+                  {/* Notes Toggle */}
+                  {m.notes?.grammarNotes?.length ||
+                  (m.notes as MessageNotes)?.tipsRich?.length ? (
+                    <button
+                      type="button"
+                      onClick={() => onToggleNotes(m.id)}
+                      className={`px-3 py-2 flex items-center gap-1 rounded-full border transition-colors cursor-pointer ${
+                        aiShowNotes[m.id]
+                          ? "border-amber-400/50 bg-amber-500/10 text-amber-300"
+                          : "border-zinc-700 bg-[#1f2229] text-zinc-300 hover:border-zinc-500 hover:text-white"
+                      } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                      title="Toggle notes"
+                      aria-label={
+                        aiShowNotes[m.id] ? "Hide notes" : "Show notes"
+                      }
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span className="text-[11px] font-semibold">Notes</span>
+                    </button>
+                  ) : (
+                    onGenerateNotes &&
+                    conversationId && (
+                      <button
+                        type="button"
+                        disabled={generatingNotes[m.id] || !messageIsPersisted}
+                        onClick={async () => {
+                          if (
+                            generatingNotes[m.id] ||
+                            !onGenerateNotes ||
+                            !messageIsPersisted
+                          )
+                            return;
+                          setGeneratingNotes((prev) => ({
+                            ...prev,
+                            [m.id]: true,
+                          }));
+                          try {
+                            await onGenerateNotes(m.id);
+                          } catch (err) {
+                            console.error("Failed to generate notes:", err);
+                          } finally {
+                            setGeneratingNotes((prev) => {
+                              const next = { ...prev };
+                              delete next[m.id];
+                              return next;
+                            });
+                          }
+                        }}
+                        className={`px-3 py-2 flex items-center gap-1 rounded-full border transition-colors cursor-pointer ${
+                          generatingNotes[m.id]
+                            ? "border-blue-500 bg-blue-500 text-white"
+                            : "border-blue-500 bg-blue-600 text-white hover:bg-blue-500"
+                        } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                        title="Generate notes"
+                        aria-label={
+                          generatingNotes[m.id]
+                            ? "Generating notes…"
+                            : "Generate notes"
+                        }
+                      >
+                        {generatingNotes[m.id] ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Plus className="w-4 h-4" />
+                        )}
+                        <span className="text-[11px] font-semibold">
+                          Generate notes
+                        </span>
+                      </button>
+                    )
+                  )}
+
+                  {/* Pinyin Toggle */}
+                  <button
+                    type="button"
+                    disabled={m._loadingPinyin}
+                    onClick={() => !m._loadingPinyin && onTogglePinyin(m.id)}
+                    className={`px-2.5 py-1 h-9 w-9 text-[11px] font-semibold rounded-full border transition-all cursor-pointer ${
+                      aiShowPinyin[m.id]
+                        ? "bg-blue-500/10 border-blue-500/40 text-blue-300"
+                        : "bg-[#1f2229] border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                    aria-label={
+                      aiShowPinyin[m.id] ? "Hide pinyin" : "Show pinyin"
+                    }
+                  >
+                    PY
+                  </button>
+
+                  {/* Translation Toggle */}
+                  <button
+                    type="button"
+                    disabled={m._loadingTranslation}
+                    onClick={() =>
+                      !m._loadingTranslation && onToggleTranslation(m.id)
+                    }
+                    className={`px-2.5 py-1 h-9 w-9 text-[11px] font-semibold rounded-full border transition-all cursor-pointer ${
+                      aiShowTrans[m.id]
+                        ? "bg-blue-500/10 border-blue-500/40 text-blue-300"
+                        : "bg-[#1f2229] border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                    aria-label={
+                      aiShowTrans[m.id]
+                        ? "Hide translation"
+                        : "Show translation"
+                    }
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 26 25"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M1 3.46154H9.61539M9.61539 3.46154H15.1539M9.61539 3.46154V1M18.2308 3.46154H15.1539M15.1539 3.46154C14.144 6.82785 12.0292 10.01 9.61539 12.8066M9.61539 12.8066C7.61662 15.1223 5.41282 17.1737 3.46154 18.8462M9.61539 12.8066C8.38462 11.4615 6.41539 8.75385 5.92308 7.76923M9.61539 12.8066L13.3077 16.3846"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M15.1538 23.1538L16.5605 19.4615M16.5605 19.4615L20.0769 10.2307L23.5933 19.4615M16.5605 19.4615H23.5933M25 23.1538L23.5933 19.4615"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+
+                  {/* Audio Player Hidden Element */}
+                  {m.audioUrl && (
+                    <audio
+                      id={`audio-${m.id}`}
+                      src={resolveMediaUrl(m.audioUrl) || ""}
+                      preload="metadata"
+                    />
+                  )}
+
+                  {/* Audio Toggle */}
+                  <button
+                    type="button"
+                    disabled={m._loadingAudio}
+                    onClick={() => {
+                      if (!m._loadingAudio) {
+                        const el = document.getElementById(
+                          `audio-${m.id}`
+                        ) as HTMLAudioElement | null;
+                        void onToggleAudio(m.id, el, "manual");
+                      }
+                    }}
+                    className={`p-2 h-9 w-9 flex justify-center items-center rounded-full border transition-colors cursor-pointer ${
+                      playing[m.id]
+                        ? "border-blue-500/50 bg-blue-500/10 text-blue-300"
+                        : "border-zinc-700 bg-[#1f2229] text-zinc-300 hover:border-zinc-500 hover:text-white"
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                    title={playing[m.id] ? "Pause audio" : "Play audio"}
+                    aria-label={playing[m.id] ? "Pause audio" : "Play audio"}
+                  >
+                    {m._loadingAudio ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Volume2 className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 opacity-100 transition-opacity duration-200">
+                  {/* Pinyin Toggle for user */}
+                  <button
+                    type="button"
+                    disabled={m._loadingPinyin}
+                    onClick={() => !m._loadingPinyin && onTogglePinyin(m.id)}
+                    className={`px-2.5 py-1 h-9 w-9 text-[11px] font-semibold rounded-full border transition-all cursor-pointer ${
+                      showPinyin
+                        ? "bg-blue-500/10 border-blue-500/40 text-blue-300"
+                        : "bg-[#1f2229] border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                    aria-label={showPinyin ? "Hide pinyin" : "Show pinyin"}
+                  >
+                    PY
+                  </button>
+
+                  {/* Translation Toggle for user */}
+                  <button
+                    type="button"
+                    disabled={m._loadingTranslation}
+                    onClick={() =>
+                      !m._loadingTranslation && onToggleTranslation(m.id)
+                    }
+                    className={`px-2.5 py-1 h-9 w-9 text-[11px] font-semibold rounded-full border transition-all cursor-pointer ${
+                      showTranslation
+                        ? "bg-blue-500/10 border-blue-500/40 text-blue-300"
+                        : "bg-[#1f2229] border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#0b0c10]`}
+                    aria-label={
+                      showTranslation ? "Hide translation" : "Show translation"
+                    }
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 26 25"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M1 3.46154H9.61539M9.61539 3.46154H15.1539M9.61539 3.46154V1M18.2308 3.46154H15.1539M15.1539 3.46154C14.144 6.82785 12.0292 10.01 9.61539 12.8066M9.61539 12.8066C7.61662 15.1223 5.41282 17.1737 3.46154 18.8462M9.61539 12.8066C8.38462 11.4615 6.41539 8.75385 5.92308 7.76923M9.61539 12.8066L13.3077 16.3846"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M15.1538 23.1538L16.5605 19.4615M16.5605 19.4615L20.0769 10.2307L23.5933 19.4615M16.5605 19.4615H23.5933M25 23.1538L23.5933 19.4615"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         );

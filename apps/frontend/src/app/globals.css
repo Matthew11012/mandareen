@@ -12,6 +12,8 @@
   --font-roboto:
     system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Noto Sans",
     "Apple Color Emoji", "Segoe UI Emoji";
+  --font-serif-zh:
+    "Noto Serif SC", "Songti SC", "SimSun", "Times New Roman", serif;
 
   /* Figma Design System Colors */
   --color-primary-bg: #20242b;
@@ -168,6 +170,31 @@ html {
 
 .font-roboto {
   font-family: var(--font-roboto);
+}
+
+.font-serif-zh {
+  font-family: var(--font-serif-zh);
+}
+
+.shadow-ink {
+  box-shadow: 0 0 40px -10px rgba(0, 0, 0, 0.7);
+}
+
+@keyframes wave {
+  0% {
+    transform: translateY(2px) scaleY(0.45);
+  }
+  50% {
+    transform: translateY(-2px) scaleY(1.05);
+  }
+  100% {
+    transform: translateY(2px) scaleY(0.45);
+  }
+}
+
+.animate-wave {
+  animation: wave 0.9s ease-in-out infinite;
+  transform-origin: center;
 }
 
 /* Typography improvements */

@@ -8,6 +8,12 @@ import { useSession } from "../auth-client";
  * Provides convenient methods for auth operations
  */
 export const useAuth = () => {
+  type AuthUser = {
+    id: string | number;
+    email: string;
+    username?: string;
+    name?: string | null;
+  };
   const {
     user,
     isAuthenticated,
@@ -17,6 +23,8 @@ export const useAuth = () => {
     register,
     logout,
     clearError,
+    // allow profile components to update user fields
+    setUser,
   } = useAuthStore();
   const { data: baSession, isPending: baPending } = useSession();
 
@@ -62,8 +70,57 @@ export const useAuth = () => {
     }
   };
 
+  const mergedUser: AuthUser | null = (() => {
+    // If we have Better Auth session, start from it
+    const sessionUser = baSession?.user
+      ? {
+          id: baSession.user.id,
+          email: baSession.user.email,
+          username: (baSession.user as AuthUser).username,
+          name: baSession.user.name,
+        }
+      : null;
+
+    // Prefer store username (keeps post-profile edits) when available
+    const storeUser = user
+      ? {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+        }
+      : null;
+
+    // Merge: use session for id/email, prefer store username if session lacks one
+    if (sessionUser) {
+      return {
+        id: sessionUser.id,
+        email: sessionUser.email,
+        username:
+          storeUser?.username ??
+          sessionUser.username ??
+          sessionUser.name ??
+          sessionUser.email?.split("@")[0] ??
+          undefined,
+        name: sessionUser.name,
+      };
+    }
+
+    if (storeUser) {
+      return {
+        id: storeUser.id,
+        email: storeUser.email,
+        username:
+          storeUser.username ??
+          storeUser.email?.split("@")[0] ??
+          undefined,
+      };
+    }
+
+    return null;
+  })();
+
   return {
-    user: baSession?.user ?? user,
+    user: mergedUser,
     isAuthenticated: Boolean(baSession?.user) || isAuthenticated,
     isLoading: isLoading || baPending,
     error,
@@ -72,6 +129,7 @@ export const useAuth = () => {
     logout: logoutWithRedirect,
     clearError,
     authSource: baSession?.user ? "better-auth" : "legacy",
+    setUser,
   };
 };
 

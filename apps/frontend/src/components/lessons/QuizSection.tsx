@@ -471,7 +471,7 @@ export function QuizSection({
             Choose the best answer
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 justify-end">
           {completed && (
             <span className="px-2 py-1 text-xs rounded bg-green-500/15 text-green-300 border border-green-500/30">
               Completed

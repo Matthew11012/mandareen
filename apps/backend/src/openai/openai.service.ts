@@ -107,7 +107,7 @@ export class OpenAIService {
     const model = process.env.OPENAI_MODEL_CONVERSATION_REPLY || 'gpt-5-nano';
 
     const history = Array.isArray(opts.conversationHistory)
-      ? opts.conversationHistory.slice(-4)
+      ? opts.conversationHistory.slice(-8) // last 4 turns ≈ last 8 messages
       : [];
     const renderedHistory =
       history.length === 0
@@ -133,7 +133,7 @@ export class OpenAIService {
               type: 'input_text',
               text: `You are a native Mandarin tutor and friend continuing this exact conversation. Generate exactly TWO short follow-up suggestions that the *user* would plausibly say next in reply to the latest AI message, in Simplified Chinese plus an English gloss.
               \nRules:
-              - Base suggestions ONLY on the last two turns; do NOT introduce new topics, activities, or invitations that were not mentioned.
+              - Base suggestions ONLY on the last four turns; do NOT introduce new topics, activities, or invitations that were not mentioned.
               - Each suggestion must naturally continue the current flow (a brief follow-up reply or question), not start a new branch, and must read as the user's next turn to the AI.
               - Keep each Chinese suggestion concise (<=20 chars), friendly, on-topic, and coherent with the last AI message.
               - ${hskHint}

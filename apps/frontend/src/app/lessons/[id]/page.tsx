@@ -268,6 +268,7 @@ export default function LessonViewerPage() {
   });
   const selectedWords = uiSelectedWords;
   const [finishLoading, setFinishLoading] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   // Scroll-aware header state
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
@@ -281,11 +282,22 @@ export default function LessonViewerPage() {
 
   // Scroll detection for header auto-hide
   useEffect(() => {
+    const updateIsMobile = () => {
+      const mobile =
+        typeof window !== "undefined" ? window.innerWidth < 640 : false;
+      setIsMobile(mobile);
+    };
+    updateIsMobile();
+    window.addEventListener("resize", updateIsMobile);
+    return () => window.removeEventListener("resize", updateIsMobile);
+  }, []);
+
+  useEffect(() => {
     const handleScroll = () => {
-      // Only enable auto-hide on mobile; keep header always visible on desktop
+      // Keep header always visible on mobile; desktop retains auto-hide
       const isDesktop =
         typeof window !== "undefined" ? window.innerWidth >= 640 : false;
-      if (isDesktop) {
+      if (!isDesktop) {
         if (!isHeaderVisible) setIsHeaderVisible(true);
         setLastScrollY(0);
         return;
@@ -1214,21 +1226,16 @@ export default function LessonViewerPage() {
       title={data?.title || `Lesson #${id}`}
       subtitle={`HSK ${data?.level ?? ""}`}
     >
-      <div className="p-2 sm:p-6 sm:pt-0 pt-0 space-y-6">
-        <motion.div
-          className="flex flex-wrap items-center justify-between gap-2 sticky top-0 z-20 -mx-6 px-6 py-2 bg-[color:var(--surface-main-80)] backdrop-blur border-b border-[color:var(--border-header)]"
-          role="toolbar"
-          aria-label="Lesson controls"
-          initial={{ y: 0 }}
-          animate={{ y: isHeaderVisible ? 0 : -100 }}
-          transition={{
-            type: "spring",
-            stiffness: 300,
-            damping: 30,
-            duration: 0.3,
-          }}
-        >
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto min-w-0">
+      {/* Desktop: Regular div, sticky, always visible, no animations - Must be outside overflow container */}
+      <div
+        className="hidden sm:flex flex-wrap items-center gap-2 sticky top-0 z-20 mt-0 mb-0 px-6 py-2 bg-[color:var(--surface-main-80)] border-b border-[color:var(--border-header)]"
+        role="toolbar"
+        aria-label="Lesson controls"
+      >
+        {/* Desktop: Single row with Exit/Pinyin/Translation on left, Select Words/Refresh on right */}
+        <div className="flex flex-row justify-between items-center gap-2 w-full">
+          {/* Desktop Left: Exit, Pinyin, Translation */}
+          <div className="flex items-center gap-2">
             <button
               onClick={() => router.push("/lessons")}
               className="px-3 py-2 bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-lg hover:border-[color:var(--color-accent-blue)] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent-blue)] focus-visible:ring-offset-[var(--surface-main)]"
@@ -1340,10 +1347,15 @@ export default function LessonViewerPage() {
                     strokeLinejoin="round"
                   />
                 </svg>
+                <span className="font-inter text-sm whitespace-nowrap ml-1">
+                  Translation (All)
+                </span>
               </div>
             </button>
           </div>
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto min-w-0">
+
+          {/* Desktop Right: Select Words, Refresh */}
+          <div className="flex items-center gap-2">
             <button
               onClick={() => {
                 if (multiSelect) {
@@ -1373,16 +1385,7 @@ export default function LessonViewerPage() {
                   <Square className="w-4 h-4 shrink-0" aria-hidden="true" />
                 )}
                 <span className="font-inter text-sm whitespace-nowrap">
-                  {multiSelect ? (
-                    "Cancel Selection"
-                  ) : (
-                    <>
-                      <span className="hidden sm:inline">
-                        Select Words to Add to Flashcards
-                      </span>
-                      <span className="sm:hidden">Select Words</span>
-                    </>
-                  )}
+                  Select Words to Add to Flashcards
                 </span>
               </div>
             </button>
@@ -1410,6 +1413,224 @@ export default function LessonViewerPage() {
                 aria-hidden="true"
               />
             </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-2 sm:p-6 sm:pt-0 pt-2 space-y-6 overflow-x-hidden overscroll-x-contain pb-24 sm:pb-6">
+        {/* Mobile: motion.div with animations */}
+        <motion.div
+          className="flex flex-wrap items-center gap-2 fixed bottom-0 left-0 right-0 z-30 px-3 py-2 pb-4 mb-0 bg-[color:var(--surface-main-90)] backdrop-blur border-t border-[color:var(--border-header)] sm:hidden"
+          role="toolbar"
+          aria-label="Lesson controls"
+          initial={{ y: 0 }}
+          animate={{ y: isMobile ? 0 : isHeaderVisible ? 0 : -100 }}
+          transition={{
+            type: "spring",
+            stiffness: 300,
+            damping: 30,
+            duration: 0.3,
+          }}
+        >
+          {/* Desktop: Single row with Exit/Pinyin/Translation on left, Select Words/Refresh on right */}
+          {/* Mobile: Two rows (Row 1: Exit left, Pinyin/Translation right; Row 2: Select Words left, Refresh right) */}
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 w-full">
+            {/* Mobile Row 1 / Desktop Left: Exit, Pinyin, Translation */}
+            <div className="flex w-full sm:w-auto items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  onClick={() => router.push("/lessons")}
+                  className="px-3 py-2 bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-lg hover:border-[color:var(--color-accent-blue)] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent-blue)] focus-visible:ring-offset-[var(--surface-main)]"
+                  type="button"
+                  aria-label="Back to lessons"
+                >
+                  <div className="flex items-center gap-2 text-[color:var(--text-secondary-strong)]">
+                    <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+                    <span className="font-inter text-sm">Exit</span>
+                  </div>
+                </button>
+              </div>
+              <div className="flex items-center gap-2 ml-auto sm:ml-0">
+                <button
+                  onClick={() => {
+                    setIsContentChanging(true);
+                    setShowPinyin((prev) => {
+                      const next = !prev;
+                      // Force all blocks/turns to follow global state
+                      setChunkPinyinOn(
+                        Object.fromEntries(
+                          (segmentedParagraphs || []).map((_, i) => [i, next])
+                        ) as Record<number, boolean>
+                      );
+                      setTurnPinyinOn(
+                        Object.fromEntries(
+                          ((dialogue?.turns || []) as Array<unknown>).map(
+                            (_, i) => [i, next]
+                          )
+                        ) as Record<number, boolean>
+                      );
+                      return next;
+                    });
+                    // Reset content changing flag after a short delay
+                    setTimeout(() => setIsContentChanging(false), 150);
+                  }}
+                  className="px-3 py-2 bg-orange-500/20 border border-orange-500/40 rounded-lg hover:border-orange-500 text-orange-300 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-orange-400 focus-visible:ring-offset-[var(--surface-main)]"
+                  type="button"
+                  aria-pressed={showPinyin}
+                  aria-label={
+                    showPinyin ? "Hide all pinyin" : "Show all pinyin"
+                  }
+                >
+                  <div className="flex items-center gap-2 text-[color:var(--text-secondary-strong)]">
+                    {showPinyin ? (
+                      <EyeOff className="w-4 h-4" aria-hidden="true" />
+                    ) : (
+                      <Eye className="w-4 h-4" aria-hidden="true" />
+                    )}
+                    <span className="font-inter text-sm whitespace-nowrap">
+                      Pinyin
+                    </span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsContentChanging(true);
+                    setShowTranslation((prev) => {
+                      const next = !prev;
+                      // Force all blocks/turns to follow global state
+                      setChunkTransOn(
+                        Object.fromEntries(
+                          (segmentedParagraphs || []).map((_, i) => [i, next])
+                        ) as Record<number, boolean>
+                      );
+                      setTurnTransOn(
+                        Object.fromEntries(
+                          ((dialogue?.turns || []) as Array<unknown>).map(
+                            (_, i) => [i, next]
+                          )
+                        ) as Record<number, boolean>
+                      );
+                      return next;
+                    });
+                    // Reset content changing flag after a short delay
+                    setTimeout(() => setIsContentChanging(false), 150);
+                  }}
+                  className="px-3 py-2 bg-purple-600/20 border border-purple-600/40 rounded-lg hover:border-purple-600 text-purple-300 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-purple-400 focus-visible:ring-offset-[var(--surface-main)]"
+                  type="button"
+                  aria-pressed={showTranslation}
+                  aria-label={
+                    showTranslation
+                      ? "Hide all translations"
+                      : "Show all translations"
+                  }
+                >
+                  <div className="flex items-center gap-2 text-[color:var(--text-secondary-strong)]">
+                    {showTranslation ? (
+                      <EyeOff className="w-4 h-4" aria-hidden="true" />
+                    ) : (
+                      <Eye className="w-4 h-4" aria-hidden="true" />
+                    )}
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 26 25"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M1 3.46154H9.61539M9.61539 3.46154H15.1539M9.61539 3.46154V1M18.2308 3.46154H15.1539M15.1539 3.46154C14.144 6.82785 12.0292 10.01 9.61539 12.8066M9.61539 12.8066C7.61662 15.1223 5.41282 17.1737 3.46154 18.8462M9.61539 12.8066C8.38462 11.4615 6.41539 8.75385 5.92308 7.76923M9.61539 12.8066L13.3077 16.3846"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M15.1538 23.1538L16.5605 19.4615M16.5605 19.4615L20.0769 10.2307L23.5933 19.4615M16.5605 19.4615H23.5933M25 23.1538L23.5933 19.4615"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Mobile Row 2 / Desktop Right: Select Words, Refresh */}
+            <div className="flex w-full sm:w-auto items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  onClick={() => {
+                    if (multiSelect) {
+                      // cancel selection
+                      setMultiSelect(false);
+                      setSelectedWords({});
+                    } else {
+                      setMultiSelect(true);
+                    }
+                  }}
+                  className="px-3 py-2 bg-[var(--surface-card)] border border-[color:var(--border-strong)] rounded-lg hover:border-[color:var(--color-accent-blue)] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent-blue)] focus-visible:ring-offset-[var(--surface-main)] min-w-0"
+                  type="button"
+                  aria-pressed={multiSelect}
+                  aria-label={
+                    multiSelect
+                      ? "Cancel word selection"
+                      : "Select words to add to flashcards"
+                  }
+                >
+                  <div className="flex items-center gap-2 text-[color:var(--text-secondary-strong)] min-w-0 shrink">
+                    {multiSelect ? (
+                      <CheckSquare
+                        className="w-4 h-4 shrink-0"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Square className="w-4 h-4 shrink-0" aria-hidden="true" />
+                    )}
+                    <span className="font-inter text-sm whitespace-nowrap">
+                      {multiSelect ? (
+                        "Cancel Selection"
+                      ) : (
+                        <>
+                          <span className="hidden sm:inline">
+                            Select Words to Add to Flashcards
+                          </span>
+                          <span className="sm:hidden">Select Words</span>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                </button>
+                {multiSelect && (
+                  <button
+                    onClick={() => void addSelectedToFlashcards()}
+                    disabled={Object.keys(selectedWords).length === 0}
+                    className="px-3 py-2 bg-[var(--color-accent-blue)] text-white text-sm rounded-lg hover:bg-[var(--accent-blue-strong)] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent-blue)] focus-visible:ring-offset-[var(--surface-main)]"
+                    type="button"
+                    aria-label="Add selected words to flashcards"
+                  >
+                    Add Selected ({Object.keys(selectedWords).length})
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2 ml-auto sm:ml-0">
+                <button
+                  onClick={() => void lessonQuery.refetch()}
+                  disabled={loading}
+                  className="p-2 hover:bg-[color:var(--border-strong)] rounded-lg transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent-blue)] focus-visible:ring-offset-[var(--surface-main)]"
+                  title="Refresh"
+                  type="button"
+                  aria-label="Refresh lesson"
+                >
+                  <RefreshCw
+                    className={`w-4 h-4 text-[color:var(--text-secondary-strong)] ${loading ? "motion-safe:animate-spin" : ""}`}
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+            </div>
           </div>
         </motion.div>
 

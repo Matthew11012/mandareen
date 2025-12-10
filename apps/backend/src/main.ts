@@ -16,6 +16,7 @@ async function bootstrap() {
       'http://localhost:3001', // Frontend development
       'http://localhost:3000', // Alternative frontend port
       process.env.FRONTEND_URL || 'http://localhost:3001',
+      'https://unartificial-marion-enrapturedly.ngrok-free.dev',
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [

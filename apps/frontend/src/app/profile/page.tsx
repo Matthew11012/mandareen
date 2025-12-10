@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/layout";
-import { useRequireAuth } from "@/lib/hooks/use-auth";
+import { useRequireAuth, useAuth } from "@/lib/hooks/use-auth";
 import { authApi, type MeResponse } from "@/lib/api/auth";
 import {
   RefreshCw,
@@ -28,6 +28,9 @@ import { toast } from "sonner";
 
 export default function ProfilePage() {
   const { isLoading: authLoading } = useRequireAuth();
+  const { setUser } = useAuth() as {
+    setUser?: (user: Partial<MeResponse>) => void;
+  };
 
   const [data, setData] = useState<MeResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,6 +42,16 @@ export default function ProfilePage() {
   const [pushSubscribed, setPushSubscribed] = useState<boolean | null>(null);
   const [pushToggling, setPushToggling] = useState(false);
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [usernameValue, setUsernameValue] = useState<string>("");
+  const [savingUsername, setSavingUsername] = useState(false);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const trimmedUsername = usernameValue.trim();
+  const canSaveUsername =
+    !savingUsername &&
+    trimmedUsername.length >= 3 &&
+    trimmedUsername.length <= 30 &&
+    trimmedUsername !== data?.username;
 
   const load = async () => {
     setLoading(true);
@@ -47,6 +60,7 @@ export default function ProfilePage() {
       const me = await authApi.me();
       setData(me);
       setWeeklyGoalValue(me.weeklyGoalLessons);
+      setUsernameValue(me.username);
     } catch {
       setError("Failed to load profile");
     } finally {
@@ -109,6 +123,34 @@ export default function ProfilePage() {
       }
     } else {
       setPushSubscribed(false);
+    }
+  };
+
+  const saveUsername = async () => {
+    if (!usernameValue.trim() || usernameValue === data?.username) {
+      setIsEditingUsername(false);
+      setUsernameError(null);
+      return;
+    }
+
+    setSavingUsername(true);
+    setUsernameError(null);
+    try {
+      const result = await authApi.updateUsername(usernameValue.trim());
+      setData((prev) => (prev ? { ...prev, username: result.username } : null));
+      setUser?.({ username: result.username });
+      setIsEditingUsername(false);
+      toast.success("Username updated!");
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Failed to update username";
+      if (msg.toLowerCase().includes("taken") || msg.includes("409")) {
+        setUsernameError("Username already taken");
+      } else {
+        setUsernameError(msg);
+      }
+    } finally {
+      setSavingUsername(false);
     }
   };
 
@@ -201,6 +243,80 @@ export default function ProfilePage() {
               <div className="bg-[#24262b] rounded-lg p-4 border border-[#3a3a3a]">
                 <p className="text-[#a6a6a6] text-sm font-inter">Email</p>
                 <p className="text-white font-inter">{data.email}</p>
+              </div>
+              <div className="bg-[#24262b] rounded-lg p-4 border border-[#3a3a3a]">
+                <p className="text-[#a6a6a6] text-sm font-inter">Username</p>
+                {isEditingUsername ? (
+                  <>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-1">
+                      <input
+                        type="text"
+                        value={usernameValue}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          setUsernameValue(
+                            next.length > 30 ? next.slice(0, 30) : next
+                          );
+                        }}
+                        className="w-full sm:flex-1 px-2 py-2 bg-[#2e323a] border border-[#3a3a3a] rounded text-white font-inter text-sm"
+                        placeholder="Enter username"
+                        autoFocus
+                        maxLength={30}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            saveUsername();
+                          }
+                          if (e.key === "Escape") {
+                            setIsEditingUsername(false);
+                            setUsernameValue(data.username);
+                            setUsernameError(null);
+                          }
+                        }}
+                      />
+                      <div className="flex w-full sm:w-auto gap-2">
+                        <button
+                          onClick={saveUsername}
+                          disabled={!canSaveUsername}
+                          className="flex-1 sm:flex-none px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded disabled:opacity-50 cursor-pointer text-center"
+                        >
+                          {savingUsername ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsEditingUsername(false);
+                            setUsernameValue(data.username);
+                            setUsernameError(null);
+                          }}
+                          className="flex-1 sm:flex-none px-3 py-2 bg-[#404040] hover:bg-[#505050] text-white text-xs rounded cursor-pointer text-center"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:justify-between text-[#a6a6a6] text-xs mt-1 gap-1">
+                      <p>3–30 characters</p>
+                      <p className="text-right" aria-live="polite">
+                        {trimmedUsername.length}/30
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-white font-inter">{data.username}</p>
+                    <button
+                      onClick={() => setIsEditingUsername(true)}
+                      className="text-blue-400 hover:text-blue-300 text-xs font-inter cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                )}
+                {usernameError && (
+                  <p className="text-red-400 text-xs mt-1" aria-live="polite">
+                    {usernameError}
+                  </p>
+                )}
               </div>
               <div className="bg-[#24262b] rounded-lg p-4 border border-[#3a3a3a]">
                 <p className="text-[#a6a6a6] text-sm font-inter">

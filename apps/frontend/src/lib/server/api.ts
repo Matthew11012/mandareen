@@ -15,9 +15,13 @@ export async function serverApiFetch(path: string, init?: RequestInit) {
 
   const cookieStore = await cookies();
   const legacyToken = cookieStore.get("auth-token")?.value;
-  const betterAuthCookies = cookieStore
-    .getAll()
-    .filter((cookie) => cookie.name.startsWith("mandareen."));
+  // Better Auth cookies may be prefixed with __Secure- and use dots/underscores.
+  const betterAuthCookies = cookieStore.getAll().filter((cookie) => {
+    const name = cookie.name;
+    return (
+      name.startsWith("mandareen") || name.startsWith("__Secure-mandareen")
+    );
+  });
 
   const headers = new Headers(init?.headers);
   if (!headers.has("Content-Type"))
@@ -152,9 +156,22 @@ export async function serverGetWeeklyProgress(offsetMinutes?: number): Promise<{
 export async function serverGetMe(): Promise<{
   id: number;
   email: string;
+  username: string;
   createdAt: string;
   currentLevel: number | null;
   weeklyGoalLessons: number | null;
 }> {
   return serverApiFetch("users/me");
+}
+
+export async function serverGetFlashcardsSummary(): Promise<{
+  total: number;
+  due: number;
+  dueToday: number;
+  notStudied: number;
+  weak: number;
+  partial: number;
+  strong: number;
+}> {
+  return serverApiFetch("flashcards/summary");
 }
