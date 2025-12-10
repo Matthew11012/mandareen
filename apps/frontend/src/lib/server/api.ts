@@ -156,6 +156,7 @@ export async function serverGetWeeklyProgress(offsetMinutes?: number): Promise<{
 export async function serverGetMe(): Promise<{
   id: number;
   email: string;
+  username: string;
   createdAt: string;
   currentLevel: number | null;
   weeklyGoalLessons: number | null;

@@ -185,7 +185,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             <div className="flex items-center gap-2 px-4 py-2.5 bg-[var(--surface-card)] rounded-lg min-h-[44px] cursor-pointer hover:bg-[color:var(--surface-card-hover)] transition-colors hidden sm:flex">
               <User className="w-4 h-4 text-[color:var(--text-secondary-strong)]" />
               <span className="text-sm font-inter text-[color:var(--text-secondary-strong)] hidden sm:block">
-                {user?.email || "User"}
+                {user?.username ||
+                  user?.email?.split("@")[0] ||
+                  "User"}
               </span>
             </div>
 
