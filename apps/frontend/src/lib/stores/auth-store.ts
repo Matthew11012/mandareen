@@ -57,7 +57,11 @@ export const useAuthStore = create<AuthState>()(
 
           const me = await authApi.me();
           set({
-            user: { id: me.id, email: me.email, username: me.username },
+            user: {
+              id: me.id,
+              email: me.email,
+              username: me.username ?? me.email?.split("@")[0] ?? "",
+            },
             token: null,
             isAuthenticated: true,
             isLoading: false,
@@ -99,7 +103,11 @@ export const useAuthStore = create<AuthState>()(
 
           const me = await authApi.me();
           set({
-            user: { id: me.id, email: me.email, username: me.username },
+            user: {
+              id: me.id,
+              email: me.email,
+              username: me.username ?? me.email?.split("@")[0] ?? "",
+            },
             token: null,
             isAuthenticated: true,
             isLoading: false,
@@ -189,7 +197,11 @@ export const useAuthStore = create<AuthState>()(
           if (session.data?.user) {
             const me = await authApi.me();
             set({
-              user: { id: me.id, email: me.email, username: me.username },
+              user: {
+                id: me.id,
+                email: me.email,
+                username: me.username ?? me.email?.split("@")[0] ?? "",
+              },
               token: null,
               isAuthenticated: true,
               isLoading: false,
@@ -204,7 +216,11 @@ export const useAuthStore = create<AuthState>()(
         try {
           const me = await authApi.me();
           set({
-            user: { id: me.id, email: me.email },
+            user: {
+              id: me.id,
+              email: me.email,
+              username: me.username ?? me.email?.split("@")[0] ?? "",
+            },
             token: null,
             isAuthenticated: true,
             isLoading: false,
