@@ -82,6 +82,21 @@ function AuthCallbackContent() {
     const handleCallback = async () => {
       try {
         const error = searchParams.get("error");
+        const mode = searchParams.get("mode");
+
+        if (error === "invalid_token") {
+          toast.error("Verification link expired. Please request a new one.");
+          const email = searchParams.get("email");
+          const params = new URLSearchParams();
+          if (email) params.set("email", email);
+          router.push(
+            params.toString()
+              ? `/verify-email-pending?${params.toString()}`
+              : "/verify-email-pending"
+          );
+          return;
+        }
+
         if (error) throw new Error(error);
 
         // Better Auth sets the session cookie automatically
@@ -115,7 +130,11 @@ function AuthCallbackContent() {
           isAuthenticated: true,
         });
 
-        toast.success("Successfully signed in with Google!");
+        const successMessage =
+          mode === "verify-email"
+            ? "Email verified successfully! Welcome to Mandareen."
+            : "Successfully signed in with Google!";
+        toast.success(successMessage);
 
         // Check sessionStorage for redirect URL with plan info (from signup)
         const storedSignupRedirectUrl = sessionStorage.getItem(
