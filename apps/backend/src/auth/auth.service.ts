@@ -8,6 +8,11 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
 import { GoogleUser } from '../types/request.types';
+import {
+  generateBaseUsername,
+  generateUniqueUsername,
+  USERNAME_MAX_LENGTH,
+} from '../users/username.utils';
 
 @Injectable()
 export class AuthService {
@@ -107,10 +112,33 @@ export class AuthService {
       return user;
     }
 
+    // Derive base username from name or email
+    const namePart = [details.firstName, details.lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    const baseFromName =
+      namePart.length > 0
+        ? namePart.replace(/\s+/g, '_').slice(0, USERNAME_MAX_LENGTH)
+        : null;
+    const baseUsername = baseFromName || generateBaseUsername(details.email);
+
+    const username = await generateUniqueUsername(
+      baseUsername,
+      async (candidate) => {
+        const existing = await (this.prisma.user as any).findUnique({
+          where: { username: candidate },
+          select: { id: true },
+        });
+        return existing !== null;
+      },
+    );
+
     // Create new user if doesn't exist
-    const newUser = await this.prisma.user.create({
+    const newUser = await (this.prisma.user as any).create({
       data: {
         email: details.email,
+        username,
         googleId: details.googleId,
         password_hashed: '', // Empty as Google auth doesn't need password
       },
