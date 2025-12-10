@@ -27,6 +27,15 @@ export class AuthService {
       throw new ConflictException('Email already registered');
     }
 
+    // Check if username already exists
+    const existingUsername = await (this.prisma.user as any).findUnique({
+      where: { username: registerDto.username },
+    });
+
+    if (existingUsername) {
+      throw new ConflictException('Username already taken');
+    }
+
     // Hash password
     const salt = await bcrypt.genSalt();
     const hashedPassword = await bcrypt.hash(registerDto.password, salt);
@@ -35,11 +44,15 @@ export class AuthService {
     const user = await this.prisma.user.create({
       data: {
         email: registerDto.email,
+        // @ts-expect-error Pending prisma generate for username field
+        username: registerDto.username,
         password_hashed: hashedPassword,
       },
       select: {
         id: true,
         email: true,
+        // @ts-expect-error Pending prisma generate for username field
+        username: true,
         createdAt: true,
       },
     });
