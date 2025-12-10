@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/layout";
-import { useRequireAuth } from "@/lib/hooks/use-auth";
+import { useRequireAuth, useAuth } from "@/lib/hooks/use-auth";
 import { authApi, type MeResponse } from "@/lib/api/auth";
 import {
   RefreshCw,
@@ -28,6 +28,9 @@ import { toast } from "sonner";
 
 export default function ProfilePage() {
   const { isLoading: authLoading } = useRequireAuth();
+  const { setUser } = useAuth() as {
+    setUser?: (user: Partial<MeResponse>) => void;
+  };
 
   const [data, setData] = useState<MeResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -135,6 +138,7 @@ export default function ProfilePage() {
     try {
       const result = await authApi.updateUsername(usernameValue.trim());
       setData((prev) => (prev ? { ...prev, username: result.username } : null));
+      setUser?.({ username: result.username });
       setIsEditingUsername(false);
       toast.success("Username updated!");
     } catch (err) {

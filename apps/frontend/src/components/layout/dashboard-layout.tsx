@@ -163,7 +163,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 aria-controls="sidebar-nav"
                 className="p-2 hover:bg-[var(--surface-card)] rounded-lg transition-colors duration-200 cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
               >
-                <Menu className="w-5 h-5 text-[color:var(--text-secondary-strong)]" aria-hidden="true" />
+                <Menu
+                  className="w-5 h-5 text-[color:var(--text-secondary-strong)]"
+                  aria-hidden="true"
+                />
               </button>
             )}
 
@@ -175,7 +178,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 </h1>
               )}
               {subtitle && (
-                <p className="text-sm text-[color:var(--text-secondary-strong)] font-inter">{subtitle}</p>
+                <p className="text-sm text-[color:var(--text-secondary-strong)] font-inter">
+                  {subtitle}
+                </p>
               )}
             </div>
           </div>
@@ -185,9 +190,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             <div className="flex items-center gap-2 px-4 py-2.5 bg-[var(--surface-card)] rounded-lg min-h-[44px] cursor-pointer hover:bg-[color:var(--surface-card-hover)] transition-colors hidden sm:flex">
               <User className="w-4 h-4 text-[color:var(--text-secondary-strong)]" />
               <span className="text-sm font-inter text-[color:var(--text-secondary-strong)] hidden sm:block">
-                {user?.username ||
-                  user?.email?.split("@")[0] ||
-                  "User"}
+                {user?.username || user?.email?.split("@")[0] || "User"}
               </span>
             </div>
 
