@@ -244,12 +244,17 @@ export default function ProfilePage() {
                 <p className="text-[#a6a6a6] text-sm font-inter">Username</p>
                 {isEditingUsername ? (
                   <>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-1">
                       <input
                         type="text"
                         value={usernameValue}
-                        onChange={(e) => setUsernameValue(e.target.value)}
-                        className="flex-1 px-2 py-1 bg-[#2e323a] border border-[#3a3a3a] rounded text-white font-inter text-sm"
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          setUsernameValue(
+                            next.length > 30 ? next.slice(0, 30) : next
+                          );
+                        }}
+                        className="w-full sm:flex-1 px-2 py-2 bg-[#2e323a] border border-[#3a3a3a] rounded text-white font-inter text-sm"
                         placeholder="Enter username"
                         autoFocus
                         maxLength={30}
@@ -265,27 +270,32 @@ export default function ProfilePage() {
                           }
                         }}
                       />
-                      <button
-                        onClick={saveUsername}
-                        disabled={!canSaveUsername}
-                        className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded disabled:opacity-50 cursor-pointer"
-                      >
-                        {savingUsername ? "Saving..." : "Save"}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsEditingUsername(false);
-                          setUsernameValue(data.username);
-                          setUsernameError(null);
-                        }}
-                        className="px-2 py-1 bg-[#404040] hover:bg-[#505050] text-white text-xs rounded cursor-pointer"
-                      >
-                        Cancel
-                      </button>
+                      <div className="flex w-full sm:w-auto gap-2">
+                        <button
+                          onClick={saveUsername}
+                          disabled={!canSaveUsername}
+                          className="flex-1 sm:flex-none px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded disabled:opacity-50 cursor-pointer text-center"
+                        >
+                          {savingUsername ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsEditingUsername(false);
+                            setUsernameValue(data.username);
+                            setUsernameError(null);
+                          }}
+                          className="flex-1 sm:flex-none px-3 py-2 bg-[#404040] hover:bg-[#505050] text-white text-xs rounded cursor-pointer text-center"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                    <p className="text-[#a6a6a6] text-xs mt-1">
-                      3–30 characters. Enter to save, Esc to cancel.
-                    </p>
+                    <div className="flex flex-col sm:flex-row sm:justify-between text-[#a6a6a6] text-xs mt-1 gap-1">
+                      <p>3–30 characters</p>
+                      <p className="text-right" aria-live="polite">
+                        {trimmedUsername.length}/30
+                      </p>
+                    </div>
                   </>
                 ) : (
                   <div className="flex items-center justify-between mt-1">
