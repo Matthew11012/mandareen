@@ -92,6 +92,12 @@ function AuthCallbackContent() {
           throw new Error("No session found after OAuth callback");
         }
 
+        if (!session.data.user.emailVerified) {
+          toast.info(
+            "Welcome! Please verify your email to secure your account."
+          );
+        }
+
         // Update auth store with Better Auth user info
         // Note: Better Auth uses string IDs, but we need to map to legacy user
         // The AuthGuard on backend handles this mapping
@@ -100,7 +106,11 @@ function AuthCallbackContent() {
         const me = await authApi.me();
 
         useAuthStore.setState({
-          user: { id: me.id, email: me.email },
+          user: {
+            id: me.id,
+            email: me.email,
+            username: me.username ?? me.email?.split("@")[0] ?? "",
+          },
           token: null,
           isAuthenticated: true,
         });
