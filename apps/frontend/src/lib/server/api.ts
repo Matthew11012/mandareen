@@ -162,3 +162,15 @@ export async function serverGetMe(): Promise<{
 }> {
   return serverApiFetch("users/me");
 }
+
+export async function serverGetFlashcardsSummary(): Promise<{
+  total: number;
+  due: number;
+  dueToday: number;
+  notStudied: number;
+  weak: number;
+  partial: number;
+  strong: number;
+}> {
+  return serverApiFetch("flashcards/summary");
+}

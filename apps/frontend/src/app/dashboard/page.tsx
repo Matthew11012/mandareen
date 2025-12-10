@@ -11,19 +11,25 @@ import {
   serverGetCurrentLevel,
   serverGetWeeklyProgress,
   serverGetMe,
+  serverGetFlashcardsSummary,
   type ServerCurriculumLesson,
   type ServerCurriculumUnit,
 } from "@/lib/server/api";
-import GuidedPath from "@/components/dashboard/GuidedPath";
-import QuickStats from "@/components/dashboard/QuickStats";
 import AssessmentHistory from "@/components/dashboard/AssessmentHistory";
+import CountUp from "@/components/ui/CountUp";
 import {
   Lightbulb,
   BookOpen,
   Brain,
   MessageCircle,
   Target,
-  Compass,
+  Flame,
+  TrendingUp,
+  Calendar,
+  Check,
+  Play,
+  ArrowRight,
+  Trophy,
 } from "lucide-react";
 
 export default async function DashboardPage() {
@@ -43,6 +49,7 @@ export default async function DashboardPage() {
     currentLevel,
     weeklyProgress,
     userData,
+    flashcardsSummary,
   ] = await Promise.all([
     serverGetAssessmentHistory().catch(() => []),
     serverGetLessonsProgressCount().catch(() => ({ finishedCount: 0 })),
@@ -73,9 +80,19 @@ export default async function DashboardPage() {
     serverGetMe().catch(() => ({
       id: 0,
       email: "",
+      name: "Traveler", // Default name fallback
       createdAt: new Date().toISOString(),
       currentLevel: null,
       weeklyGoalLessons: null,
+    })),
+    serverGetFlashcardsSummary().catch(() => ({
+      total: 0,
+      due: 0,
+      dueToday: 0,
+      notStudied: 0,
+      weak: 0,
+      partial: 0,
+      strong: 0,
     })),
   ]);
 
@@ -86,7 +103,21 @@ export default async function DashboardPage() {
     total: number;
     percent: number;
   } | null = null;
-  let guidedPathError: string | null = null;
+
+  const curriculumTotals = (() => {
+    const totalLessons = units.reduce(
+      (acc, unit) => acc + (unit.totalLessons ?? 0),
+      0
+    );
+    const completedLessons = units.reduce(
+      (acc, unit) => acc + (unit.completedLessons ?? 0),
+      0
+    );
+    const percent = totalLessons
+      ? Math.min(100, Math.round((completedLessons / totalLessons) * 100))
+      : 0;
+    return { totalLessons, completedLessons, percent };
+  })();
 
   try {
     if (Array.isArray(units) && units.length > 0) {
@@ -99,272 +130,414 @@ export default async function DashboardPage() {
         null;
       guidedUnit = targetUnit;
       guidedLesson = nextLesson;
-      const completed = targetUnit.completedLessons;
-      const total = targetUnit.totalLessons || 1;
+      const completed = unitDetail.lessons.filter(
+        (l: ServerCurriculumLesson) => l.completed
+      ).length;
+      const total = unitDetail.lessons.length || 1;
       curriculumProgress = {
-        completed,
-        total,
-        percent: Math.min(100, Math.round((completed / total) * 100)),
+        completed: curriculumTotals.completedLessons || completed,
+        total: curriculumTotals.totalLessons || total,
+        percent: curriculumTotals.percent,
       };
     }
-  } catch (error) {
+  } catch {
     guidedUnit = null;
     guidedLesson = null;
-    guidedPathError =
-      error instanceof Error ? error.message : "Unable to load guided path";
+    // ignore; UI falls back to generic copy below
   }
+
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
+  // Quick Stats Logic
+  const displayedLevel = (() => {
+    if (currentLevel.currentLevel === null) return "Unranked";
+    if (currentLevel.currentLevel === 0) return "Novice";
+    return `HSK ${currentLevel.currentLevel}`;
+  })();
+
+  const levelColorClass = (() => {
+    const lvl = currentLevel.currentLevel;
+    if (lvl === null || lvl === 0) return "text-zinc-400";
+    if (lvl <= 2) return "text-yellow-400";
+    if (lvl <= 4) return "text-emerald-400";
+    return "text-blue-400";
+  })();
+
+  const displayedStreakDays = streakRes.todayContinued
+    ? streakRes.streakDays
+    : Math.max(streakRes.carryOverDays, 0);
+
+  const flashcardsDue = Math.max(flashcardsSummary?.due ?? 0, 0);
 
   return (
     <DashboardLayout
-      title="Dashboard"
-      subtitle="Welcome back! Ready to continue your Mandarin journey?"
+      title="Home"
+      subtitle="Track your progress and continue learning"
     >
-      <div className="p-6 space-y-8">
-        <div className="bg-gradient-to-r from-[#4040f2] to-[#6366f1] rounded-2xl p-6 text-white">
-          <div className="flex items-center justify-between">
-            <div className="space-y-2">
-              <h2 className="text-2xl font-inter font-bold">
-                Welcome to Mandareen! 🎉
-              </h2>
-              <p className="text-blue-50 font-inter">
-                Your AI-powered Mandarin learning companion is ready to help you
-                achieve fluency.
+      <div className="p-4 md:p-6 space-y-8 mx-auto">
+        {/* Hero Welcome */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#2e323a] to-[#252830] border border-white/5 p-8 md:p-10 shadow-2xl">
+          <div className="absolute top-0 right-0 p-2 opacity-5 pointer-events-none select-none">
+            <span className="text-[12rem] font-serif-zh leading-none text-white">
+              学
+            </span>
+          </div>
+          <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+            <div>
+              <div className="flex items-center gap-3 mb-3">
+                <span className="px-3 py-1 rounded-full bg-white/5 backdrop-blur-md text-xs font-medium text-zinc-300 border border-white/10">
+                  {new Date().toLocaleDateString("en-US", {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </span>
+                {streakRes.todayContinued && (
+                  <span className="flex items-center gap-1.5 text-orange-400 text-xs font-bold uppercase tracking-wider animate-pulse">
+                    <Flame className="w-3.5 h-3.5 fill-current" /> Streak Active
+                  </span>
+                )}
+              </div>
+              <h1 className="text-3xl md:text-5xl font-bold text-white font-inter tracking-tight mb-2">
+                {greeting}, <span className="text-blue-400">Learner</span>.
+              </h1>
+              <p className="text-zinc-400 max-w-lg text-lg leading-relaxed">
+                Consistency is key. You&apos;re building a habit that lasts.
               </p>
             </div>
-            <div className="hidden md:block">
-              <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center">
-                <span className="text-4xl">普</span>
+
+            {/* Streak Counter Hero */}
+            <div className="flex items-center gap-4 bg-[#1a1d23]/50 backdrop-blur-md p-4 pr-6 rounded-2xl border border-white/5 shadow-inner">
+              <div
+                className={`p-3 rounded-xl ${streakRes.todayContinued ? "bg-orange-500/20 text-orange-500" : "bg-zinc-800 text-zinc-600"}`}
+              >
+                <Flame
+                  className={`w-8 h-8 ${streakRes.todayContinued ? "fill-current animate-pulse" : ""}`}
+                />
+              </div>
+              <div>
+                <div className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-0.5">
+                  Day Streak
+                </div>
+                <div className="text-4xl font-black text-white tabular-nums leading-none">
+                  <CountUp to={displayedStreakDays} duration={1.5} />
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <section className="bg-[#2e323a] rounded-2xl border border-white/10 p-6 shadow-md">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="w-12 h-12 flex items-center justify-center rounded-lg bg-amber-500/15 border border-amber-500/30 shrink-0">
-                <Compass className="w-6 h-6 text-amber-400" />
+        {/* Main Dashboard Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column: Current Objective & Stats */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Next Lesson Card */}
+            <section className="relative group rounded-3xl bg-[#2e323a] border border-white/5 overflow-hidden transition-all duration-300 hover:shadow-2xl hover:shadow-blue-900/10 hover:border-white/10">
+              <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent opacity-50" />
+
+              <div className="p-8 relative z-10">
+                <div className="flex justify-between items-start mb-8">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 ring-4 ring-blue-500/5">
+                      <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                    </div>
+                    <h3 className="text-sm font-semibold text-blue-300/90 uppercase tracking-wide">
+                      Up Next
+                    </h3>
+                  </div>
+                  {curriculumProgress && (
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-white tabular-nums">
+                        {curriculumProgress.percent}%
+                      </div>
+                      <div className="text-xs text-zinc-500 font-medium">
+                        Curriculum Progress
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {guidedUnit && guidedLesson ? (
+                  <div className="space-y-8">
+                    <div>
+                      <h2 className="text-2xl md:text-3xl font-bold text-white mb-3 leading-tight">
+                        {guidedUnit.title}
+                      </h2>
+                      <div className="flex items-center gap-3 text-lg text-zinc-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                        <p className="font-medium">{guidedLesson.title}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-4">
+                      <Link
+                        href={`/curriculum/${guidedUnit.id}/${guidedLesson.id}`}
+                        className="group flex items-center gap-3 px-8 py-3.5 bg-white text-black rounded-full font-bold text-base hover:bg-blue-50 hover:text-blue-600 transition-all duration-300"
+                      >
+                        {curriculumProgress?.percent === 0
+                          ? "Start Lesson"
+                          : "Continue Lesson"}
+                        <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                      </Link>
+                      <Link
+                        href="/curriculum"
+                        className="px-6 py-3.5 text-zinc-400 hover:text-white font-medium text-sm transition-colors"
+                      >
+                        View all units
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-12 text-center bg-black/20 rounded-2xl border border-dashed border-white/10">
+                    <p className="text-zinc-500">
+                      No active lessons available right now.
+                    </p>
+                  </div>
+                )}
               </div>
-              <div>
-                <h3 className="text-lg font-inter font-semibold text-white">
-                  Guided Path
-                </h3>
-                <p className="text-sm text-amber-300 font-inter">
-                  Follow the structured curriculum sourced from Modern Mandarin
-                  Chinese Grammar.
-                </p>
+
+              {/* Progress Bar Bottom */}
+              {curriculumProgress && (
+                <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
+                  <div
+                    className="h-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+                    style={{ width: `${curriculumProgress.percent}%` }}
+                  />
+                </div>
+              )}
+            </section>
+
+            {/* Stats Row */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="bg-[#2e323a] border border-white/5 rounded-2xl p-5 hover:bg-[#353941] transition-colors">
+                <div className="flex items-center gap-3 mb-3 text-zinc-400">
+                  <Target className="w-4 h-4" />
+                  <span className="text-xs font-mono uppercase">Level</span>
+                </div>
+                <div className={`text-2xl font-bold ${levelColorClass}`}>
+                  {displayedLevel}
+                </div>
+              </div>
+
+              <div className="bg-[#2e323a] border border-white/5 rounded-2xl p-5 hover:bg-[#353941] transition-colors">
+                <div className="flex items-center gap-3 mb-3 text-zinc-400">
+                  <TrendingUp className="w-4 h-4" />
+                  <span className="text-xs font-mono uppercase">Vocab</span>
+                </div>
+                <div className="text-2xl font-bold text-white">
+                  <CountUp
+                    to={wordsRead.readCount}
+                    separator=","
+                    duration={1}
+                  />
+                </div>
+              </div>
+
+              <div className="col-span-2 md:col-span-1 bg-[#2e323a] border border-white/5 rounded-2xl p-5 hover:bg-[#353941] transition-colors">
+                <div className="flex items-center justify-between mb-3 text-zinc-400">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    <span className="text-xs font-mono uppercase">Weekly</span>
+                  </div>
+                  <span className="text-xs">
+                    {weeklyProgress.weeklyCount}/
+                    {userData.weeklyGoalLessons || 0}
+                  </span>
+                </div>
+                <div className="w-full bg-black/40 rounded-full h-2 mb-2">
+                  <div
+                    className="bg-orange-500 h-2 rounded-full transition-all duration-1000"
+                    style={{
+                      width: `${Math.min(100, (weeklyProgress.weeklyCount / (userData.weeklyGoalLessons || 1)) * 100)}%`,
+                    }}
+                  />
+                </div>
+                <Link
+                  href="/profile#weekly-goal"
+                  className="text-[10px] text-zinc-500 hover:text-white transition-colors"
+                >
+                  Adjust Goal →
+                </Link>
               </div>
             </div>
-
-            <Link
-              href="/curriculum"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-amber-500/50 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 hover:border-amber-500/70 transition-colors duration-200 font-medium"
-            >
-              <Compass className="w-4 h-4" />
-              View curriculum
-            </Link>
           </div>
 
-          <div className="mt-5">
-            {guidedPathError ? (
-              <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-                {guidedPathError}
-              </div>
-            ) : guidedUnit && guidedLesson && curriculumProgress ? (
-              <GuidedPath
-                guidedUnit={guidedUnit}
-                guidedLesson={guidedLesson}
-                curriculumProgress={curriculumProgress}
-              />
-            ) : (
-              <div className="rounded-xl border border-white/10 bg-[#16181d] p-4">
-                <p className="text-sm text-white/70">
-                  Curriculum coming soon. Check back after units are seeded.
-                </p>
-              </div>
-            )}
-          </div>
-        </section>
+          {/* Right Column: Quick Access */}
+          <div className="space-y-6">
+            <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest px-1">
+              Study Tools
+            </h3>
+            <div className="grid grid-cols-1 gap-3">
+              <Link
+                href="/assessment"
+                className="group relative overflow-hidden rounded-2xl bg-[#2e323a] border border-white/5 p-1 transition-all hover:scale-[1.02] hover:shadow-lg active:scale-[0.98]"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative flex items-center p-4 gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-600/20 border border-blue-500/20 flex items-center justify-center text-blue-400 group-hover:bg-blue-500 group-hover:text-white group-hover:border-transparent transition-all duration-300">
+                    <Trophy className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-white truncate">
+                      Placement Test
+                    </h4>
+                    <p className="text-xs text-zinc-400 truncate">
+                      Check your current level
+                    </p>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-zinc-600 group-hover:text-white transition-colors -translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0" />
+                </div>
+              </Link>
 
-        {history.length > 0 && lessonsCount.finishedCount === 0 && (
-          <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Lightbulb className="w-5 h-5 text-blue-400" />
-              </div>
-              <div>
-                <h4 className="text-sm font-semibold text-blue-200 mb-1">
-                  💡 Pro tip
+              <Link
+                href="/lessons"
+                className="group relative overflow-hidden rounded-2xl bg-[#2e323a] border border-white/5 p-1 transition-all hover:scale-[1.02] hover:shadow-lg active:scale-[0.98]"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative flex items-center p-4 gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500/20 to-orange-600/20 border border-orange-500/20 flex items-center justify-center text-orange-400 group-hover:bg-orange-500 group-hover:text-white group-hover:border-transparent transition-all duration-300">
+                    <BookOpen className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-white truncate">
+                      AI Lessons
+                    </h4>
+                    <p className="text-xs text-zinc-400 truncate">
+                      Personalized learning
+                    </p>
+                  </div>
+                  <div className="hidden sm:flex items-center gap-2 mr-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-black/30 px-2 py-1 rounded text-orange-200/70 border border-orange-500/10">
+                      {lessonsCount.finishedCount} done
+                    </span>
+                  </div>
+                </div>
+              </Link>
+
+              <Link
+                href="/flashcards"
+                className="group relative overflow-hidden rounded-2xl bg-[#2e323a] border border-white/5 p-1 transition-all hover:scale-[1.02] hover:shadow-lg active:scale-[0.98]"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative flex items-center p-4 gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:bg-emerald-500 group-hover:text-white group-hover:border-transparent transition-all duration-300">
+                    <Brain className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-white truncate">
+                      Flashcards
+                    </h4>
+                    <p className="text-xs text-zinc-400 truncate">
+                      Review vocabulary
+                    </p>
+                  </div>
+                  {flashcardsDue > 0 && (
+                    <div className="hidden sm:flex items-center gap-2 mr-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-black/30 text-emerald-200/70 px-2 py-1 rounded border border-emerald-500/10 whitespace-nowrap">
+                        {flashcardsDue} due
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </Link>
+
+              <Link
+                href="/conversations"
+                className="group relative overflow-hidden rounded-2xl bg-[#2e323a] border border-white/5 p-1 transition-all hover:scale-[1.02] hover:shadow-lg active:scale-[0.98]"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative flex items-center p-4 gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-600/20 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:bg-purple-500 group-hover:text-white group-hover:border-transparent transition-all duration-300">
+                    <MessageCircle className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-white truncate">
+                      Conversation
+                    </h4>
+                    <p className="text-xs text-zinc-400 truncate">
+                      Practice speaking
+                    </p>
+                  </div>
+                </div>
+              </Link>
+            </div>
+
+            {/* Pro Tip - Styled as a sticky note or data card */}
+            {history.length > 0 && lessonsCount.finishedCount === 0 && (
+              <div className="mt-6 rounded-2xl bg-amber-500/10 border border-amber-500/20 p-5 relative overflow-hidden">
+                <Lightbulb className="absolute -right-4 -bottom-4 w-24 h-24 text-amber-500/10 rotate-12" />
+                <h4 className="text-amber-400 font-bold flex items-center gap-2 mb-2">
+                  <Lightbulb className="w-4 h-4 fill-current" /> Tip
                 </h4>
-                <p className="text-sm text-blue-100/90">
+                <p className="text-sm text-amber-200/80 relative z-10 leading-relaxed">
                   Start with AI Lessons to build your foundation, then practice
                   with flashcards to reinforce what you&apos;ve learned.
                 </p>
               </div>
-            </div>
+            )}
           </div>
-        )}
+        </div>
 
-        <QuickStats
-          currentLevel={currentLevel.currentLevel}
-          wordsLearned={wordsRead.readCount || 0}
-          studyStreakDays={streakRes.streakDays || 0}
-          streakTodayContinued={Boolean(streakRes.todayContinued)}
-          streakCarryOverDays={streakRes.carryOverDays || 0}
-          weeklyGoalLessons={userData.weeklyGoalLessons}
-          weeklyCount={weeklyProgress.weeklyCount}
-        />
-
-        <div className="space-y-4">
-          <h3 className="text-xl font-inter font-semibold text-white">
-            Quick Actions
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Link
-              href="/assessment"
-              className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] hover:border-[#4040f2] transition-all duration-200 group relative block"
-            >
-              <div className="space-y-4">
-                <div className="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center group-hover:bg-blue-500/30 transition-colors duration-200">
-                  <Target className="w-6 h-6 text-blue-400" />
+        {/* Getting Started & History */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-[#2e323a] rounded-3xl p-6 md:p-8 border border-white/5">
+            <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+              <span className="w-2 h-6 bg-blue-500 rounded-full" />
+              Getting Started
+            </h3>
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 p-4 rounded-xl bg-black/20 border border-white/5">
+                <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-[0_0_10px_rgba(59,130,246,0.4)]">
+                  <Check className="w-4 h-4" />
                 </div>
-                <div>
-                  <h4 className="font-inter font-medium text-white">
-                    Take Placement Test
-                  </h4>
-                  <p className="text-sm text-[#c4c4c4] font-inter">
-                    Assess your current Mandarin level
+                <div className="flex-1">
+                  <p className="text-white font-medium">Placement Test</p>
+                  <p className="text-xs text-zinc-500">
+                    Determine your baseline
                   </p>
                 </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/15 border border-green-500/30 px-2 py-0.5 text-xs font-inter text-green-300">
-                  <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
-                  Available
-                </span>
               </div>
-              <div className="absolute inset-0 bg-gradient-to-t from-[#4040f2]/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-xl flex items-end justify-center pb-6">
-                <span className="px-6 py-2.5 bg-white text-[#4040f2] rounded-lg font-semibold">
-                  Start Test
-                </span>
-              </div>
-            </Link>
-
-            <Link
-              href="/lessons"
-              className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] hover:border-orange-500/60 transition-all duration-200 group relative block"
-            >
-              <div className="space-y-4">
-                <div className="w-12 h-12 bg-orange-500/20 rounded-lg flex items-center justify-center">
-                  <BookOpen className="w-6 h-6 text-orange-400" />
-                </div>
-                <div>
-                  <h4 className="font-inter font-medium text-white">
-                    AI Lessons
-                  </h4>
-                  <p className="text-sm text-[#c4c4c4] font-inter">
-                    Personalized learning content
-                  </p>
-                </div>
+              <div
+                className={`flex items-center gap-4 p-4 rounded-xl bg-black/20 border border-white/5 ${history.length > 0 ? "opacity-100" : "opacity-50 grayscale"}`}
+              >
                 <div
-                  className="inline-flex items-center gap-2"
-                  aria-live="polite"
+                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${history.length > 0 ? "bg-orange-500 text-white shadow-[0_0_10px_rgba(249,115,22,0.4)]" : "bg-white/10 text-white/50"}`}
                 >
-                  <span className="text-[#c4c4c4] font-inter text-xs whitespace-nowrap leading-none">
-                    Finished lessons:
-                  </span>
-                  <span
-                    className="text-green-400 font-inter font-semibold leading-none text-sm"
-                    style={{ fontVariantNumeric: "tabular-nums" }}
-                  >
-                    {lessonsCount.finishedCount || 0}
-                  </span>
+                  {history.length > 0 ? <Check className="w-4 h-4" /> : "2"}
+                </div>
+                <div className="flex-1">
+                  <p className="text-white font-medium">
+                    Complete First Lesson
+                  </p>
+                  <p className="text-xs text-zinc-500">Start learning</p>
                 </div>
               </div>
-              <div className="absolute inset-0 bg-gradient-to-t from-orange-500/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-xl flex items-end justify-center pb-6">
-                <span className="px-6 py-2.5 bg-white text-orange-500 rounded-lg font-semibold">
-                  Start Lesson
-                </span>
-              </div>
-            </Link>
-
-            <Link
-              href="/flashcards"
-              className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] hover:border-green-500/60 transition-all duration-200 group relative block"
-            >
-              <div className="space-y-4">
-                <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center">
-                  <Brain className="w-6 h-6 text-green-400" />
+              <div
+                className={`flex items-center gap-4 p-4 rounded-xl bg-black/20 border border-white/5 ${lessonsCount.finishedCount > 0 ? "opacity-100" : "opacity-50 grayscale"}`}
+              >
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${lessonsCount.finishedCount > 0 ? "bg-emerald-500 text-white shadow-[0_0_10px_rgba(16,185,129,0.4)]" : "bg-white/10 text-white/50"}`}
+                >
+                  {lessonsCount.finishedCount > 0 ? (
+                    <Check className="w-4 h-4" />
+                  ) : (
+                    "3"
+                  )}
                 </div>
-                <div>
-                  <h4 className="font-inter font-medium text-white">
-                    Flashcards
-                  </h4>
-                  <p className="text-sm text-[#c4c4c4] font-inter">
-                    Spaced repetition practice
+                <div className="flex-1">
+                  <p className="text-white font-medium">Practice Session</p>
+                  <p className="text-xs text-zinc-500">
+                    Review what you learned
                   </p>
                 </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/15 border border-green-500/30 px-2 py-0.5 text-xs font-inter text-green-300">
-                  <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
-                  Available
-                </span>
               </div>
-              <div className="absolute inset-0 bg-gradient-to-t from-green-500/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-xl flex items-end justify-center pb-6">
-                <span className="px-6 py-2.5 bg-white text-green-500 rounded-lg font-semibold">
-                  Start Practice
-                </span>
-              </div>
-            </Link>
-
-            <Link
-              href="/conversations"
-              className="bg-[#2e323a] rounded-xl p-6 border border-[#404040] relative hover:border-purple-500/60 transition-all duration-200 group block"
-            >
-              <div className="space-y-4">
-                <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center">
-                  <MessageCircle className="w-6 h-6 text-purple-400" />
-                </div>
-                <div>
-                  <h4 className="font-inter font-medium text-white">
-                    AI Conversation
-                  </h4>
-                  <p className="text-sm text-[#c4c4c4] font-inter">
-                    Real-time practice sessions
-                  </p>
-                </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/15 border border-green-500/30 px-2 py-0.5 text-xs font-inter text-green-300">
-                  <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
-                  Available
-                </span>
-              </div>
-              <div className="absolute inset-0 bg-gradient-to-t from-purple-500/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-xl flex items-end justify-center pb-6">
-                <span className="px-6 py-2.5 bg-white text-purple-500 rounded-lg font-semibold">
-                  Start Chat
-                </span>
-              </div>
-            </Link>
-          </div>
-        </div>
-
-        <div className="bg-[#2e323a] rounded-xl p-6 border border-[#404040]">
-          <h3 className="text-lg font-inter font-semibold text-white mb-4">
-            Getting Started
-          </h3>
-          <div className="space-y-4">
-            <div className="flex items-center space-x-3 sm:space-x-4">
-              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-semibold">1</span>
-              <span className="text-sm sm:text-base text-[#ffffff] font-inter">Take your placement test to determine your current level</span>
-            </div>
-            <div className={`flex items-center space-x-3 sm:space-x-4 ${history.length > 0 ? "" : "opacity-60"}`}>
-              <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-sm font-semibold ${history.length > 0 ? "bg-orange-500/80 text-white" : "bg-[#404040] text-[#999999]"}`}>2</span>
-              <span className={`${history.length > 0 ? "text-white" : "text-[#999999]"} text-sm sm:text-base font-inter`}>Start with AI-generated lessons tailored to your level</span>
-            </div>
-            <div className={`flex items-center space-x-3 sm:space-x-4 ${lessonsCount.finishedCount > 0 ? "" : "opacity-60"}`}>
-              <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-sm font-semibold ${lessonsCount.finishedCount > 0 ? "bg-green-500 text-white" : "bg-[#404040] text-[#999999]"}`}>3</span>
-              <span className={`${lessonsCount.finishedCount > 0 ? "text-white" : "text-[#999999]"} text-sm sm:text-base font-inter`}>Mark lessons as finished, then practice with flashcards and conversation AI</span>
             </div>
           </div>
-        </div>
 
-        <AssessmentHistory initialHistory={history} />
+          <AssessmentHistory initialHistory={history} />
+        </div>
       </div>
     </DashboardLayout>
   );

@@ -72,7 +72,7 @@ const LANDING_PLANS: LandingPlanData[] = [
       "Full dictionary access",
       "Basic conversation practice",
       "AI-guided lessons",
-      "Community lessons: Preview all; up to 10 full community lessons per month",
+      "Community lesson: Up to 10 full community lessons per month",
       "Curriculum: Preview most units; limited full units available",
       "AI Conversation practice minutes (up to 1 per month)",
       "Manual conversation notes (up to 3 per month)",
@@ -369,7 +369,7 @@ export function PricingSection() {
     : {
         initial: { y: 16, opacity: 0 },
         whileInView: { y: 0, opacity: 1 },
-        viewport: { once: true, amount: 0.6 },
+        viewport: { once: true, amount: 0.25 },
         transition: { duration: 0.6, ease },
       };
 
@@ -473,7 +473,10 @@ export function PricingSection() {
       </motion.div>
 
       {/* Plan Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 lg:items-stretch">
+      <div
+        className="flex md:grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8 md:items-stretch overflow-x-auto md:overflow-visible snap-x snap-mandatory md:snap-none pb-4 pt-3 md:pt-0 md:pb-0 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide"
+        aria-label="Pricing plans"
+      >
         {LANDING_PLANS.map((plan, index) => {
           const { priceDisplay, discount, priceCents } = getPriceForPeriod(
             plan,
@@ -521,16 +524,17 @@ export function PricingSection() {
                     },
                   })}
               className={`
-                relative rounded-2xl border p-6 md:p-8 flex flex-col
+                relative rounded-2xl border p-6 pt-10 md:p-8 md:pt-12 flex flex-col transition-all duration-300 overflow-visible
+                flex-shrink-0 w-[85vw] max-w-[360px] snap-center md:w-auto md:max-w-none
                 ${
                   plan.isPopular
-                    ? "border-white/20 bg-black shadow-[0_8px_30px_rgba(0,0,0,0.35)]"
-                    : "border-white/10 bg-neutral-950"
+                    ? "border-[#4040f2] bg-neutral-900/80 shadow-[0_0_50px_rgba(64,64,242,0.2)] md:scale-105 z-10 ring-1 ring-[#4040f2]/50"
+                    : "border-white/10 bg-neutral-950 hover:border-white/20"
                 }
               `}
             >
               {plan.isPopular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-medium bg-white/10 text-white border border-white/20 backdrop-blur font-inter">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold bg-[#4040f2] text-white shadow-lg shadow-[#4040f2]/50 font-inter tracking-wide uppercase z-10">
                   Most popular
                 </div>
               )}

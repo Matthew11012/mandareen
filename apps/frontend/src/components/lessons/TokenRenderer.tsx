@@ -118,7 +118,7 @@ export const TokenRenderer = React.memo(function TokenRenderer({
 
   return (
     <div
-      className={`leading-9 sm:leading-8 text-white font-light sm:font-normal ${textSizeClass} sm:text-lg`}
+      className={`leading-9 sm:leading-8 text-whitefont-normal ${textSizeClass} sm:text-lg`}
     >
       {segments.map((seg, idx) => {
         const isWord = Boolean(seg.isWord);
