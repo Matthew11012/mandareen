@@ -8,6 +8,7 @@ import { validateUsername } from './username.utils';
 
 @Injectable()
 export class UsersService {
+  // eslint-disable-next-line no-unused-vars
   constructor(private readonly prisma: PrismaService) {}
 
   async getMe(userId: number): Promise<{

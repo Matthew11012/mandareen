@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { generateBaseUsername } from '../users/username.utils';
 
 /**
  * Handles linking between Better Auth users and legacy users.
@@ -99,6 +100,7 @@ export class UserMigrationService {
     const legacyUser = await this.prisma.user.create({
       data: {
         email,
+        username: generateBaseUsername(email),
         password_hashed: '',
       },
     });
