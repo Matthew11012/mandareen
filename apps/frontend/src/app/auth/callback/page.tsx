@@ -9,6 +9,9 @@ import { authClient } from "@/lib/auth-client";
 import { useCheckoutMutation } from "@/lib/hooks/use-billing";
 import { BillingPeriod } from "@/lib/api/billing";
 
+const EMAIL_VERIFICATION_ENABLED =
+  process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED !== "false";
+
 /**
  * Google OAuth Callback Handler
  *
@@ -108,7 +111,7 @@ function AuthCallbackContent() {
         }
 
         const email = session.data.user.email;
-        if (!session.data.user.emailVerified) {
+        if (EMAIL_VERIFICATION_ENABLED && !session.data.user.emailVerified) {
           toast.info(
             "Welcome! Please verify your email to secure your account."
           );

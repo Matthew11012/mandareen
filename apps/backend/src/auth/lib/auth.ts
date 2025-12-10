@@ -23,6 +23,9 @@ const cookieSecure =
   (!isLocalhost && baseURL.startsWith('https://')) ||
   process.env.NODE_ENV === 'production';
 
+const emailVerificationEnabled =
+  process.env.EMAIL_VERIFICATION_ENABLED !== 'false';
+
 export function createAuthConfig(emailService: EmailService) {
   return betterAuth({
     baseURL,
@@ -54,19 +57,21 @@ export function createAuthConfig(emailService: EmailService) {
     verification: {
       modelName: 'BetterAuthVerification',
     },
-    emailVerification: {
-      sendVerificationEmail: async ({ user, url }) => {
-        await emailService.sendVerificationEmail(user.email, url);
-      },
-      sendOnSignUp: true,
-      sendOnSignIn: true,
-      autoSignInAfterVerification: true,
-      expiresIn: 3600, // 1 hour
-    },
+    emailVerification: emailVerificationEnabled
+      ? {
+          sendVerificationEmail: async ({ user, url }) => {
+            await emailService.sendVerificationEmail(user.email, url);
+          },
+          sendOnSignUp: true,
+          sendOnSignIn: true,
+          autoSignInAfterVerification: true,
+          expiresIn: 3600, // 1 hour
+        }
+      : undefined,
     emailAndPassword: {
       enabled: true,
       minPasswordLength: 8,
-      requireEmailVerification: true,
+      requireEmailVerification: emailVerificationEnabled,
       password: {
         hash: hashPassword,
         verify: async ({

@@ -19,6 +19,9 @@ import { validatePassword } from "@/lib/utils";
 import { BillingPeriod } from "@/lib/api/billing";
 import { signIn, signUp } from "@/lib/auth-client";
 
+const EMAIL_VERIFICATION_ENABLED =
+  process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED !== "false";
+
 function SignupPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -145,29 +148,45 @@ function SignupPageContent() {
         throw new Error(result.error.message ?? "Sign up failed");
       }
 
-      // Email/password sign-up requires verification before access
-      toast.success(
-        "Account created! Please check your email to verify your account."
-      );
+      if (EMAIL_VERIFICATION_ENABLED) {
+        toast.success(
+          "Account created! Please check your email to verify your account."
+        );
 
-      setIsRegistering(false);
-      setIsProcessingCheckout(false);
-      isProcessingCheckoutRef.current = false;
+        setIsRegistering(false);
+        setIsProcessingCheckout(false);
+        isProcessingCheckoutRef.current = false;
 
-      const params = new URLSearchParams({
-        email: data.email,
-      });
+        const params = new URLSearchParams({
+          email: data.email,
+        });
 
-      if (planInfo) {
-        params.set("plan", planInfo.planCode);
-        params.set("billingPeriod", planInfo.billingPeriod);
+        if (planInfo) {
+          params.set("plan", planInfo.planCode);
+          params.set("billingPeriod", planInfo.billingPeriod);
+        }
+
+        if (redirectUrl) {
+          params.set("redirect", redirectUrl);
+        }
+
+        router.push(`/verify-email-pending?${params.toString()}`);
+      } else {
+        toast.success("Account created. Welcome to Mandareen!");
+        setIsRegistering(false);
+        setIsProcessingCheckout(false);
+        isProcessingCheckoutRef.current = false;
+
+        if (planInfo) {
+          router.push(
+            `/pricing?plan=${planInfo.planCode}&billingPeriod=${planInfo.billingPeriod}`
+          );
+        } else if (redirectUrl) {
+          router.push(redirectUrl);
+        } else {
+          router.push("/dashboard");
+        }
       }
-
-      if (redirectUrl) {
-        params.set("redirect", redirectUrl);
-      }
-
-      router.push(`/verify-email-pending?${params.toString()}`);
     } catch (error) {
       setIsRegistering(false);
       setIsProcessingCheckout(false);

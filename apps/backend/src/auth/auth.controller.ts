@@ -87,6 +87,12 @@ export class AuthController {
   @Post('send-verification-email')
   @HttpCode(HttpStatus.OK)
   async sendVerificationEmail(@Req() req: Request, @Body() body: any) {
+    const verificationEnabled =
+      process.env.EMAIL_VERIFICATION_ENABLED !== 'false';
+    if (!verificationEnabled) {
+      return { message: 'Verification disabled' };
+    }
+
     const email =
       (body?.email as string | undefined) ??
       (await this.betterAuthService.api

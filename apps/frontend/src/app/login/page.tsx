@@ -17,6 +17,9 @@ import { useCheckoutMutation } from "@/lib/hooks/use-billing";
 import { BillingPeriod } from "@/lib/api/billing";
 import { signIn } from "@/lib/auth-client";
 
+const EMAIL_VERIFICATION_ENABLED =
+  process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED !== "false";
+
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -103,7 +106,10 @@ function LoginPageContent() {
       if (result.error) {
         const status = (result.error as { status?: number })?.status;
         const code = (result.error as { code?: string })?.code;
-        if (status === 403 || code === "EMAIL_NOT_VERIFIED") {
+        if (
+          EMAIL_VERIFICATION_ENABLED &&
+          (status === 403 || code === "EMAIL_NOT_VERIFIED")
+        ) {
           toast.error(
             "Please verify your email address before logging in. We’ve sent you a verification email."
           );
