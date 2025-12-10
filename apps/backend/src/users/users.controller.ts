@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Put,
+  Patch,
   UseGuards,
   Req,
   Body,
@@ -21,6 +22,7 @@ export class UsersController {
     {
       id: number;
       email: string;
+      username: string;
       createdAt: string;
       weeklyGoalLessons: number | null;
     } & {
@@ -32,6 +34,7 @@ export class UsersController {
     return {
       id: user.id,
       email: user.email,
+      username: user.username,
       createdAt: user.createdAt.toISOString(),
       weeklyGoalLessons: user.weeklyGoalLessons,
       currentLevel: current.currentLevel,
@@ -57,5 +60,16 @@ export class UsersController {
 
     await this.usersService.setWeeklyGoal(req.user.id, weeklyGoalLessons);
     return { weeklyGoalLessons };
+  }
+
+  @Patch('username')
+  async updateUsername(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { username: string },
+  ): Promise<{ username: string }> {
+    if (!body.username || typeof body.username !== 'string') {
+      throw new BadRequestException('Username is required');
+    }
+    return this.usersService.updateUsername(req.user.id, body.username);
   }
 }

@@ -33,7 +33,7 @@ export class AuthService {
     }
 
     // Check if username already exists
-    const existingUsername = await (this.prisma.user as any).findUnique({
+    const existingUsername = await this.prisma.user.findUnique({
       where: { username: registerDto.username },
     });
 
@@ -49,14 +49,12 @@ export class AuthService {
     const user = await this.prisma.user.create({
       data: {
         email: registerDto.email,
-        // @ts-expect-error Pending prisma generate for username field
         username: registerDto.username,
         password_hashed: hashedPassword,
       },
       select: {
         id: true,
         email: true,
-        // @ts-expect-error Pending prisma generate for username field
         username: true,
         createdAt: true,
       },
@@ -126,7 +124,7 @@ export class AuthService {
     const username = await generateUniqueUsername(
       baseUsername,
       async (candidate) => {
-        const existing = await (this.prisma.user as any).findUnique({
+        const existing = await this.prisma.user.findUnique({
           where: { username: candidate },
           select: { id: true },
         });
@@ -135,7 +133,7 @@ export class AuthService {
     );
 
     // Create new user if doesn't exist
-    const newUser = await (this.prisma.user as any).create({
+    const newUser = await this.prisma.user.create({
       data: {
         email: details.email,
         username,
