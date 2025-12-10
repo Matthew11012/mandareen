@@ -187,13 +187,17 @@ function LoginPageContent() {
         <div className="sm:bg-[#2a3039] sm:rounded-2xl sm:shadow-xl p-6 sm:p-8">
           <div className="mb-6 text-center">
             <div className="flex items-center justify-center mb-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-[#4040f2] to-[#6366f1] rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-2xl">普</span>
-              </div>
+              <Link
+                href="/"
+                aria-label="Go to home"
+                className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366f1] focus-visible:ring-offset-2 focus-visible:ring-offset-[#2a3039]"
+              >
+                <div className="w-12 h-12 bg-gradient-to-br from-[#4040f2] to-[#6366f1] rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-2xl">普</span>
+                </div>
+              </Link>
             </div>
-            <h1 className="text-white text-2xl font-semibold">
-              Log in to Mandareen
-            </h1>
+            <h1 className="text-white text-2xl font-semibold">Log in</h1>
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">

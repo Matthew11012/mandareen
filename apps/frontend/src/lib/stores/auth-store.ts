@@ -6,6 +6,7 @@ import { authClient, signIn, signUp } from "../auth-client";
 interface User {
   id: number;
   email: string;
+  username: string;
 }
 
 interface AuthState {
@@ -56,7 +57,7 @@ export const useAuthStore = create<AuthState>()(
 
           const me = await authApi.me();
           set({
-            user: { id: me.id, email: me.email },
+            user: { id: me.id, email: me.email, username: me.username },
             token: null,
             isAuthenticated: true,
             isLoading: false,
@@ -98,7 +99,7 @@ export const useAuthStore = create<AuthState>()(
 
           const me = await authApi.me();
           set({
-            user: { id: me.id, email: me.email },
+            user: { id: me.id, email: me.email, username: me.username },
             token: null,
             isAuthenticated: true,
             isLoading: false,
@@ -188,7 +189,7 @@ export const useAuthStore = create<AuthState>()(
           if (session.data?.user) {
             const me = await authApi.me();
             set({
-              user: { id: me.id, email: me.email },
+              user: { id: me.id, email: me.email, username: me.username },
               token: null,
               isAuthenticated: true,
               isLoading: false,

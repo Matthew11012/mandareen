@@ -80,7 +80,7 @@ export default async function DashboardPage() {
     serverGetMe().catch(() => ({
       id: 0,
       email: "",
-      name: "Traveler", // Default name fallback
+      username: "Learner",
       createdAt: new Date().toISOString(),
       currentLevel: null,
       weeklyGoalLessons: null,
@@ -201,7 +201,13 @@ export default async function DashboardPage() {
                 )}
               </div>
               <h1 className="text-3xl md:text-5xl font-bold text-white font-inter tracking-tight mb-2">
-                {greeting}, <span className="text-blue-400">Learner</span>.
+                {greeting},{" "}
+                <span className="text-blue-400">
+                  {userData.username ||
+                    userData.email.split("@")[0] ||
+                    "Learner"}
+                </span>
+                .
               </h1>
               <p className="text-zinc-400 max-w-lg text-lg leading-relaxed">
                 Consistency is key. You&apos;re building a habit that lasts.
