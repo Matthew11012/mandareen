@@ -117,8 +117,9 @@ function AuthCallbackContent() {
             process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ??
             "http://localhost:3000";
           const params = new URLSearchParams({ email, mode: "verify-email" });
-          const storedSignupRedirectUrl =
-            sessionStorage.getItem("signup_redirect_url");
+          const storedSignupRedirectUrl = sessionStorage.getItem(
+            "signup_redirect_url"
+          );
           if (storedSignupRedirectUrl) {
             params.set("redirect", storedSignupRedirectUrl);
             const planInfo = parseRedirectUrl(storedSignupRedirectUrl);
