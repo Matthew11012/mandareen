@@ -39,6 +39,16 @@ export default function ProfilePage() {
   const [pushSubscribed, setPushSubscribed] = useState<boolean | null>(null);
   const [pushToggling, setPushToggling] = useState(false);
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [usernameValue, setUsernameValue] = useState<string>("");
+  const [savingUsername, setSavingUsername] = useState(false);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const trimmedUsername = usernameValue.trim();
+  const canSaveUsername =
+    !savingUsername &&
+    trimmedUsername.length >= 3 &&
+    trimmedUsername.length <= 30 &&
+    trimmedUsername !== data?.username;
 
   const load = async () => {
     setLoading(true);
@@ -47,6 +57,7 @@ export default function ProfilePage() {
       const me = await authApi.me();
       setData(me);
       setWeeklyGoalValue(me.weeklyGoalLessons);
+      setUsernameValue(me.username);
     } catch {
       setError("Failed to load profile");
     } finally {
@@ -109,6 +120,33 @@ export default function ProfilePage() {
       }
     } else {
       setPushSubscribed(false);
+    }
+  };
+
+  const saveUsername = async () => {
+    if (!usernameValue.trim() || usernameValue === data?.username) {
+      setIsEditingUsername(false);
+      setUsernameError(null);
+      return;
+    }
+
+    setSavingUsername(true);
+    setUsernameError(null);
+    try {
+      const result = await authApi.updateUsername(usernameValue.trim());
+      setData((prev) => (prev ? { ...prev, username: result.username } : null));
+      setIsEditingUsername(false);
+      toast.success("Username updated!");
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Failed to update username";
+      if (msg.toLowerCase().includes("taken") || msg.includes("409")) {
+        setUsernameError("Username already taken");
+      } else {
+        setUsernameError(msg);
+      }
+    } finally {
+      setSavingUsername(false);
     }
   };
 
@@ -201,6 +239,70 @@ export default function ProfilePage() {
               <div className="bg-[#24262b] rounded-lg p-4 border border-[#3a3a3a]">
                 <p className="text-[#a6a6a6] text-sm font-inter">Email</p>
                 <p className="text-white font-inter">{data.email}</p>
+              </div>
+              <div className="bg-[#24262b] rounded-lg p-4 border border-[#3a3a3a]">
+                <p className="text-[#a6a6a6] text-sm font-inter">Username</p>
+                {isEditingUsername ? (
+                  <>
+                    <div className="flex items-center gap-2 mt-1">
+                      <input
+                        type="text"
+                        value={usernameValue}
+                        onChange={(e) => setUsernameValue(e.target.value)}
+                        className="flex-1 px-2 py-1 bg-[#2e323a] border border-[#3a3a3a] rounded text-white font-inter text-sm"
+                        placeholder="Enter username"
+                        autoFocus
+                        maxLength={30}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            saveUsername();
+                          }
+                          if (e.key === "Escape") {
+                            setIsEditingUsername(false);
+                            setUsernameValue(data.username);
+                            setUsernameError(null);
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={saveUsername}
+                        disabled={!canSaveUsername}
+                        className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded disabled:opacity-50 cursor-pointer"
+                      >
+                        {savingUsername ? "Saving..." : "Save"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsEditingUsername(false);
+                          setUsernameValue(data.username);
+                          setUsernameError(null);
+                        }}
+                        className="px-2 py-1 bg-[#404040] hover:bg-[#505050] text-white text-xs rounded cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-[#a6a6a6] text-xs mt-1">
+                      3–30 characters. Enter to save, Esc to cancel.
+                    </p>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-white font-inter">{data.username}</p>
+                    <button
+                      onClick={() => setIsEditingUsername(true)}
+                      className="text-blue-400 hover:text-blue-300 text-xs font-inter cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                )}
+                {usernameError && (
+                  <p className="text-red-400 text-xs mt-1" aria-live="polite">
+                    {usernameError}
+                  </p>
+                )}
               </div>
               <div className="bg-[#24262b] rounded-lg p-4 border border-[#3a3a3a]">
                 <p className="text-[#a6a6a6] text-sm font-inter">
