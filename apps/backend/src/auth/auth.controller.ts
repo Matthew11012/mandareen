@@ -1,25 +1,33 @@
 import {
+  Body,
   Controller,
   Get,
-  Post,
-  Body,
-  UseGuards,
-  Req,
-  Res,
   HttpCode,
   HttpStatus,
+  Post,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { AuthGuard } from './guards/auth.guard';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types/request.types';
+import { AuthService as BetterAuthService } from '@thallesp/nestjs-better-auth';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  private readonly authService: AuthService;
+  private readonly betterAuthService: BetterAuthService;
+
+  constructor(authService: AuthService, betterAuthService: BetterAuthService) {
+    this.authService = authService;
+    this.betterAuthService = betterAuthService;
+  }
 
   @Post('register')
   async register(@Body() registerDto: RegisterDto, @Res() res: Response) {
@@ -74,5 +82,41 @@ export class AuthController {
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
       res.redirect(`${frontendUrl}/auth/error`);
     }
+  }
+
+  @Post('send-verification-email')
+  @HttpCode(HttpStatus.OK)
+  async sendVerificationEmail(@Req() req: Request, @Body() body: any) {
+    const email =
+      (body?.email as string | undefined) ??
+      (await this.betterAuthService.api
+        .getSession({ headers: req.headers })
+        .then((s) => s?.user?.email)
+        .catch(() => undefined));
+
+    if (!email) {
+      throw new UnauthorizedException(
+        'Email is required to resend verification',
+      );
+    }
+
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
+      process.env.NEXT_PUBLIC_FRONTEND_URL ||
+      'http://localhost:3001';
+
+    const params = new URLSearchParams({ mode: 'verify-email', email });
+    if (body?.redirect) params.set('redirect', body.redirect);
+    if (body?.plan) params.set('plan', body.plan);
+    if (body?.billingPeriod) params.set('billingPeriod', body.billingPeriod);
+
+    const callbackURL = `${frontendUrl}/auth/callback?${params.toString()}`;
+
+    await this.betterAuthService.api.sendVerificationEmail({
+      body: { email, callbackURL },
+      headers: req.headers,
+    });
+
+    return { message: 'Verification email sent' };
   }
 }
