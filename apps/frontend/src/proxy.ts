@@ -10,7 +10,7 @@ import type { NextRequest } from "next/server";
  * - Redirects authenticated users away from auth pages
  * - Handles OAuth callback routes
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Check legacy JWT cookie and Better Auth session cookies (any mandareen.* cookie)

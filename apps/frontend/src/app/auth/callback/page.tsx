@@ -100,7 +100,7 @@ function AuthCallbackContent() {
         const me = await authApi.me();
 
         useAuthStore.setState({
-          user: { id: me.id, email: me.email },
+          user: { id: me.id, email: me.email, username: me.username },
           token: null,
           isAuthenticated: true,
         });
