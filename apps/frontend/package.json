@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack && node scripts/merge-sw.js",
+    "vercel-build": "next build --webpack && node scripts/merge-sw.js",
     "start": "next start -p 3001",
     "lint": "eslint .",
     "test": "vitest --run"
