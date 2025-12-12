@@ -23,6 +23,7 @@ interface AuthState {
   logout: () => Promise<void>;
   clearError: () => void;
   setLoading: (loading: boolean) => void;
+  setUser: (partial: Partial<User>) => void;
 
   // Initialize auth from stored token
   initialize: () => void;
@@ -184,6 +185,15 @@ export const useAuthStore = create<AuthState>()(
        */
       setLoading: (loading: boolean) => {
         set({ isLoading: loading });
+      },
+
+      /**
+       * Merge user fields (e.g., username updates)
+       */
+      setUser: (partial: Partial<User>) => {
+        set((state) => ({
+          user: state.user ? { ...state.user, ...partial } : state.user,
+        }));
       },
 
       /**
