@@ -3,6 +3,7 @@ import { hashPassword, verifyPassword } from 'better-auth/crypto';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { EmailService } from '../../email/email.service';
 
 const prisma = new PrismaClient();
 
@@ -22,73 +23,91 @@ const cookieSecure =
   (!isLocalhost && baseURL.startsWith('https://')) ||
   process.env.NODE_ENV === 'production';
 
-export const auth = betterAuth({
-  baseURL,
-  database: prismaAdapter(prisma, {
-    provider: 'postgresql',
-  }),
-  trustedOrigins: Array.from(
-    new Set(
-      [
-        process.env.FRONTEND_URL,
-        process.env.NEXT_PUBLIC_API_URL,
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'https://unartificial-marion-enrapturedly.ngrok-free.dev',
-      ].filter(Boolean) as string[],
+const emailVerificationEnabled =
+  process.env.EMAIL_VERIFICATION_ENABLED !== 'false';
+
+export function createAuthConfig(emailService: EmailService) {
+  return betterAuth({
+    baseURL,
+    database: prismaAdapter(prisma, {
+      provider: 'postgresql',
+    }),
+    trustedOrigins: Array.from(
+      new Set(
+        [
+          process.env.FRONTEND_URL,
+          process.env.NEXT_PUBLIC_API_URL,
+          'http://localhost:3000',
+          'http://localhost:3001',
+          'https://unartificial-marion-enrapturedly.ngrok-free.dev',
+        ].filter(Boolean) as string[],
+      ),
     ),
-  ),
-  user: {
-    modelName: 'BetterAuthUser',
-  },
-  session: {
-    modelName: 'BetterAuthSession',
-    expiresIn: 60 * 60 * 24, // 24h to match legacy JWT cookies
-    updateAge: 60 * 60, // refresh once per hour when active
-  },
-  account: {
-    modelName: 'BetterAuthAccount',
-  },
-  verification: {
-    modelName: 'BetterAuthVerification',
-  },
-  emailAndPassword: {
-    enabled: true,
-    minPasswordLength: 8,
-    password: {
-      hash: hashPassword,
-      verify: async ({
-        hash,
-        password,
-      }: {
-        hash: string;
-        password: string;
-      }) => {
-        const isBcryptHash = hash.startsWith('$2a$') || hash.startsWith('$2b$');
-        if (isBcryptHash) {
-          return bcrypt.compare(password, hash);
+    user: {
+      modelName: 'BetterAuthUser',
+    },
+    session: {
+      modelName: 'BetterAuthSession',
+      expiresIn: 60 * 60 * 24, // 24h to match legacy JWT cookies
+      updateAge: 60 * 60, // refresh once per hour when active
+    },
+    account: {
+      modelName: 'BetterAuthAccount',
+    },
+    verification: {
+      modelName: 'BetterAuthVerification',
+    },
+    emailVerification: emailVerificationEnabled
+      ? {
+          sendVerificationEmail: async ({ user, url }) => {
+            await emailService.sendVerificationEmail(user.email, url);
+          },
+          sendOnSignUp: true,
+          sendOnSignIn: true,
+          autoSignInAfterVerification: true,
+          expiresIn: 3600, // 1 hour
         }
-        return verifyPassword({ hash, password });
+      : undefined,
+    emailAndPassword: {
+      enabled: true,
+      minPasswordLength: 8,
+      requireEmailVerification: emailVerificationEnabled,
+      password: {
+        hash: hashPassword,
+        verify: async ({
+          hash,
+          password,
+        }: {
+          hash: string;
+          password: string;
+        }) => {
+          const isBcryptHash =
+            hash.startsWith('$2a$') || hash.startsWith('$2b$');
+          if (isBcryptHash) {
+            return bcrypt.compare(password, hash);
+          }
+          return verifyPassword({ hash, password });
+        },
       },
     },
-  },
-  socialProviders: {
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    socialProviders: {
+      google: {
+        clientId: process.env.GOOGLE_CLIENT_ID!,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      },
     },
-  },
-  advanced: {
-    cookiePrefix: 'mandareen',
-    defaultCookieAttributes: {
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite: cookieSameSite,
-      path: '/',
-      domain: cookieDomain,
+    advanced: {
+      cookiePrefix: 'mandareen',
+      defaultCookieAttributes: {
+        httpOnly: true,
+        secure: cookieSecure,
+        sameSite: cookieSameSite,
+        path: '/',
+        domain: cookieDomain,
+      },
     },
-  },
-  secret: process.env.BETTER_AUTH_SECRET!,
-});
+    secret: process.env.BETTER_AUTH_SECRET!,
+  });
+}
 
-export type Auth = typeof auth;
+export type Auth = ReturnType<typeof createAuthConfig>;
