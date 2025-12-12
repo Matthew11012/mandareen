@@ -17,6 +17,9 @@ import { useCheckoutMutation } from "@/lib/hooks/use-billing";
 import { BillingPeriod } from "@/lib/api/billing";
 import { signIn } from "@/lib/auth-client";
 
+const EMAIL_VERIFICATION_ENABLED =
+  process.env.EMAIL_VERIFICATION_ENABLED !== "false";
+
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -53,10 +56,13 @@ function LoginPageContent() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
+  const [showResend, setShowResend] = useState(false);
+  const [isResending, setIsResending] = useState(false);
 
   const {
     register,
     handleSubmit,
+    getValues,
     formState: { errors },
   } = useForm<LoginData>({
     resolver: zodResolver(loginSchema),
@@ -98,6 +104,27 @@ function LoginPageContent() {
       });
 
       if (result.error) {
+        const status = (result.error as { status?: number })?.status;
+        const code = (result.error as { code?: string })?.code;
+        if (
+          EMAIL_VERIFICATION_ENABLED &&
+          (status === 403 || code === "EMAIL_NOT_VERIFIED")
+        ) {
+          toast.error(
+            "Please verify your email address before logging in. We’ve sent you a verification email."
+          );
+          const params = new URLSearchParams({ email: data.email });
+          if (planInfo) {
+            params.set("plan", planInfo.planCode);
+            params.set("billingPeriod", planInfo.billingPeriod);
+          }
+          if (redirectUrl) {
+            params.set("redirect", redirectUrl);
+          }
+          router.push(`/verify-email-pending?${params.toString()}`);
+          setShowResend(true);
+          return;
+        }
         throw new Error(result.error.message ?? "Sign in failed");
       }
       toast.success("Welcome back!");
@@ -124,6 +151,52 @@ function LoginPageContent() {
       );
     } finally {
       setFormSubmitting(false);
+    }
+  };
+
+  const handleResend = async (email: string) => {
+    if (!email) {
+      toast.error("Enter your email to resend verification.");
+      return;
+    }
+    setIsResending(true);
+    try {
+      const apiBase =
+        process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ??
+        "http://localhost:3000";
+
+      const body: Record<string, string> = { email };
+      if (redirectUrl) {
+        body.redirect = redirectUrl;
+      }
+      if (planInfo) {
+        body.plan = planInfo.planCode;
+        body.billingPeriod = planInfo.billingPeriod;
+      }
+
+      const res = await fetch(`${apiBase}/auth/send-verification-email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Failed to resend verification email");
+      }
+
+      toast.success("Verification email sent. Please check your inbox.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to resend verification email"
+      );
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -242,6 +315,25 @@ function LoginPageContent() {
                 Log in
               </span>
             </Button>
+
+            {showResend && (
+              <div className="space-y-2">
+                <p className="text-[#a6a6a6] text-sm">
+                  Didn&apos;t get the verification email? Resend it below.
+                </p>
+                <Button
+                  type="button"
+                  variant="accent"
+                  onClick={() => handleResend(getValues().email)}
+                  disabled={isResending}
+                  loading={isResending}
+                  className="min-h-[44px] w-full"
+                  aria-label="Resend verification email"
+                >
+                  Resend verification email
+                </Button>
+              </div>
+            )}
 
             <div className="relative">
               <div

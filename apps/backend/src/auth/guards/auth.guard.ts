@@ -6,8 +6,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { auth } from '../lib/auth';
 import { UserMigrationService } from '../user-migration.service';
+import { AuthService as BetterAuthService } from '@thallesp/nestjs-better-auth';
 
 /**
  * Guard that enforces Better Auth sessions only.
@@ -20,6 +20,7 @@ export class AuthGuard implements CanActivate {
   constructor(
     private readonly prisma: PrismaService,
     private readonly userMigrationService: UserMigrationService,
+    private readonly betterAuthService: BetterAuthService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -48,7 +49,9 @@ export class AuthGuard implements CanActivate {
     migrationService: UserMigrationService,
   ): Promise<{ id: number; email: string } | null> {
     try {
-      const session = await auth.api.getSession({ headers: request.headers });
+      const session = await this.betterAuthService.api.getSession({
+        headers: request.headers,
+      });
       if (!session?.user) {
         return null;
       }

@@ -23,6 +23,7 @@ interface AuthState {
   logout: () => Promise<void>;
   clearError: () => void;
   setLoading: (loading: boolean) => void;
+  setUser: (partial: Partial<User>) => void;
 
   // Initialize auth from stored token
   initialize: () => void;
@@ -57,7 +58,11 @@ export const useAuthStore = create<AuthState>()(
 
           const me = await authApi.me();
           set({
-            user: { id: me.id, email: me.email, username: me.username },
+            user: {
+              id: me.id,
+              email: me.email,
+              username: me.username ?? me.email?.split("@")[0] ?? "",
+            },
             token: null,
             isAuthenticated: true,
             isLoading: false,
@@ -99,7 +104,11 @@ export const useAuthStore = create<AuthState>()(
 
           const me = await authApi.me();
           set({
-            user: { id: me.id, email: me.email, username: me.username },
+            user: {
+              id: me.id,
+              email: me.email,
+              username: me.username ?? me.email?.split("@")[0] ?? "",
+            },
             token: null,
             isAuthenticated: true,
             isLoading: false,
@@ -179,6 +188,15 @@ export const useAuthStore = create<AuthState>()(
       },
 
       /**
+       * Merge user fields (e.g., username updates)
+       */
+      setUser: (partial: Partial<User>) => {
+        set((state) => ({
+          user: state.user ? { ...state.user, ...partial } : state.user,
+        }));
+      },
+
+      /**
        * Initialize auth state from stored token
        * Call this on app startup to restore authentication
        */
@@ -189,7 +207,11 @@ export const useAuthStore = create<AuthState>()(
           if (session.data?.user) {
             const me = await authApi.me();
             set({
-              user: { id: me.id, email: me.email, username: me.username },
+              user: {
+                id: me.id,
+                email: me.email,
+                username: me.username ?? me.email?.split("@")[0] ?? "",
+              },
               token: null,
               isAuthenticated: true,
               isLoading: false,
@@ -204,7 +226,11 @@ export const useAuthStore = create<AuthState>()(
         try {
           const me = await authApi.me();
           set({
-            user: { id: me.id, email: me.email },
+            user: {
+              id: me.id,
+              email: me.email,
+              username: me.username ?? me.email?.split("@")[0] ?? "",
+            },
             token: null,
             isAuthenticated: true,
             isLoading: false,

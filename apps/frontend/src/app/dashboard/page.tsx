@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DashboardLayout } from "@/components/layout";
+import { VerificationBanner } from "@/components/verification-banner";
 import {
   serverGetAssessmentHistory,
   serverGetLessonsProgressCount,
@@ -177,6 +178,7 @@ export default async function DashboardPage() {
       subtitle="Track your progress and continue learning"
     >
       <div className="p-4 md:p-6 space-y-8 mx-auto">
+        <VerificationBanner />
         {/* Hero Welcome */}
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#2e323a] to-[#252830] border border-white/5 p-8 md:p-10 shadow-2xl">
           <div className="absolute top-0 right-0 p-2 opacity-5 pointer-events-none select-none">
@@ -360,12 +362,15 @@ export default async function DashboardPage() {
                     }}
                   />
                 </div>
-                <Link
+                <div className="text-right sm:text-left">
+                  <Link
                   href="/profile#weekly-goal"
                   className="text-[10px] text-zinc-500 hover:text-white transition-colors"
                 >
                   Adjust Goal →
                 </Link>
+                </div>
+                
               </div>
             </div>
           </div>

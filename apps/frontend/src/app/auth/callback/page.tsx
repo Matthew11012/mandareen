@@ -9,6 +9,9 @@ import { authClient } from "@/lib/auth-client";
 import { useCheckoutMutation } from "@/lib/hooks/use-billing";
 import { BillingPeriod } from "@/lib/api/billing";
 
+const EMAIL_VERIFICATION_ENABLED =
+  process.env.EMAIL_VERIFICATION_ENABLED !== "false";
+
 /**
  * Google OAuth Callback Handler
  *
@@ -82,6 +85,21 @@ function AuthCallbackContent() {
     const handleCallback = async () => {
       try {
         const error = searchParams.get("error");
+        const mode = searchParams.get("mode");
+
+        if (error === "invalid_token") {
+          toast.error("Verification link expired. Please request a new one.");
+          const email = searchParams.get("email");
+          const params = new URLSearchParams();
+          if (email) params.set("email", email);
+          router.push(
+            params.toString()
+              ? `/verify-email-pending?${params.toString()}`
+              : "/verify-email-pending"
+          );
+          return;
+        }
+
         if (error) throw new Error(error);
 
         // Better Auth sets the session cookie automatically
@@ -92,6 +110,42 @@ function AuthCallbackContent() {
           throw new Error("No session found after OAuth callback");
         }
 
+        const email = session.data.user.email;
+        if (EMAIL_VERIFICATION_ENABLED && !session.data.user.emailVerified) {
+          toast.info(
+            "Welcome! Please verify your email to secure your account."
+          );
+          // Fire-and-forget resend for social users if not verified
+          const apiBase =
+            process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ??
+            "http://localhost:3000";
+          const params = new URLSearchParams({ email, mode: "verify-email" });
+          const storedSignupRedirectUrl = sessionStorage.getItem(
+            "signup_redirect_url"
+          );
+          if (storedSignupRedirectUrl) {
+            params.set("redirect", storedSignupRedirectUrl);
+            const planInfo = parseRedirectUrl(storedSignupRedirectUrl);
+            if (planInfo) {
+              params.set("plan", planInfo.planCode);
+              params.set("billingPeriod", planInfo.billingPeriod);
+            }
+          }
+          void fetch(`${apiBase}/auth/send-verification-email`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+              email,
+              redirect: params.get("redirect") ?? undefined,
+              plan: params.get("plan") ?? undefined,
+              billingPeriod: params.get("billingPeriod") ?? undefined,
+            }),
+          });
+        }
+
         // Update auth store with Better Auth user info
         // Note: Better Auth uses string IDs, but we need to map to legacy user
         // The AuthGuard on backend handles this mapping
@@ -100,12 +154,20 @@ function AuthCallbackContent() {
         const me = await authApi.me();
 
         useAuthStore.setState({
-          user: { id: me.id, email: me.email },
+          user: {
+            id: me.id,
+            email: me.email,
+            username: me.username ?? me.email?.split("@")[0] ?? "",
+          },
           token: null,
           isAuthenticated: true,
         });
 
-        toast.success("Successfully signed in with Google!");
+        const successMessage =
+          mode === "verify-email"
+            ? "Email verified successfully! Welcome to Mandareen."
+            : "Successfully signed in with Google!";
+        toast.success(successMessage);
 
         // Check sessionStorage for redirect URL with plan info (from signup)
         const storedSignupRedirectUrl = sessionStorage.getItem(

@@ -59,7 +59,7 @@ function CombinedAuthContent() {
 
   const signupForm = useForm<RegisterData & { confirmPassword: string }>({
     resolver: zodResolver(signupSchema),
-    defaultValues: { email: "", password: "", confirmPassword: "" },
+    defaultValues: { email: "", username: "", password: "", confirmPassword: "" },
     mode: "onChange",
   });
 
@@ -83,7 +83,11 @@ function CombinedAuthContent() {
     try {
       clearError();
       // Only send required fields to backend
-      await registerUser({ email: data.email, password: data.password });
+      await registerUser({
+        email: data.email,
+        username: data.username.trim(),
+        password: data.password,
+      });
       toast.success("Welcome to Mandareen! Your account has been created.");
     } catch {
       toast.error("Registration failed. Please try again.");

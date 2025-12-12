@@ -16,9 +16,11 @@ import { GoogleButton } from "@/components/ui/google-button";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { registerSchema, type RegisterData } from "@/lib/api/auth";
 import { validatePassword } from "@/lib/utils";
-import { useCheckoutMutation } from "@/lib/hooks/use-billing";
 import { BillingPeriod } from "@/lib/api/billing";
 import { signIn, signUp } from "@/lib/auth-client";
+
+const EMAIL_VERIFICATION_ENABLED =
+  process.env.EMAIL_VERIFICATION_ENABLED !== "false";
 
 function SignupPageContent() {
   const router = useRouter();
@@ -29,8 +31,6 @@ function SignupPageContent() {
     isLoading: authStoreIsLoading,
     clearError,
   } = authStore;
-  const checkoutMutation = useCheckoutMutation();
-
   const [isRegistering, setIsRegistering] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -127,29 +127,6 @@ function SignupPageContent() {
     ? validatePassword(password)
     : { isValid: false, errors: [] };
 
-  const handleCheckoutAfterSignup = async (
-    planCode: "BASIC" | "PREMIUM",
-    billingPeriod: BillingPeriod
-  ) => {
-    try {
-      const response = await checkoutMutation.mutateAsync({
-        planCode,
-        billingPeriod,
-      });
-
-      if (response.url) {
-        window.location.href = response.url;
-      } else {
-        throw new Error("No checkout URL returned");
-      }
-    } catch (error) {
-      console.error("Checkout error after signup:", error);
-      setIsProcessingCheckout(false);
-      isProcessingCheckoutRef.current = false;
-      router.push(`/pricing?plan=${planCode}&billingPeriod=${billingPeriod}`);
-    }
-  };
-
   const onSubmit = async (data: RegisterData) => {
     try {
       clearError();
@@ -171,25 +148,44 @@ function SignupPageContent() {
         throw new Error(result.error.message ?? "Sign up failed");
       }
 
-      if (!planInfo) {
-        setIsRegistering(false);
-      }
-
-      toast.success("Account created. Welcome to Mandareen!");
-
-      if (planInfo) {
-        await handleCheckoutAfterSignup(
-          planInfo.planCode,
-          planInfo.billingPeriod
+      if (EMAIL_VERIFICATION_ENABLED) {
+        toast.success(
+          "Account created! Please check your email to verify your account."
         );
-      } else if (redirectUrl) {
-        setIsRegistering(false);
-        router.push(redirectUrl);
-      } else {
+
         setIsRegistering(false);
         setIsProcessingCheckout(false);
         isProcessingCheckoutRef.current = false;
-        router.push("/dashboard");
+
+        const params = new URLSearchParams({
+          email: data.email,
+        });
+
+        if (planInfo) {
+          params.set("plan", planInfo.planCode);
+          params.set("billingPeriod", planInfo.billingPeriod);
+        }
+
+        if (redirectUrl) {
+          params.set("redirect", redirectUrl);
+        }
+
+        router.push(`/verify-email-pending?${params.toString()}`);
+      } else {
+        toast.success("Account created. Welcome to Mandareen!");
+        setIsRegistering(false);
+        setIsProcessingCheckout(false);
+        isProcessingCheckoutRef.current = false;
+
+        if (planInfo) {
+          router.push(
+            `/pricing?plan=${planInfo.planCode}&billingPeriod=${planInfo.billingPeriod}`
+          );
+        } else if (redirectUrl) {
+          router.push(redirectUrl);
+        } else {
+          router.push("/dashboard");
+        }
       }
     } catch (error) {
       setIsRegistering(false);
