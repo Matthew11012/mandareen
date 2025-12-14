@@ -103,7 +103,6 @@ export function createAuthConfig(emailService: EmailService) {
         secure: cookieSecure,
         sameSite: cookieSameSite,
         path: '/',
-        domain: cookieDomain,
       },
     },
     secret: process.env.BETTER_AUTH_SECRET!,
