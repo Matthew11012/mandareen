@@ -10,6 +10,15 @@ async function bootstrap() {
     rawBody: true, // Enable raw body for webhook signature verification
   });
 
+  // Early health check for /auth/ping to verify ingress reaches this service
+  const httpAdapter = app.getHttpAdapter();
+  const instance = httpAdapter.getInstance?.();
+  if (instance?.get) {
+    instance.get('/auth/ping', (_req: unknown, res: any) =>
+      res.status(200).json({ ok: true }),
+    );
+  }
+
   // Enable CORS for frontend communication
   app.enableCors({
     origin: [
