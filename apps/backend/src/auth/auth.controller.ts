@@ -29,16 +29,34 @@ export class AuthController {
     this.betterAuthService = betterAuthService;
   }
 
+  @Get('ping')
+  ping() {
+    return { ok: true };
+  }
+
   // Expose Better Auth session endpoints explicitly to avoid mounting issues in some deployments.
   @Get('session')
   async session(@Req() req: Request) {
-    return this.betterAuthService.api.getSession({ headers: req.headers });
+    try {
+      return await this.betterAuthService.api.getSession({
+        headers: req.headers,
+      });
+    } catch {
+      // If no session, return null instead of 404 to avoid proxy masking
+      return null;
+    }
   }
 
   // Legacy/RPC-style endpoint used by some clients
   @Get('get-session')
   async getSession(@Req() req: Request) {
-    return this.betterAuthService.api.getSession({ headers: req.headers });
+    try {
+      return await this.betterAuthService.api.getSession({
+        headers: req.headers,
+      });
+    } catch {
+      return null;
+    }
   }
 
   @Post('sign-in/email')
