@@ -26,7 +26,7 @@ import { EmailService } from '../email/email.service';
       inject: [EmailService],
       useFactory: (emailService: EmailService) => ({
         auth: createAuthConfig(emailService),
-        routesPrefix: '/auth', // Mount Better Auth routes at /auth (without /api prefix)
+        routesPrefix: 'auth', // Mount Better Auth routes at /auth (without /api prefix)
       }),
     }),
   ],

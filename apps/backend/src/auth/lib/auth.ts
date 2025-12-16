@@ -29,6 +29,7 @@ const emailVerificationEnabled =
 export function createAuthConfig(emailService: EmailService) {
   return betterAuth({
     baseURL,
+    basePath: '/auth', // Override Better Auth default /api/auth to use /auth
     database: prismaAdapter(prisma, {
       provider: 'postgresql',
     }),
