@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { AuthService as BetterAuthService } from '@thallesp/nestjs-better-auth';
 import * as express from 'express';
 import * as path from 'path';
 
@@ -13,10 +14,68 @@ async function bootstrap() {
   // Early health check for /auth/ping to verify ingress reaches this service
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance?.();
+  // Try to grab BetterAuthService to expose simple express-level fallbacks
+  // (helps when framework-level mounting is flaky in certain deploys)
+  const betterAuthService = app.get<BetterAuthService>(BetterAuthService, {
+    strict: false,
+  });
+
   if (instance?.get) {
     instance.get('/auth/ping', (_req: unknown, res: any) =>
       res.status(200).json({ ok: true }),
     );
+
+    if (betterAuthService) {
+      instance.get('/auth/session', async (req: any, res: any) => {
+        try {
+          const data = await betterAuthService.api.getSession({
+            headers: req.headers,
+          });
+          return res.status(200).json(data ?? null);
+        } catch {
+          return res.status(200).json(null);
+        }
+      });
+
+      instance.get('/auth/get-session', async (req: any, res: any) => {
+        try {
+          const data = await betterAuthService.api.getSession({
+            headers: req.headers,
+          });
+          return res.status(200).json(data ?? null);
+        } catch {
+          return res.status(200).json(null);
+        }
+      });
+
+      instance.post('/auth/sign-in/social', async (req: any, res: any) => {
+        try {
+          const data = await betterAuthService.api.signInSocial({
+            headers: req.headers,
+            body: req.body,
+          });
+          return res.status(200).json(data);
+        } catch (e: any) {
+          return res.status(400).json({
+            message: e?.message || 'sign-in/social failed',
+          });
+        }
+      });
+
+      instance.post('/auth/sign-in/email', async (req: any, res: any) => {
+        try {
+          const data = await betterAuthService.api.signInEmail({
+            headers: req.headers,
+            body: req.body,
+          });
+          return res.status(200).json(data);
+        } catch (e: any) {
+          return res.status(400).json({
+            message: e?.message || 'sign-in/email failed',
+          });
+        }
+      });
+    }
   }
 
   // Enable CORS for frontend communication

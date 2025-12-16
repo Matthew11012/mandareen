@@ -34,6 +34,12 @@ export class AuthController {
     return { ok: true };
   }
 
+  // Controller-level ping to confirm controller routing works in production
+  @Get('ctrl-ping')
+  ctrlPing() {
+    return { ok: true, source: 'controller' };
+  }
+
   // Expose Better Auth session endpoints explicitly to avoid mounting issues in some deployments.
   @Get('session')
   async session(@Req() req: Request) {
