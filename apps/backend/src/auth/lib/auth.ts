@@ -30,6 +30,7 @@ export function createAuthConfig(emailService: EmailService) {
   return betterAuth({
     baseURL,
     basePath: '/auth', // Override Better Auth default /api/auth to use /auth
+    transports: { rest: true, rpc: true }, // expose both REST and RPC endpoints
     database: prismaAdapter(prisma, {
       provider: 'postgresql',
     }),
@@ -103,6 +104,7 @@ export function createAuthConfig(emailService: EmailService) {
         httpOnly: true,
         secure: cookieSecure,
         sameSite: cookieSameSite,
+        domain: cookieDomain,
         path: '/',
       },
     },
