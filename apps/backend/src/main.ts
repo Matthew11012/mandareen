@@ -31,7 +31,7 @@ async function bootstrap() {
   });
 
   // Add global prefix to all routes
-  app.setGlobalPrefix('api');
+  // app.setGlobalPrefix('api');
 
   // Serve static media (audio) from /media
   app.use(

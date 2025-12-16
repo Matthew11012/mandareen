@@ -38,8 +38,12 @@ export function useLessonGenerationStream() {
       markAllComplete: () => void;
     }) => {
       const { params, onComplete, onError, markAllComplete } = opts;
-      // Use same-origin API so httpOnly cookies are sent with EventSource
-      const base = "/api";
+      // Build absolute backend URL for EventSource (cookies sent automatically)
+      const rawBase =
+        process.env.NEXT_PUBLIC_BACKEND_URL ||
+        process.env.NEXT_PUBLIC_API_URL ||
+        "http://localhost:3000";
+      const base = rawBase.replace(/\/$/, "");
       const qs = new URLSearchParams({
         type: params.type,
         readTimeMinutes: String(params.readTimeMinutes),

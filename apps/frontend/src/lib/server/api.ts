@@ -6,7 +6,7 @@ function normalizeApiBase(): string {
     process.env.NEXT_PUBLIC_API_URL ||
     "http://localhost:3000";
   const trimmed = rawBase.replace(/\/$/, "");
-  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
+  return trimmed;
 }
 
 export async function serverApiFetch(path: string, init?: RequestInit) {

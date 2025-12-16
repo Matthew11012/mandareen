@@ -26,7 +26,7 @@ function normalizeBaseUrl(): string {
     process.env.NEXT_PUBLIC_API_URL ||
     "http://localhost:3000";
   const trimmed = rawBase.replace(/\/$/, "");
-  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
+  return trimmed;
 }
 
 const BASE_URL = normalizeBaseUrl();

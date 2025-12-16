@@ -124,7 +124,7 @@ export const conversationsApi = {
       process.env.NEXT_PUBLIC_API_URL ||
       "http://localhost:3000";
     const trimmed = rawBase.replace(/\/$/, "");
-    const apiBase = trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
+    const apiBase = trimmed;
     const query = params.toString();
     const baseUrl = `${apiBase}/conversations/${id}/stream`;
     return query ? `${baseUrl}?${query}` : baseUrl;

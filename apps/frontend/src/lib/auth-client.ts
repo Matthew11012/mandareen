@@ -4,9 +4,9 @@ import { createAuthClient } from "better-auth/react";
  * Shared Better Auth client instance for the frontend.
  * Wraps commonly used helpers so pages/components can import from one place.
  */
-const apiBase =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ??
-  "http://localhost:3000/api";
+// Use proxy path for Better Auth so cookies work correctly
+// The Next.js rewrite will proxy /api/* to the backend without /api prefix
+const apiBase = "/api";
 
 export const authClient = createAuthClient({
   baseURL: `${apiBase}/auth`,
