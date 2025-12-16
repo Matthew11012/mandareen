@@ -29,6 +29,34 @@ export class AuthController {
     this.betterAuthService = betterAuthService;
   }
 
+  // Expose Better Auth session endpoints explicitly to avoid mounting issues in some deployments.
+  @Get('session')
+  async session(@Req() req: Request) {
+    return this.betterAuthService.api.getSession({ headers: req.headers });
+  }
+
+  // Legacy/RPC-style endpoint used by some clients
+  @Get('get-session')
+  async getSession(@Req() req: Request) {
+    return this.betterAuthService.api.getSession({ headers: req.headers });
+  }
+
+  @Post('sign-in/email')
+  async signInEmail(@Req() req: Request, @Body() body: any) {
+    return this.betterAuthService.api.signInEmail({
+      headers: req.headers,
+      body,
+    });
+  }
+
+  @Post('sign-in/social')
+  async signInSocial(@Req() req: Request, @Body() body: any) {
+    return this.betterAuthService.api.signInSocial({
+      headers: req.headers,
+      body,
+    });
+  }
+
   @Post('register')
   async register(@Body() registerDto: RegisterDto, @Res() res: Response) {
     const result = await this.authService.register(registerDto);
