@@ -17,6 +17,7 @@ const authBaseURL = normalizeAuthBaseUrl();
 
 export const authClient = createAuthClient({
   baseURL: authBaseURL,
+  transport: "rest", // Use REST transport to match server endpoints (/auth/session instead of /auth/get-session)
   default: {
     fetchOptions: {
       credentials: "include",
