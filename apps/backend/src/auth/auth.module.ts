@@ -27,6 +27,7 @@ import { EmailService } from '../email/email.service';
       useFactory: (emailService: EmailService) => ({
         auth: createAuthConfig(emailService),
         routesPrefix: 'auth', // Mount Better Auth routes at /auth (without /api prefix)
+        transports: { rpc: true, rest: true }, // expose both RPC (/auth/get-session) and REST (/auth/session)
       }),
     }),
   ],
