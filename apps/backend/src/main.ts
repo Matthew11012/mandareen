@@ -6,6 +6,7 @@ import { AuthService as BetterAuthService } from '@thallesp/nestjs-better-auth';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { EmailService } from './email/email.service';
 import { createAuthConfig } from './auth/lib/auth';
+import { toNodeHandler } from 'better-auth/node';
 import cors from 'cors';
 import * as express from 'express';
 import * as path from 'path';
@@ -25,17 +26,12 @@ async function bootstrap() {
     strict: false,
   });
 
-  // Mount Better Auth handler directly on Express to avoid community module mounting issues
+  // Mount Better Auth handler directly on Express using toNodeHandler for proper adaptation
   try {
     const emailService = app.get(EmailService);
     const betterAuth = createAuthConfig(emailService);
-    if (betterAuth?.handler && instance) {
+    if (betterAuth && instance) {
       const ex = instance as any;
-      const base =
-        process.env.BETTER_AUTH_URL ||
-        process.env.NEXT_PUBLIC_API_URL ||
-        process.env.BACKEND_URL ||
-        'http://localhost:3000';
       const allowedOrigins = [
         process.env.FRONTEND_URL,
         process.env.NEXT_PUBLIC_FRONTEND_URL,
@@ -45,11 +41,7 @@ async function bootstrap() {
         'http://localhost:3001',
       ].filter(Boolean) as string[];
 
-      // Ensure body parsing before auth handler
-      ex.use(express.json({ limit: '2mb' }));
-      ex.use(express.urlencoded({ extended: true }));
-
-      // Apply CORS and ensure request.url is absolute so Better Auth handler does not throw Invalid URL
+      // Apply CORS for /auth routes
       ex.use(
         '/auth',
         cors({
@@ -68,31 +60,10 @@ async function bootstrap() {
         }),
       );
 
-      ex.use('/auth', (req: any, res: any, next: any) => {
-        try {
-          // Express strips the mount path; restore it so Better Auth sees /auth/...
-          if (!req.url.startsWith('/auth')) {
-            req.url = `/auth${req.url}`;
-          }
-          // Better Auth constructs new URL(req.url); ensure absolute to avoid ERR_INVALID_URL
-          if (!/^https?:\/\//i.test(req.url)) {
-            req.url = `${base.replace(/\/$/, '')}${req.url}`;
-          }
-          const handler = betterAuth.handler as any;
-          const maybePromise = handler(req, res, next);
-          if (maybePromise && typeof maybePromise.then === 'function') {
-            maybePromise.catch((err: any) => {
-              console.error('Better Auth handler error', err);
-              if (!res.headersSent)
-                res.status(500).json({ message: 'auth handler failed' });
-            });
-          }
-        } catch (err) {
-          console.error('Better Auth handler exception', err);
-          if (!res.headersSent)
-            return res.status(500).json({ message: 'auth handler exception' });
-        }
-      });
+      // Use toNodeHandler to properly adapt Better Auth for Express/Node.js
+      // This handles the web Request/Response to Node.js req/res conversion
+      const nodeHandler = toNodeHandler(betterAuth);
+      ex.all('/auth/*', nodeHandler);
     }
   } catch (err) {
     console.error('Better Auth direct mount failed', err);
