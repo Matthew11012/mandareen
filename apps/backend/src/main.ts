@@ -3,13 +3,16 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { AuthService as BetterAuthService } from '@thallesp/nestjs-better-auth';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { EmailService } from './email/email.service';
+import { createAuthConfig } from './auth/lib/auth';
 import * as express from 'express';
 import * as path from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    // rawBody: true, // Enable raw body for webhook signature verification
-    bodyParser: false, 
+  // Force Express adapter; Better Auth community integration relies on Express.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true, // Enable raw body for webhook signature verification
   });
 
   // Early health check for /auth/ping to verify ingress reaches this service
@@ -21,63 +24,74 @@ async function bootstrap() {
     strict: false,
   });
 
-  // if (instance?.get) {
-  //   instance.get('/auth/ping', (_req: unknown, res: any) =>
-  //     res.status(200).json({ ok: true }),
-  //   );
+  // Mount Better Auth handler directly on Express to avoid community module mounting issues
+  try {
+    const emailService = app.get(EmailService);
+    const betterAuth = createAuthConfig(emailService);
+    if (instance?.use && betterAuth?.handler) {
+      instance.use('/auth', betterAuth.handler);
+    }
+  } catch (err) {
+    console.error('Better Auth direct mount failed', err);
+  }
 
-  //   if (betterAuthService) {
-  //     instance.get('/auth/session', async (req: any, res: any) => {
-  //       try {
-  //         const data = await betterAuthService.api.getSession({
-  //           headers: req.headers,
-  //         });
-  //         return res.status(200).json(data ?? null);
-  //       } catch {
-  //         return res.status(200).json(null);
-  //       }
-  //     });
+  if (instance?.get) {
+    instance.get('/auth/ping', (_req: unknown, res: any) =>
+      res.status(200).json({ ok: true }),
+    );
 
-  //     instance.get('/auth/get-session', async (req: any, res: any) => {
-  //       try {
-  //         const data = await betterAuthService.api.getSession({
-  //           headers: req.headers,
-  //         });
-  //         return res.status(200).json(data ?? null);
-  //       } catch {
-  //         return res.status(200).json(null);
-  //       }
-  //     });
+    if (betterAuthService) {
+      instance.get('/auth/session', async (req: any, res: any) => {
+        try {
+          const data = await betterAuthService.api.getSession({
+            headers: req.headers,
+          });
+          return res.status(200).json(data ?? null);
+        } catch {
+          return res.status(200).json(null);
+        }
+      });
 
-  //     instance.post('/auth/sign-in/social', async (req: any, res: any) => {
-  //       try {
-  //         const data = await betterAuthService.api.signInSocial({
-  //           headers: req.headers,
-  //           body: req.body,
-  //         });
-  //         return res.status(200).json(data);
-  //       } catch (e: any) {
-  //         return res.status(400).json({
-  //           message: e?.message || 'sign-in/social failed',
-  //         });
-  //       }
-  //     });
+      instance.get('/auth/get-session', async (req: any, res: any) => {
+        try {
+          const data = await betterAuthService.api.getSession({
+            headers: req.headers,
+          });
+          return res.status(200).json(data ?? null);
+        } catch {
+          return res.status(200).json(null);
+        }
+      });
 
-  //     instance.post('/auth/sign-in/email', async (req: any, res: any) => {
-  //       try {
-  //         const data = await betterAuthService.api.signInEmail({
-  //           headers: req.headers,
-  //           body: req.body,
-  //         });
-  //         return res.status(200).json(data);
-  //       } catch (e: any) {
-  //         return res.status(400).json({
-  //           message: e?.message || 'sign-in/email failed',
-  //         });
-  //       }
-  //     });
-  //   }
-  // }
+      instance.post('/auth/sign-in/social', async (req: any, res: any) => {
+        try {
+          const data = await betterAuthService.api.signInSocial({
+            headers: req.headers,
+            body: req.body,
+          });
+          return res.status(200).json(data);
+        } catch (e: any) {
+          return res.status(400).json({
+            message: e?.message || 'sign-in/social failed',
+          });
+        }
+      });
+
+      instance.post('/auth/sign-in/email', async (req: any, res: any) => {
+        try {
+          const data = await betterAuthService.api.signInEmail({
+            headers: req.headers,
+            body: req.body,
+          });
+          return res.status(200).json(data);
+        } catch (e: any) {
+          return res.status(400).json({
+            message: e?.message || 'sign-in/email failed',
+          });
+        }
+      });
+    }
+  }
 
   // Enable CORS for frontend communication
   app.enableCors({
