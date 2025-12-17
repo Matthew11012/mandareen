@@ -13,7 +13,7 @@ import * as path from 'path';
 async function bootstrap() {
   // Force Express adapter; Better Auth community integration relies on Express.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    rawBody: true, // Enable raw body for webhook signature verification
+    bodyParser: false, // Better Auth requires full control of body parsing
   });
 
   // Early health check for /auth/ping to verify ingress reaches this service
@@ -31,6 +31,11 @@ async function bootstrap() {
     const betterAuth = createAuthConfig(emailService);
     if (betterAuth?.handler && instance) {
       const ex = instance as any;
+      const base =
+        process.env.BETTER_AUTH_URL ||
+        process.env.NEXT_PUBLIC_API_URL ||
+        process.env.BACKEND_URL ||
+        'http://localhost:3000';
       const allowedOrigins = [
         process.env.FRONTEND_URL,
         process.env.NEXT_PUBLIC_FRONTEND_URL,
@@ -68,6 +73,10 @@ async function bootstrap() {
           // Express strips the mount path; restore it so Better Auth sees /auth/...
           if (!req.url.startsWith('/auth')) {
             req.url = `/auth${req.url}`;
+          }
+          // Better Auth constructs new URL(req.url); ensure absolute to avoid ERR_INVALID_URL
+          if (!/^https?:\/\//i.test(req.url)) {
+            req.url = `${base.replace(/\/$/, '')}${req.url}`;
           }
           const handler = betterAuth.handler as any;
           const maybePromise = handler(req, res, next);
