@@ -45,6 +45,10 @@ async function bootstrap() {
         'http://localhost:3001',
       ].filter(Boolean) as string[];
 
+      // Ensure body parsing before auth handler
+      ex.use(express.json({ limit: '2mb' }));
+      ex.use(express.urlencoded({ extended: true }));
+
       // Apply CORS and ensure request.url is absolute so Better Auth handler does not throw Invalid URL
       ex.use(
         '/auth',
@@ -60,15 +64,30 @@ async function bootstrap() {
             'Cache-Control',
           ],
           methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+          optionsSuccessStatus: 204,
         }),
       );
 
-      ex.use('/auth', (req: any, res: any) => {
-        if (!/^https?:\/\//i.test(req.url)) {
-          req.url = `${base.replace(/\/$/, '')}${req.url}`;
+      ex.use('/auth', (req: any, res: any, next: any) => {
+        try {
+          if (!/^https?:\/\//i.test(req.url)) {
+            const abs = `${base.replace(/\/$/, '')}${req.url}`;
+            req.url = abs;
+          }
+          const handler = betterAuth.handler as any;
+          const maybePromise = handler(req, res, next);
+          if (maybePromise && typeof maybePromise.then === 'function') {
+            maybePromise.catch((err: any) => {
+              console.error('Better Auth handler error', err);
+              if (!res.headersSent)
+                res.status(500).json({ message: 'auth handler failed' });
+            });
+          }
+        } catch (err) {
+          console.error('Better Auth handler exception', err);
+          if (!res.headersSent)
+            return res.status(500).json({ message: 'auth handler exception' });
         }
-        const handler = betterAuth.handler as any;
-        return handler(req, res);
       });
     }
   } catch (err) {
