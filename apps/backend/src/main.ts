@@ -60,10 +60,15 @@ async function bootstrap() {
         }),
       );
 
-      // Use toNodeHandler to properly adapt Better Auth for Express/Node.js
-      // Mount at /auth so Better Auth receives paths like /auth/sign-in/email
+      // Use toNodeHandler to properly adapt Better Auth for Express/Node.js.
+      // Preserve the /auth prefix so Better Auth sees full paths like /auth/sign-in/...
       const nodeHandler = toNodeHandler(betterAuth);
-      ex.use('/auth', nodeHandler);
+      ex.use('/auth', (req: any, res: any) => {
+        if (!req.url.startsWith('/auth')) {
+          req.url = `/auth${req.url}`;
+        }
+        return nodeHandler(req, res);
+      });
     }
   } catch (err) {
     console.error('Better Auth direct mount failed', err);
@@ -94,6 +99,19 @@ async function bootstrap() {
           return res.status(200).json(data ?? null);
         } catch {
           return res.status(200).json(null);
+        }
+      });
+
+      // Fallback sign-out to ensure cookies are cleared even if Better Auth handler fails
+      instance.post('/auth/sign-out', async (req: any, res: any) => {
+        try {
+          await betterAuthService.api.signOut({ headers: req.headers });
+          return res.status(200).json({ ok: true });
+        } catch (e: any) {
+          console.warn('Fallback sign-out failed', e);
+          return res.status(400).json({
+            message: e?.message || 'sign-out failed',
+          });
         }
       });
     }
