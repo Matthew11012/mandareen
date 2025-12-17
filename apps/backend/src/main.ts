@@ -61,9 +61,9 @@ async function bootstrap() {
       );
 
       // Use toNodeHandler to properly adapt Better Auth for Express/Node.js
-      // This handles the web Request/Response to Node.js req/res conversion
+      // Mount at /auth so Better Auth receives paths like /auth/sign-in/email
       const nodeHandler = toNodeHandler(betterAuth);
-      ex.all('/auth/*', nodeHandler);
+      ex.use('/auth', nodeHandler);
     }
   } catch (err) {
     console.error('Better Auth direct mount failed', err);
