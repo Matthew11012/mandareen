@@ -137,6 +137,12 @@ export const useAuthStore = create<AuthState>()(
       logout: async () => {
         set({ isLoading: true });
 
+        const backendBase =
+          process.env.NEXT_PUBLIC_BACKEND_URL ||
+          process.env.NEXT_PUBLIC_API_URL ||
+          "http://localhost:3000";
+        const signOutEndpoint = `${backendBase.replace(/\/$/, "")}/auth/sign-out`;
+
         try {
           // Prefer Better Auth sign-out to revoke the current session cookies
           await authClient.signOut();
@@ -148,6 +154,15 @@ export const useAuthStore = create<AuthState>()(
             console.warn("Legacy logout failed:", legacyError);
           }
         } finally {
+          // Always force backend sign-out to clear Better Auth cookies
+          try {
+            await fetch(signOutEndpoint, {
+              method: "POST",
+              credentials: "include",
+            });
+          } catch (finalError) {
+            console.warn("Force /auth/sign-out failed:", finalError);
+          }
           // Clear session-scoped lesson filter keys to prevent cross-account leakage
           try {
             if (typeof window !== "undefined") {

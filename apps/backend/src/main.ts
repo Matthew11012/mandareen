@@ -60,6 +60,19 @@ async function bootstrap() {
         }),
       );
 
+      // Express-level sign-out to guarantee cookie clearing
+      ex.post('/auth/sign-out', async (req: any, res: any) => {
+        try {
+          await betterAuthService?.api.signOut({ headers: req.headers });
+          return res.status(200).json({ ok: true });
+        } catch (e: any) {
+          console.warn('Express sign-out failed', e);
+          return res
+            .status(400)
+            .json({ message: e?.message || 'sign-out failed' });
+        }
+      });
+
       // Use toNodeHandler to properly adapt Better Auth for Express/Node.js.
       // Preserve the /auth prefix so Better Auth sees full paths like /auth/sign-in/...
       const nodeHandler = toNodeHandler(betterAuth);
@@ -99,19 +112,6 @@ async function bootstrap() {
           return res.status(200).json(data ?? null);
         } catch {
           return res.status(200).json(null);
-        }
-      });
-
-      // Fallback sign-out to ensure cookies are cleared even if Better Auth handler fails
-      instance.post('/auth/sign-out', async (req: any, res: any) => {
-        try {
-          await betterAuthService.api.signOut({ headers: req.headers });
-          return res.status(200).json({ ok: true });
-        } catch (e: any) {
-          console.warn('Fallback sign-out failed', e);
-          return res.status(400).json({
-            message: e?.message || 'sign-out failed',
-          });
         }
       });
     }
