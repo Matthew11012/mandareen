@@ -26,8 +26,9 @@ import { EmailService } from '../email/email.service';
       inject: [EmailService],
       useFactory: (emailService: EmailService) => ({
         auth: createAuthConfig(emailService),
-        routesPrefix: '', // handled by direct mount; avoid double-prefix
-        transports: { rpc: true, rest: true }, // expose both RPC (/auth/get-session) and REST (/auth/session)
+        // Mount Better Auth routes at /auth
+        routesPrefix: 'auth',
+        transports: { rpc: true, rest: true },
       }),
     }),
   ],
