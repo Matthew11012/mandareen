@@ -8,7 +8,8 @@ import * as path from 'path';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    rawBody: true, // Enable raw body for webhook signature verification
+    // rawBody: true, // Enable raw body for webhook signature verification
+    bodyParser: false, 
   });
 
   // Early health check for /auth/ping to verify ingress reaches this service
