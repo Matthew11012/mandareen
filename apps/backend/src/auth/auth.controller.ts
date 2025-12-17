@@ -40,11 +40,46 @@ export class AuthController {
     return { ok: true, source: 'controller' };
   }
 
-  // Better Auth session and sign-in endpoints are handled by BetterAuthModule
-  // No need for explicit controller routes - the module handles:
-  // GET /auth/session, GET /auth/get-session
-  // POST /auth/sign-in/email, POST /auth/sign-in/social
-  // POST /auth/sign-up/email, etc.
+  // Expose Better Auth session endpoints explicitly to avoid mounting issues in some deployments.
+  @Get('session')
+  async session(@Req() req: Request) {
+    try {
+      return await this.betterAuthService.api.getSession({
+        headers: req.headers,
+      });
+    } catch {
+      // If no session, return null instead of 404 to avoid proxy masking
+      return null;
+    }
+  }
+
+  // Legacy/RPC-style endpoint used by some clients
+  @Get('get-session')
+  async getSession(@Req() req: Request) {
+    try {
+      return await this.betterAuthService.api.getSession({
+        headers: req.headers,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  @Post('sign-in/email')
+  async signInEmail(@Req() req: Request, @Body() body: any) {
+    return this.betterAuthService.api.signInEmail({
+      headers: req.headers,
+      body,
+    });
+  }
+
+  @Post('sign-in/social')
+  async signInSocial(@Req() req: Request, @Body() body: any) {
+    return this.betterAuthService.api.signInSocial({
+      headers: req.headers,
+      body,
+    });
+  }
 
   @Post('register')
   async register(@Body() registerDto: RegisterDto, @Res() res: Response) {
