@@ -6,6 +6,7 @@ import { AuthService as BetterAuthService } from '@thallesp/nestjs-better-auth';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { EmailService } from './email/email.service';
 import { createAuthConfig } from './auth/lib/auth';
+import cors from 'cors';
 import * as express from 'express';
 import * as path from 'path';
 
@@ -28,8 +29,47 @@ async function bootstrap() {
   try {
     const emailService = app.get(EmailService);
     const betterAuth = createAuthConfig(emailService);
-    if (instance?.use && betterAuth?.handler) {
-      instance.use('/auth', betterAuth.handler);
+    if (betterAuth?.handler && instance) {
+      const ex = instance as any;
+      const base =
+        process.env.BETTER_AUTH_URL ||
+        process.env.NEXT_PUBLIC_API_URL ||
+        process.env.BACKEND_URL ||
+        'http://localhost:3000';
+      const allowedOrigins = [
+        process.env.FRONTEND_URL,
+        process.env.NEXT_PUBLIC_FRONTEND_URL,
+        process.env.NEXT_PUBLIC_SITE_URL,
+        'https://mandareen-frontend-git-improvements-matthews-projects-2968c0ec.vercel.app',
+        'http://localhost:3000',
+        'http://localhost:3001',
+      ].filter(Boolean) as string[];
+
+      // Apply CORS and ensure request.url is absolute so Better Auth handler does not throw Invalid URL
+      ex.use(
+        '/auth',
+        cors({
+          origin: allowedOrigins,
+          credentials: true,
+          allowedHeaders: [
+            'Origin',
+            'X-Requested-With',
+            'Content-Type',
+            'Accept',
+            'Authorization',
+            'Cache-Control',
+          ],
+          methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+        }),
+      );
+
+      ex.use('/auth', (req: any, res: any) => {
+        if (!/^https?:\/\//i.test(req.url)) {
+          req.url = `${base.replace(/\/$/, '')}${req.url}`;
+        }
+        const handler = betterAuth.handler as any;
+        return handler(req, res);
+      });
     }
   } catch (err) {
     console.error('Better Auth direct mount failed', err);
