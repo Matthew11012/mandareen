@@ -75,6 +75,27 @@ async function bootstrap() {
     );
 
     if (betterAuthService) {
+      // Debug endpoint to inspect cookies and Better Auth session parsing.
+      instance.get('/auth/debug-cookies', async (req: any, res: any) => {
+        const cookieHeader = req.headers?.cookie || '';
+        try {
+          const data = await betterAuthService.api.getSession({
+            headers: req.headers,
+          });
+          return res.status(200).json({
+            cookies: cookieHeader,
+            session: data ?? null,
+          });
+        } catch (error: any) {
+          return res.status(200).json({
+            cookies: cookieHeader,
+            error: error?.message || 'session parse failed',
+          });
+        }
+      });
+    }
+
+    if (betterAuthService) {
       instance.get('/auth/session', async (req: any, res: any) => {
         try {
           const data = await betterAuthService.api.getSession({
