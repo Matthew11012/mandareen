@@ -19,6 +19,8 @@ const cookieSecure =
   process.env.BETTER_AUTH_COOKIE_SECURE === 'true' ||
   (!isLocalhost && baseURL.startsWith('https://')) ||
   process.env.NODE_ENV === 'production';
+// Allow third-party access in cross-site fetches (CHIPS) when not on localhost.
+const cookiePartitioned = !isLocalhost;
 
 const emailVerificationEnabled =
   process.env.EMAIL_VERIFICATION_ENABLED !== 'false';
@@ -105,6 +107,9 @@ export function createAuthConfig(emailService: EmailService) {
         httpOnly: true,
         secure: cookieSecure,
         sameSite: cookieSameSite,
+        // Partitioned cookies help when frontend and backend are on different domains
+        // and the browser blocks third-party cookies. Ignored by browsers that don't support it.
+        partitioned: cookiePartitioned,
         path: '/',
       },
     },

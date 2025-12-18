@@ -51,28 +51,28 @@ export default function AssessmentPage() {
   // Check for existing session on mount
   useEffect(() => {
     checkSessionExpiry();
-    // Do not override when showing results or when user explicitly started
-    if (currentPhase === "results" || currentPhase === "assessment") return;
-    if (session || genStore.inProgress) {
-      setCurrentPhase("assessment");
-    } else {
-      setCurrentPhase("intro");
-    }
-  }, [session, genStore.inProgress, checkSessionExpiry, currentPhase]);
+  }, [checkSessionExpiry]);
+
+  // Derive the phase to render without setting state inside effects
+  const derivedPhase: AssessmentPhase = useMemo(() => {
+    if (currentPhase === "results") return "results";
+    if (currentPhase === "assessment") return "assessment";
+    if (session || genStore.inProgress) return "assessment";
+    return "intro";
+  }, [currentPhase, session, genStore.inProgress]);
 
   // Focus error banner when quota error appears
+  const activeQuotaError = useMemo(() => {
+    if (!quotaError) return null;
+    if (assessmentUsage && assessmentUsage.pct < 100) return null;
+    return quotaError;
+  }, [quotaError, assessmentUsage]);
+
   useEffect(() => {
-    if (quotaError && errorBannerRef.current) {
+    if (activeQuotaError && errorBannerRef.current) {
       errorBannerRef.current.focus();
     }
-  }, [quotaError]);
-
-  // Clear quota error when usage changes (e.g., after successful generation)
-  useEffect(() => {
-    if (assessmentUsage && assessmentUsage.pct < 100 && quotaError) {
-      setQuotaError(null);
-    }
-  }, [assessmentUsage, quotaError]);
+  }, [activeQuotaError]);
 
   // Format reset date for tooltip (must be called before any early returns)
   const resetDateText = useMemo(() => {
@@ -186,7 +186,7 @@ export default function AssessmentPage() {
   };
 
   // Assessment Flow Phase
-  if (currentPhase === "assessment" || genStore.inProgress) {
+  if (derivedPhase === "assessment" || genStore.inProgress) {
     return (
       <DashboardLayout
         title="Taking Assessment"
@@ -203,7 +203,7 @@ export default function AssessmentPage() {
   }
 
   // Results Phase
-  if (currentPhase === "results" && placementResult !== null) {
+  if (derivedPhase === "results" && placementResult !== null) {
     return (
       <DashboardLayout
         title="Assessment Results"
@@ -327,12 +327,12 @@ export default function AssessmentPage() {
         </div>
 
         {/* Quota Banner - Show when quota exceeded or when there's an error */}
-        {(isQuotaExceeded || quotaError) && (
+        {(isQuotaExceeded || activeQuotaError) && (
           <div className="max-w-4xl mx-auto">
             <AssessmentQuotaBanner
               ref={errorBannerRef}
               error={
-                quotaError ||
+                activeQuotaError ||
                 (isQuotaExceeded
                   ? {
                       type: "quota_exceeded" as const,
@@ -351,8 +351,8 @@ export default function AssessmentPage() {
                 // Only allow dismissal for rate limit or generic errors
                 // Don't dismiss when quota is actually exceeded
                 if (
-                  quotaError &&
-                  quotaError.type !== "quota_exceeded" &&
+                  activeQuotaError &&
+                  activeQuotaError.type !== "quota_exceeded" &&
                   !isQuotaExceeded
                 ) {
                   setQuotaError(null);
