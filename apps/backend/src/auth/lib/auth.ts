@@ -62,6 +62,10 @@ export function createAuthConfig(emailService: EmailService) {
     },
     account: {
       modelName: 'BetterAuthAccount',
+      // Use database-backed OAuth state to avoid reliance on third-party cookies.
+      // Skip the state cookie check to support browsers that block cross-site cookies (e.g., Brave).
+      storeStateStrategy: 'database',
+      skipStateCookieCheck: true,
     },
     verification: {
       modelName: 'BetterAuthVerification',
