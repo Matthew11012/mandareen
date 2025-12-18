@@ -98,10 +98,14 @@ export const conversationsApi = {
   async sendAudio(id: number, audio: Blob): Promise<{ user: Message }> {
     const form = new FormData();
     form.append("audio", audio, "input.webm");
-    const url = `/api/conversations/${id}/audio`;
+    const rawBase =
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "http://localhost:3000";
+    const base = rawBase.replace(/\/$/, "");
+    const url = `${base}/conversations/${id}/audio`;
     const res = await fetch(url, {
       method: "POST",
-      // Same-origin: cookies sent automatically
       credentials: "include",
       body: form,
     });
