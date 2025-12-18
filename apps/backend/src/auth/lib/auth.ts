@@ -14,16 +14,6 @@ const baseURL =
 
 const baseHost = new URL(baseURL).hostname;
 const isLocalhost = baseHost === 'localhost' || baseHost === '127.0.0.1';
-// Choose a cookie domain that matches the backend host. Avoid using .localhost in production.
-const envCookieDomain = process.env.BETTER_AUTH_COOKIE_DOMAIN;
-const cookieDomain =
-  envCookieDomain &&
-  envCookieDomain !== '.localhost' &&
-  !envCookieDomain.includes('localhost')
-    ? envCookieDomain
-    : isLocalhost
-      ? '.localhost'
-      : baseHost;
 const cookieSameSite = isLocalhost ? 'lax' : 'none';
 const cookieSecure =
   process.env.BETTER_AUTH_COOKIE_SECURE === 'true' ||
@@ -115,7 +105,6 @@ export function createAuthConfig(emailService: EmailService) {
         httpOnly: true,
         secure: cookieSecure,
         sameSite: cookieSameSite,
-        domain: cookieDomain,
         path: '/',
       },
     },
