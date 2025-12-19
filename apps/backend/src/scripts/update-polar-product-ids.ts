@@ -64,7 +64,7 @@ const POLAR_PRODUCT_CONFIG: Record<
       unitAmountCents: 1499, // $14.99
     },
     '6month': {
-      productId: 'e27d5966-66e9-4582-90ba-b6d409a6b6f6',
+      productId: '6ef71ed6-13c6-4927-ad69-4bd44e66f206',
       unitAmountCents: 7990, // $79.90
     },
     yearly: {

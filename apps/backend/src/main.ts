@@ -7,6 +7,9 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { EmailService } from './email/email.service';
 import { createAuthConfig } from './auth/lib/auth';
 import { toNodeHandler } from 'better-auth/node';
+import { PolarAdapter } from './billing/polar.adapter';
+import { BillingWebhookService } from './billing/billing.webhook.service';
+import { PrismaService } from './prisma/prisma.service';
 import cors from 'cors';
 import * as express from 'express';
 import * as path from 'path';
@@ -25,6 +28,11 @@ async function bootstrap() {
   const betterAuthService = app.get<BetterAuthService>(BetterAuthService, {
     strict: false,
   });
+  const polarAdapter = app.get(PolarAdapter, { strict: false });
+  const billingWebhookService = app.get(BillingWebhookService, {
+    strict: false,
+  });
+  const prisma = app.get(PrismaService, { strict: false });
 
   // Ensure Polar webhooks receive the raw body for signature verification while still parsing JSON.
   // This is route-scoped to avoid interfering with Better Auth/body parser settings elsewhere.
@@ -52,6 +60,170 @@ async function bootstrap() {
         next();
       },
     );
+    // Also cover deployments that add a global /api prefix in front of routes.
+    instance.use(
+      '/api/billing/webhooks/polar',
+      express.raw({
+        type: 'application/json',
+        limit: '1mb',
+        verify: (req: any, _res, buf) => {
+          req.rawBody = Buffer.from(buf);
+        },
+      }),
+      (req: any, _res: any, next: any) => {
+        if (Buffer.isBuffer(req.body)) {
+          try {
+            req.body =
+              req.body.length > 0 ? JSON.parse(req.body.toString('utf-8')) : {};
+          } catch (err) {
+            console.error('Failed to parse webhook JSON body', err);
+            req.body = {};
+          }
+        }
+        next();
+      },
+    );
+  }
+
+  // Express-level Polar webhook handler to avoid any guard/middleware that could return 401.
+  if (instance?.post && polarAdapter && billingWebhookService && prisma) {
+    const handlePolar = async (req: any, res: any) => {
+      try {
+        const rawBody: Buffer | undefined = req.rawBody;
+        if (!rawBody) {
+          return res.status(400).json({
+            error: 'Invalid signature',
+            message:
+              'Raw body is not available. Ensure raw body middleware is applied.',
+          });
+        }
+
+        const webhookHeaders = {
+          'webhook-signature':
+            req.headers['webhook-signature'] ||
+            req.headers['x-webhook-signature'] ||
+            req.headers['polar-webhook-signature'] ||
+            req.headers['Webhook-Signature'],
+          'webhook-id':
+            req.headers['webhook-id'] ||
+            req.headers['x-webhook-id'] ||
+            req.headers['polar-webhook-id'] ||
+            req.headers['Webhook-Id'],
+          'webhook-timestamp':
+            req.headers['webhook-timestamp'] ||
+            req.headers['x-webhook-timestamp'] ||
+            req.headers['polar-webhook-timestamp'] ||
+            req.headers['Webhook-Timestamp'],
+        } as Record<string, string | undefined>;
+
+        if (
+          !webhookHeaders['webhook-signature'] ||
+          !webhookHeaders['webhook-id'] ||
+          !webhookHeaders['webhook-timestamp']
+        ) {
+          return res.status(400).json({
+            error: 'Invalid signature',
+            message:
+              'Missing required webhook headers (webhook-signature, webhook-id, webhook-timestamp)',
+          });
+        }
+
+        const isValid = polarAdapter.verifySignature(
+          rawBody,
+          webhookHeaders as any,
+        );
+        if (!isValid) {
+          return res
+            .status(400)
+            .json({ error: 'Invalid signature', message: 'Invalid signature' });
+        }
+
+        const payload = req.body || {};
+        const eventId =
+          payload.event_id ||
+          payload.id ||
+          payload.event?.id ||
+          webhookHeaders['webhook-id'] ||
+          `event_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const eventType =
+          payload.event_type ||
+          payload.type ||
+          payload.event?.type ||
+          'unknown';
+
+        let billingEvent;
+        try {
+          billingEvent = await prisma.billingEvent.create({
+            data: {
+              provider: 'polar',
+              eventId,
+              type: eventType,
+              payload: payload as any,
+              status: 'pending',
+            },
+          });
+        } catch (error: any) {
+          if (error.code === 'P2002') {
+            billingEvent = await prisma.billingEvent.findUnique({
+              where: {
+                provider_eventId: {
+                  provider: 'polar',
+                  eventId,
+                },
+              },
+            });
+            if (!billingEvent) {
+              return res.status(500).json({
+                error: 'Internal server error',
+                message:
+                  'Event unique constraint violation but event not found in DB',
+              });
+            }
+            if (billingEvent.status === 'processed') {
+              return res.status(200).json({
+                received: true,
+                eventId,
+                status: 'already_processed',
+              });
+            }
+            if (billingEvent.status === 'failed') {
+              return res.status(500).json({
+                received: true,
+                eventId,
+                status: 'previously_failed',
+              });
+            }
+          } else {
+            return res.status(500).json({
+              error: 'Internal server error',
+              message: error?.message || 'Failed to persist event',
+            });
+          }
+        }
+
+        // Process asynchronously
+        billingWebhookService
+          .process(eventId)
+          .catch((err: any) =>
+            console.error(`Error processing event ${eventId}`, err),
+          );
+
+        return res.status(200).json({
+          received: true,
+          eventId,
+          status: 'pending',
+        });
+      } catch (err: any) {
+        console.error('Polar webhook handler error', err);
+        return res.status(500).json({
+          error: 'Internal server error',
+          message: err?.message || 'Unexpected error',
+        });
+      }
+    };
+
+    instance.post('/billing/webhooks/polar', handlePolar);
+    instance.post('/api/billing/webhooks/polar', handlePolar);
   }
 
   // Mount Better Auth handler directly on Express using toNodeHandler for proper adaptation
