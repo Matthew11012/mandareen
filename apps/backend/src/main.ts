@@ -26,6 +26,34 @@ async function bootstrap() {
     strict: false,
   });
 
+  // Ensure Polar webhooks receive the raw body for signature verification while still parsing JSON.
+  // This is route-scoped to avoid interfering with Better Auth/body parser settings elsewhere.
+  if (instance?.use) {
+    instance.use(
+      '/billing/webhooks/polar',
+      express.raw({
+        type: 'application/json',
+        limit: '1mb',
+        verify: (req: any, _res, buf) => {
+          req.rawBody = Buffer.from(buf);
+        },
+      }),
+      (req: any, _res: any, next: any) => {
+        // Parse JSON manually because express.raw leaves req.body as a Buffer
+        if (Buffer.isBuffer(req.body)) {
+          try {
+            req.body =
+              req.body.length > 0 ? JSON.parse(req.body.toString('utf-8')) : {};
+          } catch (err) {
+            console.error('Failed to parse webhook JSON body', err);
+            req.body = {};
+          }
+        }
+        next();
+      },
+    );
+  }
+
   // Mount Better Auth handler directly on Express using toNodeHandler for proper adaptation
   try {
     const emailService = app.get(EmailService);
