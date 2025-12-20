@@ -1625,7 +1625,7 @@ export default function ConversationsPage() {
               />
             </div>
           )}
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-start justify-between gap-2">
             <ConversationUsageHeader
               summary={usageSummary}
               isLoading={usageLoading}
