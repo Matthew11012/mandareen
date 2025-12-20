@@ -38,8 +38,12 @@ export async function fetchSessionCached() {
   if (cachedSessionPromise && cachedSessionExpiresAt > now) {
     return cachedSessionPromise;
   }
-  cachedSessionPromise = authClient.getSession().finally(() => {
-    cachedSessionExpiresAt = Date.now() + SESSION_TTL_MS;
+  cachedSessionExpiresAt = now + SESSION_TTL_MS;
+  cachedSessionPromise = authClient.getSession().catch((err) => {
+    // On failure, clear cache so next call can retry.
+    cachedSessionPromise = null;
+    cachedSessionExpiresAt = 0;
+    throw err;
   });
   return cachedSessionPromise;
 }

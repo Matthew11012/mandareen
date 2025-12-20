@@ -9,7 +9,7 @@ import {
   Suspense,
 } from "react";
 import { DashboardLayout } from "@/components/layout";
-import { useAuth, useRequireAuth } from "@/lib/hooks/use-auth";
+import { useAuth } from "@/lib/hooks/use-auth";
 import { lessonsApi, type LessonListItem } from "@/lib/api/lessons";
 import { RefreshCw } from "lucide-react";
 import { getHSKPillClasses } from "@/lib/constants/hsk";
@@ -45,7 +45,8 @@ const LS_KEYS = {
 } as const;
 
 function LessonsPageContent() {
-  const { isLoading: authLoading } = useRequireAuth();
+  // Middleware enforces auth; avoid redundant client-side guard to cut extra session/me requests.
+  const authLoading = false;
   const { user } = useAuth();
   const router = useRouter();
   const [allStories, setAllStories] = useState<LessonListItem[]>([]);
@@ -226,7 +227,7 @@ function LessonsPageContent() {
         );
         const includeUntagged = selectedTags.includes("untagged");
 
-        const tagFilterParams = {
+        const overview = await lessonsApi.overview({
           timeframeTags:
             selectedTimeframeTags.length > 0
               ? selectedTimeframeTags
@@ -234,17 +235,15 @@ function LessonsPageContent() {
           contentTags:
             selectedContentTags.length > 0 ? selectedContentTags : undefined,
           includeUntagged: includeUntagged,
-        };
+        });
 
-        const [allData, mineData, finished] = await Promise.all([
-          lessonsApi.list(tagFilterParams),
-          lessonsApi.listMine(tagFilterParams),
-          lessonsApi.getFinishedIds().catch(() => ({ ids: [] })),
-        ]);
-        setMyItems(mineData);
-        setAllStories(allData.filter((i) => i.lessonType === "story"));
-        setAllDialogues(allData.filter((i) => i.lessonType === "dialogue"));
-        setFinishedIds(new Set((finished?.ids || []) as number[]));
+        setAvailableTags(overview.tags);
+        setMyItems(overview.mine);
+        setAllStories(overview.all.filter((i) => i.lessonType === "story"));
+        setAllDialogues(
+          overview.all.filter((i) => i.lessonType === "dialogue")
+        );
+        setFinishedIds(new Set((overview.finishedIds || []) as number[]));
       } catch {
         setError("Failed to load lessons");
       } finally {
@@ -275,19 +274,6 @@ function LessonsPageContent() {
       return () => clearTimeout(timeoutId);
     }
   }, [selectedTags, authLoading, load]);
-
-  // Load available tags
-  useEffect(() => {
-    const loadTags = async () => {
-      try {
-        const tags = await lessonsApi.listTags();
-        setAvailableTags(tags);
-      } catch (error) {
-        console.error("Failed to load tags:", error);
-      }
-    };
-    loadTags();
-  }, []);
 
   // Derived filtered data
 
