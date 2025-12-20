@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export function proxy(request: NextRequest) {
-  const { pathname, search } = request.nextUrl;
+  const { pathname } = request.nextUrl;
 
   // Public paths that should bypass auth checks
   const PUBLIC_PATHS = [
@@ -24,7 +24,9 @@ export function proxy(request: NextRequest) {
     ) {
       return true;
     }
-    return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+    return PUBLIC_PATHS.some(
+      (p) => pathname === p || pathname.startsWith(`${p}/`)
+    );
   })();
 
   if (isPublic) {
@@ -32,19 +34,10 @@ export function proxy(request: NextRequest) {
   }
 
   // Better Auth cookie prefix from server config: cookiePrefix: 'mandareen'
-  const hasSession = request.cookies
-    .getAll()
-    .some((c) => c.name.startsWith("mandareen.session"));
-
-  if (hasSession) {
-    return NextResponse.next();
-  }
-
-  const loginUrl = new URL("/login", request.url);
-  if (pathname !== "/login") {
-    loginUrl.searchParams.set("redirect", pathname + search);
-  }
-  return NextResponse.redirect(loginUrl);
+  // If we cannot see a session cookie on this origin (e.g., auth cookies scoped
+  // to API domain), do not block; client-side will handle auth. This avoids
+  // redirect loops when cookies are not visible at the edge.
+  return NextResponse.next();
 }
 
 export const config = {
