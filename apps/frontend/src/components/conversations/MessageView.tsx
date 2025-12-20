@@ -529,10 +529,10 @@ export function MessageView({
 
             {/* Message Bubble */}
             <div
-              className={`relative px-5 py-3.5 shadow-sm text-base leading-relaxed ${
+              className={`relative sm:px-5 sm:py-3.5 px-4 py-3 shadow-sm text-base leading-relaxed ${
                 m.role === "user"
-                  ? "bg-[#4040f2] text-white rounded-3xl"
-                  : "bg-[#22252a] text-zinc-100 border border-white/5 rounded-3xl"
+                  ? "bg-[#4040f2] text-white sm:rounded-3xl rounded-2xl"
+                  : "bg-[#363636] text-zinc-100 border border-white/5 sm:rounded-3xl rounded-2xl"
               }`}
             >
               {m.role === "user" ? (
@@ -573,7 +573,7 @@ export function MessageView({
                         keyPrefix={`user-msg-${m.id}`}
                       />
                       {showTranslation && m.translation ? (
-                        <div className="text-sm text-zinc-200 mt-2 leading-relaxed">
+                        <div className="text-sm text-zinc-200 sm:mt-2 leading-relaxed">
                           {m.translation}
                         </div>
                       ) : null}

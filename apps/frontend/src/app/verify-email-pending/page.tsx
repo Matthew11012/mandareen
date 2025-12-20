@@ -133,7 +133,7 @@ function PendingContent() {
                 onClick={handleResend}
                 disabled={isResending}
                 loading={isResending}
-                className="min-h-[44px] w-full sm:w-auto"
+                className="min-h-[44px] p-4 text-base w-full sm:w-auto"
                 aria-label="Resend verification email"
               >
                 <span className="inline-flex items-center gap-2">
@@ -146,7 +146,7 @@ function PendingContent() {
                 type="button"
                 variant="accent"
                 onClick={() => router.push("/login")}
-                className="min-h-[44px] w-full sm:w-auto"
+                className="min-h-[44px] p-4 text-base w-full sm:w-auto"
                 aria-label="Return to login"
               >
                 Back to login

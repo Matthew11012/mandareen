@@ -59,6 +59,7 @@ function LessonsPageContent() {
   const [myStoriesPage, setMyStoriesPage] = useState(0);
   const [myDialoguesPage, setMyDialoguesPage] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
+  const [isLargeScreen, setIsLargeScreen] = useState(false);
   const storiesRef = useRef<HTMLDivElement | null>(null);
   const dialoguesRef = useRef<HTMLDivElement | null>(null);
   const myStoriesRef = useRef<HTMLDivElement | null>(null);
@@ -69,11 +70,12 @@ function LessonsPageContent() {
   const [timeframe, setTimeframe] = useState<
     "modern" | "mythic" | "imperial" | "pre_modern" | "futuristic"
   >("modern");
-  const cardsPerPage = isMobile ? 4 : 9;
+  const cardsPerPage = isMobile ? 4 : isLargeScreen ? 12 : 9;
 
   useEffect(() => {
     const checkScreenSize = () => {
       setIsMobile(window.innerWidth < 768);
+      setIsLargeScreen(window.innerWidth >= 1536);
     };
 
     checkScreenSize();
@@ -1021,7 +1023,7 @@ function LessonsPageContent() {
       title="AI Lessons"
       subtitle="Generate and study AI-crafted lessons"
     >
-      <div className="p-6 pt-4 space-y-6">
+      <div className="p-6 pt-4 space-y-6 max-w-[1400px] mx-auto w-full">
         {/* Top progress box (non-blocking) */}
         {progressOpen && (
           <ProgressBanner
@@ -1415,7 +1417,7 @@ function LessonsPageContent() {
                 <div className="overflow-hidden py-2">
                   <div className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide">
                     <div className="min-w-full snap-start flex items-stretch">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 pt-2 flex-1 min-w-0">
                         {Array.from({ length: cardsPerPage }).map((_, i) => (
                           <LessonCardSkeleton
                             key={`skeleton-my-stories-${i}`}
@@ -1435,7 +1437,7 @@ function LessonsPageContent() {
                 <div className="overflow-hidden py-2">
                   <div className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide">
                     <div className="min-w-full snap-start flex items-stretch">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 pt-2 flex-1 min-w-0">
                         {Array.from({ length: cardsPerPage }).map((_, i) => (
                           <LessonCardSkeleton
                             key={`skeleton-my-dialogues-${i}`}
@@ -1459,7 +1461,7 @@ function LessonsPageContent() {
               <div className="overflow-hidden py-2">
                 <div className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide">
                   <div className="min-w-full snap-start flex items-stretch">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 pt-2 flex-1 min-w-0">
                       {Array.from({ length: cardsPerPage }).map((_, i) => (
                         <LessonCardSkeleton key={`skeleton-stories-${i}`} />
                       ))}
@@ -1480,7 +1482,7 @@ function LessonsPageContent() {
               <div className="overflow-hidden py-2">
                 <div className="flex gap-6 snap-x snap-mandatory overflow-x-auto pb-2 px-4 scrollbar-hide">
                   <div className="min-w-full snap-start flex items-stretch">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 flex-1 min-w-0">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 pt-2 flex-1 min-w-0">
                       {Array.from({ length: cardsPerPage }).map((_, i) => (
                         <LessonCardSkeleton key={`skeleton-dialogues-${i}`} />
                       ))}
@@ -1623,7 +1625,7 @@ function LessonsPageContent() {
                                   }
                                   createdAt={l.createdAt}
                                   isFinished={finishedIds.has(l.id)}
-                                  typeLabel="My Story"
+                                  lessonType={l.lessonType}
                                   getLevelPillColor={getLevelPillColor}
                                   onClick={() =>
                                     router.push(`/lessons/${l.id}`)
@@ -1637,9 +1639,7 @@ function LessonsPageContent() {
                           {(() => {
                             const total = Math.max(
                               1,
-                              Math.ceil(
-                                myStoriesFiltered.length / (isMobile ? 4 : 9)
-                              )
+                              Math.ceil(myStoriesFiltered.length / cardsPerPage)
                             );
                             const goTo = (i: number) => {
                               const el = myStoriesRef.current;
@@ -1783,7 +1783,7 @@ function LessonsPageContent() {
                                   }
                                   createdAt={l.createdAt}
                                   isFinished={finishedIds.has(l.id)}
-                                  typeLabel="My Dialogue"
+                                  lessonType={l.lessonType}
                                   getLevelPillColor={getLevelPillColor}
                                   onClick={() =>
                                     router.push(`/lessons/${l.id}`)
@@ -1800,7 +1800,7 @@ function LessonsPageContent() {
                               Math.ceil(
                                 myItems.filter(
                                   (i) => i.lessonType === "dialogue"
-                                ).length / (isMobile ? 4 : 9)
+                                ).length / cardsPerPage
                               )
                             );
                             const goTo = (i: number) => {
@@ -1986,7 +1986,7 @@ function LessonsPageContent() {
                             }
                             createdAt={l.createdAt}
                             isFinished={finishedIds.has(l.id)}
-                            typeLabel="Story"
+                            lessonType={l.lessonType}
                             getLevelPillColor={getLevelPillColor}
                             onClick={() => router.push(`/lessons/${l.id}`)}
                           />
@@ -2000,7 +2000,7 @@ function LessonsPageContent() {
                     {(() => {
                       const total = Math.max(
                         1,
-                        Math.ceil(storiesFiltered.length / (isMobile ? 4 : 9))
+                        Math.ceil(storiesFiltered.length / cardsPerPage)
                       );
                       const goTo = (i: number) => {
                         const el = storiesRef.current;
@@ -2175,7 +2175,7 @@ function LessonsPageContent() {
                           }
                           createdAt={l.createdAt}
                           isFinished={finishedIds.has(l.id)}
-                          typeLabel="Dialogue"
+                          lessonType={l.lessonType}
                           getLevelPillColor={getLevelPillColor}
                           onClick={() => router.push(`/lessons/${l.id}`)}
                         />
@@ -2189,7 +2189,7 @@ function LessonsPageContent() {
                       const totalLen = dialoguesFiltered.length;
                       const total = Math.max(
                         1,
-                        Math.ceil(totalLen / (isMobile ? 4 : 9))
+                        Math.ceil(totalLen / cardsPerPage)
                       );
                       const goTo = (i: number) => {
                         const el = dialoguesRef.current;
