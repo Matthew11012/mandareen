@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { authApi, type LoginData, type RegisterData } from "../api/auth";
-import { authClient, signIn, signUp } from "../auth-client";
+import { authClient, fetchSessionCached, signIn, signUp } from "../auth-client";
 
 interface User {
   id: number;
@@ -229,7 +229,7 @@ export const useAuthStore = create<AuthState>()(
             initPromise = (async () => {
               set({ isLoading: true });
               try {
-                const session = await authClient.getSession();
+                const session = await fetchSessionCached();
                 if (session.data?.user) {
                   const me = await authApi.me();
                   set({

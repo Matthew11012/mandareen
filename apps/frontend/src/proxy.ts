@@ -1,56 +1,47 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-/**
- * Middleware for handling authentication and route protection
- *
- * Features:
- * - Protects authenticated routes
- * - Redirects unauthenticated users to login
- * - Redirects authenticated users away from auth pages
- * - Handles OAuth callback routes
- */
 export function proxy(request: NextRequest) {
-  // Edge auth enforcement disabled; noop to retain structure
-  void request.nextUrl;
+  const { pathname } = request.nextUrl;
 
-  // Check legacy JWT cookie and Better Auth session cookies (any mandareen.* cookie)
-  const legacyToken = request.cookies.get("auth-token")?.value;
-  // Better Auth cookie names use the configured prefix; they may be wrapped with
-  // __Secure- (secure contexts) and use different separators.
-  // Example: "__Secure-mandareen.session_token"
-  const betterAuthCookies = request.cookies
-    .getAll()
-    .filter((cookie) =>
-      ["mandareen", "__Secure-mandareen"].some((prefix) =>
-        cookie.name.startsWith(prefix)
-      )
+  // Public paths that should bypass auth checks
+  const PUBLIC_PATHS = [
+    "/",
+    "/login",
+    "/register",
+    "/auth",
+    "/api/auth",
+    "/manifest.json",
+  ];
+
+  const isPublic = (() => {
+    if (
+      pathname.startsWith("/_next") ||
+      pathname.startsWith("/static") ||
+      pathname.startsWith("/icons") ||
+      pathname.startsWith("/favicon") ||
+      pathname.startsWith("/assets")
+    ) {
+      return true;
+    }
+    return PUBLIC_PATHS.some(
+      (p) => pathname === p || pathname.startsWith(`${p}/`)
     );
-  const hasBetterAuthSession = betterAuthCookies.length > 0;
-  void legacyToken;
-  void hasBetterAuthSession;
+  })();
 
-  // Protected route enforcement is disabled for now because Better Auth
-  // cookies live on the API origin and are not visible to the Vercel edge
-  // middleware. Client-side guards should enforce auth after session fetch.
+  if (isPublic) {
+    return NextResponse.next();
+  }
 
-  // Handle auth routes (redirect if already authenticated)
-  // If authenticated and visiting auth pages, allow staying unless explicitly root auth path
-
-  // Allow access to all other routes
+  // Better Auth cookie prefix from server config: cookiePrefix: 'mandareen'
+  // If we cannot see a session cookie on this origin (e.g., auth cookies scoped
+  // to API domain), do not block; client-side will handle auth. This avoids
+  // redirect loops when cookies are not visible at the edge.
   return NextResponse.next();
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder files
-     */
-    "/((?!api|_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

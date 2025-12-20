@@ -247,6 +247,7 @@ async function bootstrap() {
         cors({
           origin: allowedOrigins,
           credentials: true,
+          maxAge: 86400, // cache preflight for 24h to reduce OPTIONS chatter
           allowedHeaders: [
             'Origin',
             'X-Requested-With',
@@ -317,6 +318,7 @@ async function bootstrap() {
       'Cache-Control',
     ],
     credentials: true, // Allow cookies and credentials
+    maxAge: 86400, // cache preflight for 24h to cut repeated OPTIONS
   });
 
   // Add global prefix to all routes

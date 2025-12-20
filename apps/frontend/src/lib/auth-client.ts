@@ -1,4 +1,5 @@
 import { createAuthClient } from "better-auth/react";
+import { useQuery } from "@tanstack/react-query";
 
 /**
  * Shared Better Auth client instance for the frontend.
@@ -25,4 +26,41 @@ export const authClient = createAuthClient({
   },
 });
 
-export const { useSession, signIn, signOut, signUp } = authClient;
+// Simple shared cache to avoid duplicate /auth/session calls across store/hooks.
+let cachedSessionPromise: Promise<
+  Awaited<ReturnType<typeof authClient.getSession>>
+> | null = null;
+let cachedSessionExpiresAt = 0;
+const SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export async function fetchSessionCached() {
+  const now = Date.now();
+  if (cachedSessionPromise && cachedSessionExpiresAt > now) {
+    return cachedSessionPromise;
+  }
+  cachedSessionExpiresAt = now + SESSION_TTL_MS;
+  cachedSessionPromise = authClient.getSession().catch((err) => {
+    // On failure, clear cache so next call can retry.
+    cachedSessionPromise = null;
+    cachedSessionExpiresAt = 0;
+    throw err;
+  });
+  return cachedSessionPromise;
+}
+
+export const { signIn, signOut, signUp } = authClient;
+
+// Stable session hook backed by React Query to avoid repeated /auth/session polls.
+export function useStableSession() {
+  return useQuery({
+    queryKey: ["better-auth", "session"],
+    queryFn: async () => {
+      const session = await fetchSessionCached();
+      return session.data ?? null;
+    },
+    staleTime: SESSION_TTL_MS,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+}

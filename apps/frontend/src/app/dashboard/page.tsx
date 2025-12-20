@@ -1,21 +1,15 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/layout";
 import { VerificationBanner } from "@/components/verification-banner";
+import { dashboardApi } from "@/lib/api/dashboard";
 import {
-  serverGetAssessmentHistory,
-  serverGetLessonsProgressCount,
-  serverGetStudyStreak,
-  serverGetStudyStreakStatus,
-  serverGetWordsRead,
-  serverListUnits,
-  serverGetUnit,
-  serverGetCurrentLevel,
-  serverGetWeeklyProgress,
-  serverGetMe,
-  serverGetFlashcardsSummary,
-  type ServerCurriculumLesson,
-  type ServerCurriculumUnit,
-} from "@/lib/server/api";
+  getUnit as getCurriculumUnit,
+  type CurriculumLesson,
+  type CurriculumUnit,
+} from "@/lib/api/curriculum";
 import AssessmentHistory from "@/components/dashboard/AssessmentHistory";
 import CountUp from "@/components/ui/CountUp";
 import {
@@ -33,118 +27,189 @@ import {
   Trophy,
 } from "lucide-react";
 
-export default async function DashboardPage() {
-  let offsetMinutes: number | undefined;
-  try {
-    offsetMinutes = new Date().getTimezoneOffset() * -1;
-  } catch {
-    offsetMinutes = undefined;
-  }
+export default function DashboardPage() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<
+    Array<{ id: number; levelPlaced: number; takenAt: string }>
+  >([]);
+  const [lessonsCount, setLessonsCount] = useState<{ finishedCount: number }>({
+    finishedCount: 0,
+  });
+  const [streakRes, setStreakRes] = useState<{
+    todayContinued: boolean;
+    streakDays: number;
+    carryOverDays: number;
+    lastActivityLocalDate: string | null;
+  }>({
+    todayContinued: true,
+    streakDays: 0,
+    carryOverDays: 0,
+    lastActivityLocalDate: null,
+  });
+  const [wordsRead, setWordsRead] = useState<{ readCount: number }>({
+    readCount: 0,
+  });
+  const [currentLevel, setCurrentLevel] = useState<{
+    currentLevel: number | null;
+  }>({ currentLevel: null });
+  const [weeklyProgress, setWeeklyProgress] = useState<{
+    weeklyCount: number;
+    weekStartLocalISO: string;
+    weekEndLocalISO: string;
+  }>({
+    weeklyCount: 0,
+    weekStartLocalISO: new Date().toISOString(),
+    weekEndLocalISO: new Date().toISOString(),
+  });
+  const [userData, setUserData] = useState<{
+    id: number;
+    email: string;
+    username: string;
+    createdAt: string;
+    currentLevel: number | null;
+    weeklyGoalLessons: number | null;
+  }>({
+    id: 0,
+    email: "",
+    username: "Learner",
+    createdAt: new Date().toISOString(),
+    currentLevel: null,
+    weeklyGoalLessons: null,
+  });
+  const [flashcardsSummary, setFlashcardsSummary] = useState<{
+    total: number;
+    due: number;
+  }>({
+    total: 0,
+    due: 0,
+  });
 
-  const [
-    history,
-    lessonsCount,
-    streakRes,
-    wordsRead,
-    units,
-    currentLevel,
-    weeklyProgress,
-    userData,
-    flashcardsSummary,
-  ] = await Promise.all([
-    serverGetAssessmentHistory().catch(() => []),
-    serverGetLessonsProgressCount().catch(() => ({ finishedCount: 0 })),
-    serverGetStudyStreakStatus(offsetMinutes)
-      .then((res) => ({
-        todayContinued: Boolean(res.todayContinued),
-        streakDays: res.streakDays || 0,
-        carryOverDays: res.carryOverDays || 0,
-      }))
-      .catch(async () => {
-        const fallback = await serverGetStudyStreak(offsetMinutes).catch(
-          () => ({ streakDays: 0 })
-        );
-        return {
-          todayContinued: true,
-          streakDays: fallback.streakDays || 0,
-          carryOverDays: fallback.streakDays || 0,
-        };
-      }),
-    serverGetWordsRead().catch(() => ({ readCount: 0 })),
-    serverListUnits().catch(() => []),
-    serverGetCurrentLevel().catch(() => ({ currentLevel: null })),
-    serverGetWeeklyProgress(offsetMinutes).catch(() => ({
-      weeklyCount: 0,
-      weekStartLocalISO: new Date().toISOString(),
-      weekEndLocalISO: new Date().toISOString(),
-    })),
-    serverGetMe().catch(() => ({
-      id: 0,
-      email: "",
-      username: "Learner",
-      createdAt: new Date().toISOString(),
-      currentLevel: null,
-      weeklyGoalLessons: null,
-    })),
-    serverGetFlashcardsSummary().catch(() => ({
-      total: 0,
-      due: 0,
-      dueToday: 0,
-      notStudied: 0,
-      weak: 0,
-      partial: 0,
-      strong: 0,
-    })),
-  ]);
-
-  let guidedUnit: ServerCurriculumUnit | null = null;
-  let guidedLesson: ServerCurriculumLesson | null = null;
-  let curriculumProgress: {
+  const [guidedUnit, setGuidedUnit] = useState<CurriculumUnit | null>(null);
+  const [guidedLesson, setGuidedLesson] = useState<CurriculumLesson | null>(
+    null
+  );
+  const [curriculumProgress, setCurriculumProgress] = useState<{
     completed: number;
     total: number;
     percent: number;
-  } | null = null;
+  } | null>(null);
 
-  const curriculumTotals = (() => {
-    const totalLessons = units.reduce(
-      (acc, unit) => acc + (unit.totalLessons ?? 0),
-      0
-    );
-    const completedLessons = units.reduce(
-      (acc, unit) => acc + (unit.completedLessons ?? 0),
-      0
-    );
-    const percent = totalLessons
-      ? Math.min(100, Math.round((completedLessons / totalLessons) * 100))
-      : 0;
-    return { totalLessons, completedLessons, percent };
-  })();
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const overview = await dashboardApi.overview();
+        setHistory(overview.assessmentHistory ?? []);
+        setLessonsCount(overview.lessonsCount ?? { finishedCount: 0 });
+        setStreakRes(
+          overview.streakStatus ?? {
+            todayContinued: true,
+            streakDays: 0,
+            carryOverDays: 0,
+            lastActivityLocalDate: null,
+          }
+        );
+        setWordsRead(overview.wordsRead ?? { readCount: 0 });
+        setCurrentLevel(overview.currentLevel ?? { currentLevel: null });
+        setWeeklyProgress(
+          overview.weeklyProgress ?? {
+            weeklyCount: 0,
+            weekStartLocalISO: new Date().toISOString(),
+            weekEndLocalISO: new Date().toISOString(),
+          }
+        );
+        setUserData(
+          overview.me ?? {
+            id: 0,
+            email: "",
+            username: "Learner",
+            createdAt: new Date().toISOString(),
+            currentLevel: null,
+            weeklyGoalLessons: null,
+          }
+        );
+        setFlashcardsSummary(
+          overview.flashcardsSummary ?? {
+            total: 0,
+            due: 0,
+          }
+        );
 
-  try {
-    if (Array.isArray(units) && units.length > 0) {
-      const targetUnit =
-        units.find((u) => u.completedLessons < u.totalLessons) ?? units[0];
-      const unitDetail = await serverGetUnit(targetUnit.id);
-      const nextLesson =
-        unitDetail.lessons.find((l: ServerCurriculumLesson) => !l.completed) ??
-        unitDetail.lessons[0] ??
-        null;
-      guidedUnit = targetUnit;
-      guidedLesson = nextLesson;
-      const completed = unitDetail.lessons.filter(
-        (l: ServerCurriculumLesson) => l.completed
-      ).length;
-      const total = unitDetail.lessons.length || 1;
-      curriculumProgress = {
-        completed: curriculumTotals.completedLessons || completed,
-        total: curriculumTotals.totalLessons || total,
-        percent: curriculumTotals.percent,
-      };
-    }
-  } catch {
-    guidedUnit = null;
-    guidedLesson = null;
-    // ignore; UI falls back to generic copy below
+        // derive guided unit/lesson client-side
+        const unitsList = overview.units ?? [];
+        const totalLessons = unitsList.reduce(
+          (acc, unit) => acc + (unit.totalLessons ?? 0),
+          0
+        );
+        const completedLessons = unitsList.reduce(
+          (acc, unit) => acc + (unit.completedLessons ?? 0),
+          0
+        );
+
+        if (Array.isArray(unitsList) && unitsList.length > 0) {
+          const targetUnit =
+            unitsList.find(
+              (u) => (u.completedLessons ?? 0) < (u.totalLessons ?? 0)
+            ) ?? unitsList[0];
+          const unitDetail = await getCurriculumUnit(targetUnit.id);
+          const nextLesson =
+            unitDetail.lessons.find((l) => !l.completed) ??
+            unitDetail.lessons[0] ??
+            null;
+          setGuidedUnit(targetUnit);
+          setGuidedLesson(nextLesson);
+          const completed =
+            typeof targetUnit.completedLessons === "number"
+              ? targetUnit.completedLessons
+              : unitDetail.lessons.filter((l) => l.completed).length;
+          const total =
+            typeof targetUnit.totalLessons === "number"
+              ? targetUnit.totalLessons
+              : unitDetail.lessons.length || 1;
+          setCurriculumProgress({
+            // Match curriculum page: percentage across all units, not just active unit
+            completed:
+              completedLessons > 0 ? completedLessons : Math.max(completed, 0),
+            total: totalLessons > 0 ? totalLessons : Math.max(total, 1),
+            percent: totalLessons
+              ? Math.min(
+                  100,
+                  Math.round((completedLessons / totalLessons) * 100)
+                )
+              : 0,
+          });
+        } else {
+          setGuidedUnit(null);
+          setGuidedLesson(null);
+          setCurriculumProgress(null);
+        }
+      } catch (err) {
+        console.error("Failed to load dashboard overview", err);
+        setError("Failed to load dashboard");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <DashboardLayout title="Home" subtitle="Loading your dashboard...">
+        <div className="p-6 text-zinc-400">Loading...</div>
+      </DashboardLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <DashboardLayout title="Home" subtitle="Dashboard">
+        <div className="p-6 text-red-400">{error}</div>
+      </DashboardLayout>
+    );
   }
 
   const hour = new Date().getHours();
@@ -364,13 +429,12 @@ export default async function DashboardPage() {
                 </div>
                 <div className="text-right sm:text-left">
                   <Link
-                  href="/profile#weekly-goal"
-                  className="text-[10px] text-zinc-500 hover:text-white transition-colors"
-                >
-                  Adjust Goal →
-                </Link>
+                    href="/profile#weekly-goal"
+                    className="text-[10px] text-zinc-500 hover:text-white transition-colors"
+                  >
+                    Adjust Goal →
+                  </Link>
                 </div>
-                
               </div>
             </div>
           </div>

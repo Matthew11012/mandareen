@@ -20,5 +20,6 @@ import { BillingModule } from '../billing/billing.module';
   ],
   controllers: [LessonsController, LessonsStreamController],
   providers: [LessonsService],
+  exports: [LessonsService],
 })
 export class LessonsModule {}
