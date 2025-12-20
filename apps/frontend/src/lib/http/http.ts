@@ -26,10 +26,16 @@ function normalizeBaseUrl(): string {
     process.env.NEXT_PUBLIC_API_URL ||
     "http://localhost:3000";
   const trimmed = rawBase.replace(/\/$/, "");
-  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
+  return trimmed;
 }
 
 const BASE_URL = normalizeBaseUrl();
+
+// Simple in-flight de-dupe and short-lived cache for GET requests to avoid
+// hammering the backend with identical calls during a single render/burst.
+const inflight = new Map<string, Promise<unknown>>();
+const responseCache = new Map<string, { expiresAt: number; data: unknown }>();
+const CACHE_TTL_MS = 5_000;
 
 async function buildRequestInit(
   method: string,
@@ -130,6 +136,20 @@ export async function http<T>({
     Math.min(retries ?? (isIdempotent ? 2 : 0), 5)
   );
 
+  const cacheKey = `${method}:${url}`;
+
+  // Serve from short-lived cache for GET
+  if (method === "GET") {
+    const cached = responseCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data as T;
+    }
+    const inflightReq = inflight.get(cacheKey);
+    if (inflightReq) {
+      return (await inflightReq) as T;
+    }
+  }
+
   let lastError: unknown;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const init = await buildRequestInit(
@@ -144,13 +164,36 @@ export async function http<T>({
     const timeoutId: any = (
       init as unknown as { _timeoutId?: ReturnType<typeof setTimeout> }
     )._timeoutId;
+    const doFetch = async () => {
+      try {
+        const res = await fetch(url, init);
+        if (!res.ok) throw await normalizeError(res);
+        const ct = res.headers.get("content-type") || "";
+        const data = ct.includes("application/json")
+          ? await res.json()
+          : await res.text();
+        if (method === "GET") {
+          responseCache.set(cacheKey, {
+            expiresAt: Date.now() + CACHE_TTL_MS,
+            data,
+          });
+        }
+        return data as T;
+      } finally {
+        inflight.delete(cacheKey);
+      }
+    };
+
     try {
-      const res = await fetch(url, init);
+      const promise =
+        method === "GET" && attempt === 0
+          ? (inflight.set(cacheKey, doFetch() as Promise<unknown>),
+            inflight.get(cacheKey) as Promise<T>)
+          : doFetch();
+
+      const result = await promise;
       clearTimeout(timeoutId);
-      if (!res.ok) throw await normalizeError(res);
-      const ct = res.headers.get("content-type") || "";
-      if (ct.includes("application/json")) return (await res.json()) as T;
-      return (await res.text()) as unknown as T;
+      return result;
     } catch (err) {
       lastError = err;
       clearTimeout(timeoutId);

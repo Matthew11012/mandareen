@@ -13,6 +13,7 @@ import { UsageService } from '../billing/usage.service';
 import { BillingPlanService } from '../billing/billing-plan.service';
 import { BILLING_RESOURCES } from '../billing/billing-resources.constants';
 import * as mm from 'music-metadata';
+import { createClient } from '@supabase/supabase-js';
 
 export type MessageNotes = {
   grammarNotes?: any;
@@ -1222,19 +1223,97 @@ export class ConversationsService {
     messageId: number,
     userId?: number,
   ): Promise<string> {
-    const { audioBuffer, fileExtension } = await (
+    const { audioBuffer: rawAudioBuffer, fileExtension: rawExt } = await (
       this.openai as any
     ).synthesizeSpeech(finalHanzi);
-    const fs = await import('fs');
-    const path = await import('path');
-    const baseDir = path.resolve(process.cwd(), 'uploads', 'audio');
-    await fs.promises.mkdir(baseDir, { recursive: true });
-    const fileName = `conv-${conversationId}-msg-${messageId}-${Date.now()}.${fileExtension}`;
-    const filePath = path.join(baseDir, fileName);
-    await fs.promises.writeFile(filePath, audioBuffer);
-    const publicUrl = `/media/audio/${fileName}`;
 
-    // Update the message with audio URL
+    // Validate inputs early
+    if (
+      !Number.isFinite(conversationId) ||
+      !Number.isFinite(messageId) ||
+      conversationId <= 0 ||
+      messageId <= 0
+    ) {
+      throw new Error('Invalid conversationId or messageId for audio upload');
+    }
+    if (!rawAudioBuffer) {
+      throw new Error('Missing audio buffer from TTS synthesis');
+    }
+
+    // Normalize buffer and mime
+    const audioBuffer = Buffer.isBuffer(rawAudioBuffer)
+      ? rawAudioBuffer
+      : Buffer.from(rawAudioBuffer as any);
+    const ext = (rawExt || '').toLowerCase();
+    const safeExt = ext || 'mp3';
+    const mime =
+      {
+        mp3: 'audio/mpeg',
+        mpeg: 'audio/mpeg',
+        wav: 'audio/wav',
+        webm: 'audio/webm',
+        ogg: 'audio/ogg',
+        m4a: 'audio/mp4',
+      }[ext] || `audio/${ext || 'mpeg'}`;
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseBucket =
+      process.env.SUPABASE_AUDIO_BUCKET || 'conversation-audio';
+    const supabasePublicBase = process.env.SUPABASE_AUDIO_BASE;
+
+    let publicUrl: string | null = null;
+
+    // Prefer Supabase Storage in environments where it is configured; fall back to local disk otherwise.
+    if (supabaseUrl && supabaseKey && supabaseBucket) {
+      try {
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        const objectPath = `conversations/${conversationId}/msg-${messageId}-${Date.now()}.${safeExt}`;
+        const { data, error } = await supabase.storage
+          .from(supabaseBucket)
+          .upload(objectPath, audioBuffer, {
+            contentType: mime,
+            upsert: false,
+          });
+        if (error || !data?.path) throw error || new Error('Upload failed');
+
+        if (supabasePublicBase) {
+          publicUrl = `${supabasePublicBase.replace(/\/$/, '')}/${objectPath}`;
+        } else {
+          // Try public URL, else signed URL (24h) if bucket is private
+          const pub = supabase.storage
+            .from(supabaseBucket)
+            .getPublicUrl(objectPath);
+          publicUrl = pub.data?.publicUrl || null;
+
+          if (!publicUrl) {
+            const signed = await supabase.storage
+              .from(supabaseBucket)
+              .createSignedUrl(objectPath, 60 * 60 * 24);
+            if (signed.error) throw signed.error;
+            publicUrl = signed.data?.signedUrl || null;
+          }
+        }
+      } catch (error) {
+        this.logger.warn(
+          'Supabase audio upload failed; falling back to local storage',
+          error as Error,
+        );
+      }
+    }
+
+    if (!publicUrl) {
+      const fs = await import('fs');
+      const path = await import('path');
+      const baseDir = path.resolve(process.cwd(), 'uploads', 'audio');
+      await fs.promises.mkdir(baseDir, { recursive: true });
+      const fileName = `conv-${conversationId}-msg-${messageId}-${Date.now()}.${safeExt}`;
+      const filePath = path.join(baseDir, fileName);
+      await fs.promises.writeFile(filePath, audioBuffer);
+      publicUrl = `/media/audio/${fileName}`;
+    }
+
+    // Update the message with audio URL (Supabase or local)
     await this.prisma.message.update({
       where: { id: messageId },
       data: { audioUrl: publicUrl },
@@ -1243,7 +1322,7 @@ export class ConversationsService {
     // Calculate actual audio duration from the generated audio buffer
     const audioDurationSeconds = await this.calculateAudioDuration(
       audioBuffer,
-      `audio/${fileExtension}`,
+      mime,
     );
     // Meter TTS usage using actual audio duration
     if (userId) {

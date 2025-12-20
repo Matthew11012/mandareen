@@ -11,7 +11,8 @@ import type { NextRequest } from "next/server";
  * - Handles OAuth callback routes
  */
 export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  // Edge auth enforcement disabled; noop to retain structure
+  void request.nextUrl;
 
   // Check legacy JWT cookie and Better Auth session cookies (any mandareen.* cookie)
   const legacyToken = request.cookies.get("auth-token")?.value;
@@ -26,28 +27,12 @@ export function proxy(request: NextRequest) {
       )
     );
   const hasBetterAuthSession = betterAuthCookies.length > 0;
-  const isAuthenticated = Boolean(legacyToken) || hasBetterAuthSession;
+  void legacyToken;
+  void hasBetterAuthSession;
 
-  // Define protected routes that require authentication
-  const protectedRoutes = [
-    "/dashboard",
-    "/lessons",
-    "/flashcards",
-    "/conversations",
-    "/curriculum",
-  ];
-  // Note: We intentionally do not force-redirect authenticated users off auth pages to preserve refresh behavior.
-
-  // Check if the current path is protected
-  const isProtectedRoute = protectedRoutes.some((route) =>
-    pathname.startsWith(route)
-  );
-  // const isAuthRoute = authRoutes.some(route => pathname.startsWith(route));
-
-  // Handle protected routes
-  if (isProtectedRoute && !isAuthenticated) {
-    return NextResponse.redirect(new URL("/login", request.url));
-  }
+  // Protected route enforcement is disabled for now because Better Auth
+  // cookies live on the API origin and are not visible to the Vercel edge
+  // middleware. Client-side guards should enforce auth after session fetch.
 
   // Handle auth routes (redirect if already authenticated)
   // If authenticated and visiting auth pages, allow staying unless explicitly root auth path

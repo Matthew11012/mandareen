@@ -14,9 +14,6 @@ const baseURL =
 
 const baseHost = new URL(baseURL).hostname;
 const isLocalhost = baseHost === 'localhost' || baseHost === '127.0.0.1';
-const cookieDomain =
-  process.env.BETTER_AUTH_COOKIE_DOMAIN ||
-  (isLocalhost ? '.localhost' : baseHost);
 const cookieSameSite = isLocalhost ? 'lax' : 'none';
 const cookieSecure =
   process.env.BETTER_AUTH_COOKIE_SECURE === 'true' ||
@@ -29,6 +26,8 @@ const emailVerificationEnabled =
 export function createAuthConfig(emailService: EmailService) {
   return betterAuth({
     baseURL,
+    basePath: '/auth', // Override Better Auth default /api/auth to use /auth
+    transports: { rest: true, rpc: true }, // expose both REST and RPC endpoints
     database: prismaAdapter(prisma, {
       provider: 'postgresql',
     }),
@@ -53,6 +52,10 @@ export function createAuthConfig(emailService: EmailService) {
     },
     account: {
       modelName: 'BetterAuthAccount',
+      // Use database-backed OAuth state to avoid reliance on third-party cookies.
+      // Skip the state cookie check to support browsers that block cross-site cookies (e.g., Brave).
+      storeStateStrategy: 'database',
+      skipStateCookieCheck: true,
     },
     verification: {
       modelName: 'BetterAuthVerification',
@@ -103,7 +106,6 @@ export function createAuthConfig(emailService: EmailService) {
         secure: cookieSecure,
         sameSite: cookieSameSite,
         path: '/',
-        domain: cookieDomain,
       },
     },
     secret: process.env.BETTER_AUTH_SECRET!,
