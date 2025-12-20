@@ -26,6 +26,24 @@ export const authClient = createAuthClient({
   },
 });
 
+// Simple shared cache to avoid duplicate /auth/session calls across store/hooks.
+let cachedSessionPromise: Promise<
+  Awaited<ReturnType<typeof authClient.getSession>>
+> | null = null;
+let cachedSessionExpiresAt = 0;
+const SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export async function fetchSessionCached() {
+  const now = Date.now();
+  if (cachedSessionPromise && cachedSessionExpiresAt > now) {
+    return cachedSessionPromise;
+  }
+  cachedSessionPromise = authClient.getSession().finally(() => {
+    cachedSessionExpiresAt = Date.now() + SESSION_TTL_MS;
+  });
+  return cachedSessionPromise;
+}
+
 export const { signIn, signOut, signUp } = authClient;
 
 // Stable session hook backed by React Query to avoid repeated /auth/session polls.
@@ -33,10 +51,10 @@ export function useStableSession() {
   return useQuery({
     queryKey: ["better-auth", "session"],
     queryFn: async () => {
-      const session = await authClient.getSession();
+      const session = await fetchSessionCached();
       return session.data ?? null;
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: SESSION_TTL_MS,
     gcTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
