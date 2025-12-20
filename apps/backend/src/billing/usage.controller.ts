@@ -5,6 +5,7 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  Header,
 } from '@nestjs/common';
 import { UsageService } from './usage.service';
 import { BillingPlanService } from './billing-plan.service';
@@ -135,6 +136,7 @@ export class UsageController {
    */
   @Get('summary')
   @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'private, max-age=30')
   async getSummary(@Req() req: AuthenticatedRequest): Promise<UsageSummaryDto> {
     const userId = req.user.id;
     const defaultWindowDays = Number(process.env.USAGE_WINDOW_DAYS) || 30;

@@ -24,7 +24,7 @@ export function useUsageSummary(enabled: boolean = true) {
     enabled,
     staleTime: 30 * 1000, // 30 seconds (as per Phase 4 spec)
     gcTime: 5 * 60 * 1000, // 5 minutes (cacheTime, as per Phase 4 spec)
-    refetchOnWindowFocus: true, // Refetch when window regains focus for fresh data
+    refetchOnWindowFocus: false, // Avoid extra calls on focus; data is already fresh enough
     refetchOnReconnect: true, // Refetch on reconnect
   });
 }

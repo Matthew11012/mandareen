@@ -22,7 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { NAVIGATION_DATA } from "@/lib/constants/navigation";
 import type { NavigationItem } from "@/lib/types/navigation";
-import { flashcardsApi } from "@/lib/api/flashcards";
+import { getDueCountCached } from "@/lib/api/flashcards";
 
 // Icon mapping
 const ICONS = {
@@ -156,10 +156,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed }) => {
 
   useEffect(() => {
     let mounted = true;
-    flashcardsApi
-      .due()
-      .then((items) => {
-        if (mounted) setDueCount(items.length);
+    getDueCountCached()
+      .then((count) => {
+        if (mounted) setDueCount(count);
       })
       .catch(() => {
         if (mounted) setDueCount(0);

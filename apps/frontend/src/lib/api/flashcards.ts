@@ -49,6 +49,9 @@ export interface FlashcardsSummary {
   strong: number;
 }
 
+let cachedDueCount: number | null = null;
+let cachedDueExpiresAt = 0;
+
 export const flashcardsApi = {
   async create(params: { vocabId: number; sourceInstanceId?: number }) {
     return post<{ flashcard: { id: number } }>("flashcards", params);
@@ -111,3 +114,19 @@ export const flashcardsApi = {
     return get<FlashcardsSummary>("flashcards/summary");
   },
 };
+
+export async function getDueCountCached(ttlMs = 5 * 60 * 1000): Promise<number> {
+  const now = Date.now();
+  if (cachedDueCount !== null && cachedDueExpiresAt > now) {
+    return cachedDueCount;
+  }
+  try {
+    const summary = await flashcardsApi.summary();
+    cachedDueCount = summary?.due ?? 0;
+    cachedDueExpiresAt = now + ttlMs;
+    return cachedDueCount;
+  } catch {
+    cachedDueExpiresAt = 0;
+    throw new Error("Failed to fetch flashcards due count");
+  }
+}

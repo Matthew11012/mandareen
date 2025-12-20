@@ -5,7 +5,7 @@ import { ShieldAlert, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { useSession } from "@/lib/auth-client";
+import { useStableSession } from "@/lib/auth-client";
 
 const DISMISS_KEY = "verification-banner-dismissed";
 const FORCE_SHOW = false; // Set to true only for manual testing
@@ -13,7 +13,7 @@ const EMAIL_VERIFICATION_ENABLED =
   process.env.EMAIL_VERIFICATION_ENABLED !== "false";
 
 export function VerificationBanner() {
-  const { data: session } = useSession();
+  const { data: session } = useStableSession();
   const [dismissed, setDismissed] = useState(false);
   const [isSending, setIsSending] = useState(false);
 

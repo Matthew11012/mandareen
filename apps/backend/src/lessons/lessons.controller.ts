@@ -53,6 +53,111 @@ export class LessonsController {
     this.billingPlanService = billingPlanService;
   }
 
+  /**
+   * Aggregated lessons overview to reduce multiple round trips from the frontend.
+   * Bundles tags, all lessons, user lessons, and finished IDs into a single payload.
+   */
+  @Get('overview')
+  async getLessonsOverview(
+    @Req() req: AuthenticatedRequest,
+    @Query('level') level?: string,
+    @Query('levels') levels?: string | string[],
+    @Query('timeframeTags') timeframeTags?: string | string[],
+    @Query('contentTags') contentTags?: string | string[],
+    @Query('includeUntagged') includeUntagged?: string,
+  ): Promise<{
+    tags: {
+      timeframe: Array<{ tag: string; count: number }>;
+      content: Array<{ tag: string; count: number }>;
+    };
+    all: Array<{
+      id: number;
+      title: string | null;
+      level: number;
+      createdAt: string;
+      lessonType: string;
+      titlePinyin: string | null;
+      titleTranslation: string | null;
+      tags: string[];
+    }>;
+    mine: Array<{
+      id: number;
+      title: string | null;
+      level: number;
+      createdAt: string;
+      lessonType: string;
+      titlePinyin: string | null;
+      titleTranslation: string | null;
+      tags: string[];
+    }>;
+    finishedIds: number[];
+  }> {
+    const lvl = level ? parseInt(level, 10) : undefined;
+    const levelsArr: number[] | undefined = Array.isArray(levels)
+      ? (levels as string[])
+          .flatMap((v) => v.split(','))
+          .map((v) => parseInt(v, 10))
+          .filter((n) => !isNaN(n))
+      : typeof levels === 'string'
+        ? levels
+            .split(',')
+            .map((v) => parseInt(v, 10))
+            .filter((n) => !isNaN(n))
+        : undefined;
+
+    const timeframeTagsArr: string[] | undefined = Array.isArray(timeframeTags)
+      ? (timeframeTags as string[]).flatMap((v) => v.split(','))
+      : typeof timeframeTags === 'string'
+        ? timeframeTags.split(',')
+        : undefined;
+
+    const contentTagsArr: string[] | undefined = Array.isArray(contentTags)
+      ? (contentTags as string[]).flatMap((v) => v.split(','))
+      : typeof contentTags === 'string'
+        ? contentTags.split(',')
+        : undefined;
+
+    const includeUntaggedBool = includeUntagged === 'true';
+
+    const [tags, allLessons, myLessons, finished] = await Promise.all([
+      this.lessonsService.getAvailableTags(),
+      this.lessonsService.listLessons(
+        lvl,
+        levelsArr,
+        timeframeTagsArr,
+        contentTagsArr,
+        includeUntaggedBool,
+      ),
+      this.lessonsService.listLessonsByCreator(
+        req.user.email,
+        lvl,
+        levelsArr,
+        timeframeTagsArr,
+        contentTagsArr,
+        includeUntaggedBool,
+      ),
+      this.lessonsService.getFinishedLessonIds(req.user.id),
+    ]);
+
+    const mapLesson = (l: any) => ({
+      id: l.id,
+      title: l.title ?? null,
+      level: l.level,
+      createdAt: l.createdAt.toISOString(),
+      lessonType: l.lessonType,
+      titlePinyin: l.titlePinyin,
+      titleTranslation: l.titleTranslation,
+      tags: l.tags || [],
+    });
+
+    return {
+      tags,
+      all: allLessons.map(mapLesson),
+      mine: myLessons.map(mapLesson),
+      finishedIds: finished,
+    };
+  }
+
   @Post('generate')
   async generateLesson(
     @Req() req: AuthenticatedRequest,

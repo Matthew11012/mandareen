@@ -42,6 +42,13 @@ export interface AvailableTags {
   content: Array<{ tag: string; count: number }>;
 }
 
+export interface LessonsOverview {
+  tags: AvailableTags;
+  all: LessonListItem[];
+  mine: LessonListItem[];
+  finishedIds: number[];
+}
+
 export const lessonsApi = {
   async generate(params: {
     level?: number;
@@ -148,5 +155,25 @@ export const lessonsApi = {
       points: Array<{ date: string; new: number; learned: number }>;
       totals: { new: number; learned: number };
     }>(path);
+  },
+
+  async overview(params?: {
+    level?: number;
+    levels?: number[];
+    timeframeTags?: string[];
+    contentTags?: string[];
+    includeUntagged?: boolean;
+  }) {
+    const qs = new URLSearchParams();
+    if (typeof params?.level === "number") qs.set("level", String(params.level));
+    if (params?.levels && params.levels.length > 0)
+      qs.set("levels", params.levels.join(","));
+    if (params?.timeframeTags && params.timeframeTags.length > 0)
+      qs.set("timeframeTags", params.timeframeTags.join(","));
+    if (params?.contentTags && params.contentTags.length > 0)
+      qs.set("contentTags", params.contentTags.join(","));
+    if (params?.includeUntagged === true) qs.set("includeUntagged", "true");
+    const path = `lessons/overview${qs.toString() ? `?${qs}` : ""}`;
+    return get<LessonsOverview>(path);
   },
 };
