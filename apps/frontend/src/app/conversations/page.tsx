@@ -1222,8 +1222,8 @@ export default function ConversationsPage() {
     []
   );
   const apiBase = (
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api"
-  ).replace(/\/api$/, "");
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000"
+  ).replace(/\/$/, "");
   const resolveMediaUrl = (u?: string) => {
     if (!u) return undefined;
     if (/^https?:\/\//i.test(u)) return u;

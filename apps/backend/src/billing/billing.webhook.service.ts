@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { PolarAdapter } from './polar.adapter';
 import { BillingService } from './billing.service';
+import { BillingPlanService } from './billing-plan.service';
 
 /**
  * Billing webhook service for processing webhook events from billing providers.
@@ -24,6 +25,7 @@ export class BillingWebhookService {
     private readonly prisma: PrismaService,
     private readonly polarAdapter: PolarAdapter,
     private readonly billingService: BillingService,
+    private readonly billingPlanService: BillingPlanService,
     private readonly configService: ConfigService,
   ) {
     this.provider = this.configService.get<string>('BILLING_PROVIDER', 'polar');
@@ -695,6 +697,9 @@ export class BillingWebhookService {
         });
       }
     });
+
+    // Clear cached plan/limits so new subscription takes effect immediately
+    this.billingPlanService.clearCache(userId);
   }
 
   /**

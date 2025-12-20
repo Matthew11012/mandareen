@@ -187,49 +187,74 @@ function LessonsPageContent() {
   const [storiesStatus, setStoriesStatus] = useState<StatusFilter>("all");
   const [dialoguesStatus, setDialoguesStatus] = useState<StatusFilter>("all");
 
+  // Prevent duplicate loads when state changes rapidly (e.g., filters/auth).
+  const loadInFlight = useRef<Promise<void> | null>(null);
+  const lastLoadKey = useRef<string>("");
+
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Transform selectedTags into separate timeframe and content tags
-      const timeframeTags = [
-        "modern",
-        "mythic",
-        "imperial",
-        "pre_modern",
-        "futuristic",
-      ];
-      const selectedTimeframeTags = selectedTags.filter((tag) =>
-        timeframeTags.includes(tag)
-      );
-      const selectedContentTags = selectedTags.filter(
-        (tag) => !timeframeTags.includes(tag)
-      );
-      const includeUntagged = selectedTags.includes("untagged");
-
-      const tagFilterParams = {
-        timeframeTags:
-          selectedTimeframeTags.length > 0 ? selectedTimeframeTags : undefined,
-        contentTags:
-          selectedContentTags.length > 0 ? selectedContentTags : undefined,
-        includeUntagged: includeUntagged,
-      };
-
-      const [allData, mineData, finished] = await Promise.all([
-        lessonsApi.list(tagFilterParams),
-        lessonsApi.listMine(tagFilterParams),
-        lessonsApi.getFinishedIds().catch(() => ({ ids: [] })),
-      ]);
-      setMyItems(mineData);
-      setAllStories(allData.filter((i) => i.lessonType === "story"));
-      setAllDialogues(allData.filter((i) => i.lessonType === "dialogue"));
-      setFinishedIds(new Set((finished?.ids || []) as number[]));
-    } catch {
-      setError("Failed to load lessons");
-    } finally {
-      setLoading(false);
+    // Build a key from current filters to avoid reloading the same state.
+    const key = JSON.stringify({
+      selectedTags,
+      timeframe,
+      genLevel,
+      outputMode,
+    });
+    if (loadInFlight.current && lastLoadKey.current === key) {
+      await loadInFlight.current;
+      return;
     }
-  }, [selectedTags]);
+
+    const run = (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Transform selectedTags into separate timeframe and content tags
+        const timeframeTags = [
+          "modern",
+          "mythic",
+          "imperial",
+          "pre_modern",
+          "futuristic",
+        ];
+        const selectedTimeframeTags = selectedTags.filter((tag) =>
+          timeframeTags.includes(tag)
+        );
+        const selectedContentTags = selectedTags.filter(
+          (tag) => !timeframeTags.includes(tag)
+        );
+        const includeUntagged = selectedTags.includes("untagged");
+
+        const tagFilterParams = {
+          timeframeTags:
+            selectedTimeframeTags.length > 0
+              ? selectedTimeframeTags
+              : undefined,
+          contentTags:
+            selectedContentTags.length > 0 ? selectedContentTags : undefined,
+          includeUntagged: includeUntagged,
+        };
+
+        const [allData, mineData, finished] = await Promise.all([
+          lessonsApi.list(tagFilterParams),
+          lessonsApi.listMine(tagFilterParams),
+          lessonsApi.getFinishedIds().catch(() => ({ ids: [] })),
+        ]);
+        setMyItems(mineData);
+        setAllStories(allData.filter((i) => i.lessonType === "story"));
+        setAllDialogues(allData.filter((i) => i.lessonType === "dialogue"));
+        setFinishedIds(new Set((finished?.ids || []) as number[]));
+      } catch {
+        setError("Failed to load lessons");
+      } finally {
+        setLoading(false);
+        loadInFlight.current = null;
+      }
+    })();
+
+    lastLoadKey.current = key;
+    loadInFlight.current = run;
+    await run;
+  }, [selectedTags, timeframe, genLevel, outputMode]);
 
   // URL params removed by request; state is now local-only
 

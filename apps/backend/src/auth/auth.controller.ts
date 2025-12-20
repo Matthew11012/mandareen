@@ -29,6 +29,58 @@ export class AuthController {
     this.betterAuthService = betterAuthService;
   }
 
+  @Get('ping')
+  ping() {
+    return { ok: true };
+  }
+
+  // Controller-level ping to confirm controller routing works in production
+  @Get('ctrl-ping')
+  ctrlPing() {
+    return { ok: true, source: 'controller' };
+  }
+
+  // Expose Better Auth session endpoints explicitly to avoid mounting issues in some deployments.
+  @Get('session')
+  async session(@Req() req: Request) {
+    try {
+      return await this.betterAuthService.api.getSession({
+        headers: req.headers,
+      });
+    } catch {
+      // If no session, return null instead of 404 to avoid proxy masking
+      return null;
+    }
+  }
+
+  // Legacy/RPC-style endpoint used by some clients
+  @Get('get-session')
+  async getSession(@Req() req: Request) {
+    try {
+      return await this.betterAuthService.api.getSession({
+        headers: req.headers,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  @Post('sign-in/email')
+  async signInEmail(@Req() req: Request, @Body() body: any) {
+    return this.betterAuthService.api.signInEmail({
+      headers: req.headers,
+      body,
+    });
+  }
+
+  @Post('sign-in/social')
+  async signInSocial(@Req() req: Request, @Body() body: any) {
+    return this.betterAuthService.api.signInSocial({
+      headers: req.headers,
+      body,
+    });
+  }
+
   @Post('register')
   async register(@Body() registerDto: RegisterDto, @Res() res: Response) {
     const result = await this.authService.register(registerDto);

@@ -38,8 +38,12 @@ export function useLessonGenerationStream() {
       markAllComplete: () => void;
     }) => {
       const { params, onComplete, onError, markAllComplete } = opts;
-      // Use same-origin API so httpOnly cookies are sent with EventSource
-      const base = "/api";
+      // Build absolute backend URL for EventSource (cookies sent automatically)
+      const rawBase =
+        process.env.NEXT_PUBLIC_BACKEND_URL ||
+        process.env.NEXT_PUBLIC_API_URL ||
+        "http://localhost:3000";
+      const base = rawBase.replace(/\/$/, "");
       const qs = new URLSearchParams({
         type: params.type,
         readTimeMinutes: String(params.readTimeMinutes),
@@ -48,6 +52,8 @@ export function useLessonGenerationStream() {
       if (params.topic) qs.set("topic", params.topic);
       if (params.timeframe) qs.set("timeframe", params.timeframe);
       const url = `${base}/lessons/generate/stream?${qs.toString()}`;
+      // Ensure cookies are sent with the EventSource request
+      const es = new EventSource(url, { withCredentials: true });
 
       const storyStepsOrder = [
         "openai_generate_story",
@@ -67,7 +73,6 @@ export function useLessonGenerationStream() {
       const steps =
         params.type === "story" ? storyStepsOrder : dialogueStepsOrder;
 
-      const es = new EventSource(url);
       genStore.setAttached(true);
       let streamFinished = false;
       const markComplete = (key: string) => genStore.markCompleted(key);
