@@ -1,4 +1,5 @@
 import { createAuthClient } from "better-auth/react";
+import { useQuery } from "@tanstack/react-query";
 
 /**
  * Shared Better Auth client instance for the frontend.
@@ -25,4 +26,19 @@ export const authClient = createAuthClient({
   },
 });
 
-export const { useSession, signIn, signOut, signUp } = authClient;
+export const { signIn, signOut, signUp } = authClient;
+
+// Stable session hook backed by React Query to avoid repeated /auth/session polls.
+export function useStableSession() {
+  return useQuery({
+    queryKey: ["better-auth", "session"],
+    queryFn: async () => {
+      const session = await authClient.getSession();
+      return session.data ?? null;
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+}

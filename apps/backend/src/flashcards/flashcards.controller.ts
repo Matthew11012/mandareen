@@ -8,6 +8,7 @@ import {
   Query,
   Req,
   UseGuards,
+  Header,
 } from '@nestjs/common';
 import { FlashcardsService } from './flashcards.service';
 import { AuthGuard } from '../auth/guards/auth.guard';
@@ -80,6 +81,7 @@ export class FlashcardsController {
   }
 
   @Get('due')
+  @Header('Cache-Control', 'private, max-age=30')
   async listDue(@Req() req: AuthenticatedRequest) {
     const userId = req.user.id;
     return this.service.listDue(userId);

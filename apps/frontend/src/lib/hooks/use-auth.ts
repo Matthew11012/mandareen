@@ -1,7 +1,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuthStore } from "../stores/auth-store";
-import { useSession } from "../auth-client";
+import { useStableSession } from "../auth-client";
 
 /**
  * Custom hook for authentication logic
@@ -26,7 +26,7 @@ export const useAuth = () => {
     // allow profile components to update user fields
     setUser,
   } = useAuthStore();
-  const { data: baSession, isPending: baPending } = useSession();
+  const { data: baSession, isPending: baPending } = useStableSession();
 
   const router = useRouter();
 
@@ -169,7 +169,7 @@ export const useRedirectAuthenticated = () => {
   const initialize = (store as unknown as { initialize?: () => void })
     .initialize;
   const router = useRouter();
-  const { data: baSession, isPending: baPending } = useSession();
+  const { data: baSession, isPending: baPending } = useStableSession();
 
   // Ensure auth state is restored from token on first load of auth pages
   useEffect(() => {
