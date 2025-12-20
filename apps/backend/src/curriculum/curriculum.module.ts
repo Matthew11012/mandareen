@@ -22,5 +22,6 @@ import { BillingModule } from '../billing/billing.module';
   ],
   controllers: [CurriculumController],
   providers: [CurriculumService],
+  exports: [CurriculumService],
 })
 export class CurriculumModule {}
