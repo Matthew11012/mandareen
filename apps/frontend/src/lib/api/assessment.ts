@@ -8,8 +8,17 @@ export const assessmentApi = {
   /**
    * Fetch assessment questions/passages from the backend
    */
-  async getQuestions(): Promise<AssessmentPassage[]> {
-    return get<AssessmentPassage[]>("assess/questions");
+  async getQuestions(
+    params?: { maxLevel?: number; passageCount?: number },
+    opts?: { timeoutMs?: number }
+  ): Promise<AssessmentPassage[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.maxLevel) searchParams.set("maxLevel", String(params.maxLevel));
+    if (params?.passageCount)
+      searchParams.set("passageCount", String(params.passageCount));
+    const qs = searchParams.toString();
+    const path = qs ? `assess/questions?${qs}` : "assess/questions";
+    return get<AssessmentPassage[]>(path, { timeoutMs: opts?.timeoutMs });
   },
 
   /**

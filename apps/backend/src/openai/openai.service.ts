@@ -418,36 +418,66 @@ export class OpenAIService {
       let lastError: any = null;
       for (const model of modelsToTry) {
         try {
-          const completion = await this.openai.chat.completions.create({
+          const response = await (this.openai as any).responses.create({
             model,
-            messages: [
+            reasoning: { effort: 'low' },
+            input: [
               {
                 role: 'system',
-                content:
-                  'You are a Mandarin Chinese language expert specializing in creating educational content for language learners at different HSK levels.',
+                content: [
+                  {
+                    type: 'input_text',
+                    text: `You are a precise Mandarin educator. Write a SINGLE concise passage in Simplified Chinese, perfectly matched to the requested HSK level. Do not include any extra commentary, Markdown, lists, or multiple variants—only one coherent passage.`,
+                  },
+                ],
               },
-              { role: 'user', content: prompt },
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'input_text',
+                    text: prompt,
+                  },
+                ],
+              },
             ],
-            response_format: { type: 'json_object' },
+            text: {
+              format: {
+                type: 'json_schema',
+                name: 'AssessmentPassage',
+                schema: {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string' },
+                    content: { type: 'string' },
+                    translation: { type: 'string' },
+                  },
+                  required: ['title', 'content', 'translation'],
+                  additionalProperties: false,
+                },
+              },
+            },
           });
 
-          const responseContent = completion.choices[0].message.content;
-          if (!responseContent) {
+          const content = this.extractResponseText(response);
+          if (!content) {
             throw new Error('Empty response from OpenAI');
           }
 
-          const passageData = JSON.parse(responseContent);
-
+          const passageData = JSON.parse(content);
           return {
             id: uuidv4(),
-            ...passageData,
+            title: passageData.title,
+            content: passageData.content,
+            translation: passageData.translation,
+            pinyin: '',
+            words: Array.isArray(passageData.words) ? passageData.words : [],
             targetHskLevel: hskLevel,
           };
         } catch (err: any) {
           lastError = err;
           const msg = (err?.message || '').toString();
           const code = (err?.code || '').toString();
-          // Retry if model not found; otherwise break
           if (
             msg.includes('model') &&
             (msg.includes('does not exist') ||
@@ -459,12 +489,10 @@ export class OpenAIService {
             );
             continue;
           }
-          // Non-retryable error
           throw err;
         }
       }
 
-      // Exhausted all models
       throw (
         lastError ||
         new Error('Failed to generate passage: no models available')
@@ -482,25 +510,20 @@ export class OpenAIService {
   }
 
   private createPassagePrompt(hskLevel: number): string {
-    return `
-    Create a passage in Mandarin Chinese appropriate for HSK level ${hskLevel} students. 
-    
-    The passage should:
-    1. Be 100-150 characters long for levels 1-2, 150-250 for levels 3-4, and 250-400 for levels 5+
-    2. Use vocabulary and grammar patterns appropriate for HSK level ${hskLevel}
-    3. Include a mix of common and slightly challenging words for this level
-    4. Be engaging and culturally relevant
-    
-    Please format your response as a JSON object with the following structure:
-    {
-      "title": "Title in Chinese",
-      "content": "The full passage in Chinese characters",
-      "translation": "English translation of the passage"
-    }
-    
-    For levels 1-3, include some words from the next HSK level to challenge students.
-    For levels 4+, include a few advanced words that might be unfamiliar.
-    `;
+    const lengthHint =
+      hskLevel <= 2 ? '100-150' : hskLevel <= 4 ? '150-250' : '250-400';
+    return `HSK level: ${hskLevel}
+
+    \nWrite one engaging, culturally relevant passage in Simplified Chinese with:
+    - Length: ${lengthHint} Chinese characters (exclude punctuation in the count; stay within range).
+    - Vocabulary/grammar strictly appropriate to HSK-${hskLevel}; lightly sprinkle 1-2 stretch words from the next level only if it stays readable.
+    - Coherent narrative or scene (no bullet lists, no outlines, no dialogues).
+    - Avoid idioms/rare characters that exceed the level.
+    - Provide a short, natural Chinese title.
+    - Provide a concise English translation that mirrors the Chinese meaning.
+    - Do not include pinyin; the system will enrich pinyin separately.
+
+    \nReturn ONLY JSON matching the schema (no Markdown, no extra fields).`;
   }
 
   /**
