@@ -14,13 +14,17 @@ import {
   Loader2,
   BookMarked,
   CheckCircle2,
-  Clock,
   ChevronLeft,
   ChevronRight,
   ArrowRight,
   Lock,
+  Play,
+  RotateCcw,
+  Rocket,
 } from "lucide-react";
 import * as React from "react";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 type UnitDetailResponse = Awaited<ReturnType<typeof getUnit>> | null;
 
@@ -121,142 +125,186 @@ export default function UnitDetailPage({
 
   const renderLessonRow = (lesson: LessonWithStatus) => {
     const isCompleted = lesson.status === "completed";
-    const isAvailable = lesson.status === "available";
     const lessonAccess = (lesson.access ?? unitAccess) as CurriculumAccess;
     const isLocked = lessonAccess === "preview";
 
     const getCardClasses = () => {
-      if (isCompleted) {
-        return "flex flex-col gap-4 rounded-2xl border border-green-500/40 bg-gradient-to-br from-green-900/20 to-green-800/10 p-4 transition-all duration-200 hover:border-green-500/60 hover:shadow-xl hover:scale-[1.02] shadow-lg ring-1 ring-green-500/20 hover:from-green-900/30 hover:to-green-800/20";
-      } else {
-        return "flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#2e323a] p-4 transition-all duration-200 hover:border-[#4040f2] hover:shadow-xl hover:scale-[1.02] shadow-md hover:bg-gradient-to-br hover:from-[#2e323a] hover:to-[#3a3f4a]";
-      }
-    };
+      const baseClasses =
+        "group relative flex flex-col md:flex-row md:items-center justify-between gap-6 rounded-3xl p-6 transition-all duration-500 overflow-hidden";
 
-    const getBadge = () => {
       if (isCompleted) {
-        return (
-          <div className="flex flex-col items-end gap-3">
-            <span className="inline-flex items-center gap-1 rounded-full border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs font-inter text-green-300">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Done
-            </span>
-            {typeof lesson.latestQuizScore === "number" && (
-              <span className="text-xs font-inter text-green-400 font-semibold">
-                Latest: {lesson.latestQuizScore}%
-              </span>
-            )}
-          </div>
-        );
-      } else if (isAvailable) {
-        return (
-          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-inter text-amber-300">
-            <Clock className="h-3.5 w-3.5" /> Available
-          </span>
-        );
+        return `${baseClasses} border border-green-500/20 bg-[#1a1d23] hover:border-green-500/40 shadow-lg`;
+      } else if (isLocked) {
+        return `${baseClasses} border border-white/5 bg-[#1a1d23]/50 grayscale cursor-not-allowed`;
       } else {
-        return (
-          <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2 py-1 text-xs font-inter text-white/80">
-            <Clock className="h-3.5 w-3.5" /> Pending
-          </span>
-        );
+        return `${baseClasses} border border-white/10 bg-[#1a1d23] hover:border-[#4040f2]/40 hover:bg-[#1c1f26] shadow-xl`;
       }
     };
 
     const cardContent = (
       <>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <h3 className="text-base font-inter font-semibold text-white leading-tight">
-              {(() => {
-                const match = lesson.title.match(/^(\d+\.?\d*)\s*(.*)$/);
-                if (match) {
-                  const [, number, rest] = match;
-                  return (
-                    <>
-                      <span className="text-xl sm:text-2xl font-bold text-white mr-2">
-                        {number}
-                      </span>
-                      <span className="text-base">{rest}</span>
-                    </>
-                  );
-                }
-                return lesson.title.replace(/^(\d+)\s/, "$1. ");
-              })()}
-            </h3>
+        {/* Background Accent */}
+        <div
+          className={cn(
+            "absolute -left-12 -top-12 h-32 w-32 rounded-full blur-[48px] transition-opacity duration-500 opacity-10",
+            isCompleted
+              ? "bg-green-500"
+              : isLocked
+                ? "bg-amber-500"
+                : "bg-[#4040f2]"
+          )}
+        />
+
+        <div className="relative z-10 flex flex-1 items-start gap-5">
+          {/* Lesson Number Circle */}
+          <div
+            className={cn(
+              "flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border font-inter font-black text-xl transition-all duration-500 shadow-inner",
+              isCompleted
+                ? "bg-green-500/10 border-green-500/20 text-green-400"
+                : isLocked
+                  ? "bg-white/5 border-white/10 text-[#666666]"
+                  : "bg-white/5 border-white/10 text-white group-hover:border-[#4040f2]/40 group-hover:text-[#4040f2]"
+            )}
+          >
+            {(() => {
+              const match = lesson.title.match(/^(\d+\.?\d*)\s/);
+              return match ? match[1] : "?";
+            })()}
           </div>
-          <div className="flex flex-col items-end gap-3">
-            {getBadge()}
-            {isAvailable && !isLocked && (
-              <span className="inline-flex items-center gap-1 text-sm font-inter font-semibold text-white group-hover:text-blue-300 transition-colors duration-200">
-                Start Lesson <ArrowRight className="h-4 w-4" />
-              </span>
-            )}
-            {isLocked && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs font-inter text-amber-200">
-                <Lock className="h-3.5 w-3.5" /> Preview only
-              </span>
-            )}
+
+          <div className="min-w-0 space-y-1.5 pt-1">
+            <h3
+              className={cn(
+                "text-lg font-inter font-bold transition-colors duration-300",
+                isCompleted
+                  ? "text-white/90"
+                  : isLocked
+                    ? "text-[#a6a6a6]"
+                    : "text-white group-hover:text-[#4040f2]"
+              )}
+            >
+              {lesson.title.replace(/^(\d+\.?\d*)\s/, "")}
+            </h3>
+            <div className="flex flex-wrap items-center gap-3">
+              {isCompleted ? (
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-green-500/10 border border-green-500/20 px-2 py-1 text-[10px] font-black uppercase tracking-tighter text-green-400">
+                    <CheckCircle2 className="h-3 w-3" /> COMPLETED
+                  </span>
+                  {typeof lesson.latestQuizScore === "number" && (
+                    <span className="text-xs font-inter font-bold text-green-500/60">
+                      Score: {lesson.latestQuizScore}%
+                    </span>
+                  )}
+                </div>
+              ) : isLocked ? (
+                <span className="inline-flex items-center gap-1 rounded-lg bg-amber-500/10 border border-amber-500/20 px-2 py-1 text-[10px] font-black uppercase tracking-tighter text-amber-500/80">
+                  <Lock className="h-3 w-3" /> LOCKED
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-lg bg-blue-500/10 border border-blue-500/20 px-2 py-1 text-[10px] font-black uppercase tracking-tighter text-blue-400">
+                  <Play className="h-3 w-3" /> AVAILABLE
+                </span>
+              )}
+            </div>
           </div>
         </div>
-        {isLocked && (
-          <p className="mt-2 text-sm font-inter text-amber-100/80">
-            Upgrade to Basic or Premium to unlock this lesson.
-          </p>
-        )}
+
+        <div className="relative z-10 flex flex-col md:items-end gap-3 shrink-0">
+          {!isLocked ? (
+            <div
+              className={cn(
+                "inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-inter font-bold transition-all duration-300",
+                isCompleted
+                  ? "bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20"
+                  : "bg-[#4040f2] text-white shadow-[0_4px_16px_rgba(64,64,242,0.3)] hover:bg-[#3636d9] hover:scale-[1.05] active:scale-95"
+              )}
+            >
+              {isCompleted ? (
+                <>
+                  <RotateCcw className="h-4 w-4" />
+                  Review
+                </>
+              ) : (
+                <>
+                  Start Lesson
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="text-xs font-inter font-bold text-amber-500/60 uppercase tracking-widest text-right">
+              Upgrade to Unlock
+            </div>
+          )}
+        </div>
       </>
     );
 
     if (isLocked) {
       return (
-        <div
+        <motion.div
           key={lesson.id}
-          className={`${getCardClasses()} cursor-not-allowed opacity-70`}
-          aria-disabled="true"
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          className={getCardClasses()}
         >
           {cardContent}
-        </div>
+        </motion.div>
       );
     }
 
     return (
-      <Link
+      <motion.div
         key={lesson.id}
-        href={`/curriculum/${unitId}/${lesson.id}`}
-        className={`${getCardClasses()} group`}
-        aria-label={`${lesson.title} - ${
-          isCompleted
-            ? `Completed${typeof lesson.latestQuizScore === "number" ? ` with ${lesson.latestQuizScore}% score` : ""}`
-            : isAvailable
-              ? "Available - Start Lesson"
-              : "Pending"
-        }`}
+        initial={{ opacity: 0, x: -10 }}
+        animate={{ opacity: 1, x: 0 }}
+        whileHover={{ x: 4 }}
       >
-        {cardContent}
-      </Link>
+        <Link
+          href={`/curriculum/${unitId}/${lesson.id}`}
+          className={getCardClasses()}
+          aria-label={`${lesson.title} - ${isCompleted ? "Completed" : "Start Lesson"}`}
+        >
+          {cardContent}
+        </Link>
+      </motion.div>
     );
   };
 
   const renderAccessBanner = () => {
     if (!isPreviewUnit) return null;
     return (
-      <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-inter text-amber-50">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="font-semibold">Preview unit</p>
-            <p className="mt-1 text-amber-100/80 text-sm">
-              You&apos;re viewing a preview of this curriculum unit. Free users
-              get limited full units; upgrade to Basic or Premium for full
-              access to all units and lessons.
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="rounded-3xl border border-amber-500/30 bg-amber-500/10 p-6 shadow-xl relative overflow-hidden"
+      >
+        <div className="absolute top-0 right-0 p-4 opacity-10">
+          <Lock className="h-12 w-12 text-amber-500" />
+        </div>
+        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="space-y-2">
+            <h3 className="text-lg font-inter font-black text-amber-400 uppercase tracking-widest">
+              Premium Content
+            </h3>
+            <p className="text-[#a6a6a6] text-sm leading-relaxed max-w-2xl">
+              You&apos;re currently viewing a{" "}
+              <span className="text-amber-200 font-bold">preview</span> unit.
+              Unlock the full potential of your Mandarin journey with unlimited
+              access to all 64+ grammar units.
             </p>
           </div>
           <Link
             href="/pricing"
-            className="inline-flex items-center gap-2 rounded-md bg-amber-400 px-3 py-1.5 text-xs font-semibold text-black shadow hover:bg-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#16181d]"
+            className="shrink-0 w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-500 px-8 py-3.5 text-sm font-inter font-black text-black shadow-lg hover:bg-amber-400 transition-all hover:scale-[1.05] active:scale-95"
           >
-            View plans
+            Upgrade Now
+            <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
-      </div>
+      </motion.div>
     );
   };
 
@@ -289,55 +337,109 @@ export default function UnitDetailPage({
 
         {renderAccessBanner()}
 
-        <section className="grid gap-4 md:grid-cols-[2fr_1fr]">
-          <div className="rounded-2xl border border-amber-500/40 bg-gradient-to-br from-amber-900/20 to-amber-800/10 p-6 transition-all duration-200 hover:border-amber-500/60 shadow-lg ring-1 ring-amber-500/20">
-            <h2 className="text-lg font-inter font-semibold text-white">
-              {(() => {
-                const title = unitData?.title ?? "Unit";
-                const match = title.match(/^(\d+)\s+(.+)$/);
-                if (match) {
-                  const [, number, rest] = match;
-                  return `Unit ${number}: ${rest}`;
-                }
-                return title;
-              })()}
-            </h2>
-            {unitData?.description &&
-              !/^Chapter\s*\d+:/i.test(unitData.description) && (
-                <p className="mt-2 text-sm font-inter text-white/60">
-                  {unitData.description}
+        <section className="grid gap-6 md:grid-cols-[2fr_1fr]">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="relative overflow-hidden rounded-3xl border border-amber-500/20 bg-[#1a1d23] p-8 shadow-2xl group"
+          >
+            <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-amber-500/5 blur-[80px] group-hover:bg-amber-500/10 transition-colors duration-500" />
+
+            <div className="relative z-10 space-y-4">
+              <div className="inline-flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-amber-400">
+                <Rocket className="h-3.5 w-3.5" /> Unit Detailed View
+              </div>
+
+              <h2 className="text-3xl font-inter font-black text-white leading-tight">
+                {(() => {
+                  const title = unitData?.title ?? "Unit";
+                  const match = title.match(/^(\d+)\s+(.+)$/);
+                  if (match) {
+                    const [, number, rest] = match;
+                    return (
+                      <div className="flex flex-col">
+                        <span className="text-amber-500/40 text-sm font-black mb-1">
+                          UNIT {number}
+                        </span>
+                        <span>{rest}</span>
+                      </div>
+                    );
+                  }
+                  return title;
+                })()}
+              </h2>
+
+              {unitData?.description &&
+                !/^Chapter\s*\d+:/i.test(unitData.description) && (
+                  <p className="text-base font-inter text-[#a6a6a6] leading-relaxed max-w-xl">
+                    {unitData.description}
+                  </p>
+                )}
+
+              <div className="pt-4 flex items-center gap-4">
+                <div className="flex items-center gap-2 rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-xs font-inter font-bold text-white shadow-inner">
+                  <BookMarked className="h-4 w-4 text-amber-400" />
+                  {enrichedLessons.length} Lessons
+                </div>
+                {completedCount > 0 && (
+                  <div className="flex items-center gap-2 rounded-xl bg-green-500/10 border border-green-500/20 px-4 py-2 text-xs font-inter font-bold text-green-400">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {completedCount} Completed
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="rounded-3xl border border-white/10 bg-[#1a1d23] p-8 shadow-2xl flex flex-col justify-between"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-inter font-black uppercase tracking-widest text-[#666666]">
+                Unit Mastery
+              </p>
+              <div className="flex items-baseline gap-3">
+                <span className="text-5xl font-inter font-black text-white">
+                  {enrichedLessons.length > 0
+                    ? Math.round(
+                        (completedCount / enrichedLessons.length) * 100
+                      )
+                    : 0}
+                  %
+                </span>
+                <span className="text-sm font-inter font-bold text-[#a6a6a6] uppercase">
+                  Progress
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="h-3 w-full rounded-full bg-white/5 border border-white/5 overflow-hidden shadow-inner">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{
+                    width: `${enrichedLessons.length > 0 ? (completedCount / enrichedLessons.length) * 100 : 0}%`,
+                  }}
+                  transition={{ duration: 1.2, ease: "easeOut" }}
+                  className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-400 shadow-[0_0_12px_rgba(245,158,11,0.4)]"
+                />
+              </div>
+              <div className="flex justify-between items-center">
+                <p className="text-xs font-inter font-bold text-[#666666] uppercase tracking-wider">
+                  {completedCount} of {enrichedLessons.length} finished
                 </p>
-              )}
-            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-inter text-amber-300">
-              <BookMarked className="h-4 w-4" /> {enrichedLessons.length}{" "}
-              lessons
+                {completedCount === enrichedLessons.length &&
+                  enrichedLessons.length > 0 && (
+                    <span className="text-[10px] font-black text-green-400 bg-green-500/10 px-2 py-1 rounded-md uppercase">
+                      Unit Mastered
+                    </span>
+                  )}
+              </div>
             </div>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-[#2e323a] p-6 shadow-md">
-            <h3 className="text-sm font-inter text-amber-300">Completion</h3>
-            <div className="mt-1 flex items-baseline gap-2">
-              <p
-                className="text-3xl font-inter font-bold text-white"
-                aria-label="Completion percentage"
-              >
-                {enrichedLessons.length > 0
-                  ? Math.round((completedCount / enrichedLessons.length) * 100)
-                  : 0}
-                %
-              </p>
-              <p className="text-base font-inter text-white/60">
-                {completedCount} / {enrichedLessons.length}
-              </p>
-            </div>
-            <div className="mt-3 h-2 rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-[#f59e0b] to-[#fbbf24] transition-all duration-500"
-                style={{
-                  width: `${enrichedLessons.length > 0 ? (completedCount / enrichedLessons.length) * 100 : 0}%`,
-                }}
-              />
-            </div>
-          </div>
+          </motion.div>
         </section>
 
         <section className="space-y-3">
@@ -366,72 +468,42 @@ export default function UnitDetailPage({
 
         {/* Unit Navigation */}
         {navigation && (navigation.previous || navigation.next) && (
-          <div className="pt-6 border-t border-white/10">
-            {/* Desktop: side-by-side */}
-            <div className="hidden md:flex items-center justify-between">
-              {navigation.previous ? (
-                <Link
-                  href={`/curriculum/${navigation.previous.id}`}
-                  className="inline-flex items-center gap-3 px-5 py-3 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                  <div className="text-left">
-                    <div className="text-sm text-white/60">Previous Unit</div>
-                    <div className="text-base font-medium truncate max-w-[200px]">
-                      {navigation.previous.title}
-                    </div>
-                  </div>
-                </Link>
-              ) : (
-                <div></div>
-              )}
-
-              {navigation.next ? (
-                <Link
-                  href={`/curriculum/${navigation.next.id}`}
-                  className="inline-flex items-center gap-3 px-5 py-3 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
-                >
-                  <div className="text-right">
-                    <div className="text-sm text-white/60">Next Unit</div>
-                    <div className="text-base font-medium truncate max-w-[200px]">
-                      {navigation.next.title}
-                    </div>
-                  </div>
-                  <ChevronRight className="w-5 h-5" />
-                </Link>
-              ) : (
-                <div></div>
-              )}
-            </div>
-
-            {/* Mobile: stacked with Next first */}
-            <div className="flex flex-col gap-3 md:hidden">
-              {navigation.next && (
-                <Link
-                  href={`/curriculum/${navigation.next.id}`}
-                  className="inline-flex items-center justify-between gap-3 px-5 py-3 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
-                >
-                  <div className="text-left min-w-0 flex-1">
-                    <div className="text-sm text-white/60">Next Unit</div>
-                    <div className="text-base font-medium truncate">
-                      {navigation.next.title}
-                    </div>
-                  </div>
-                  <ChevronRight className="w-5 h-5 flex-shrink-0" />
-                </Link>
-              )}
-
+          <div className="pt-10">
+            <div className="flex flex-col lg:flex-row gap-6">
               {navigation.previous && (
                 <Link
                   href={`/curriculum/${navigation.previous.id}`}
-                  className="inline-flex items-center gap-3 px-5 py-3 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+                  className="flex-1 min-w-0 group flex items-center gap-6 rounded-3xl border border-white/5 bg-[#1a1d23] p-6 transition-all duration-300 hover:border-white/20 hover:bg-[#1c1f26]"
                 >
-                  <ChevronLeft className="w-5 h-5 flex-shrink-0" />
-                  <div className="text-left min-w-0 flex-1">
-                    <div className="text-sm text-white/60">Previous Unit</div>
-                    <div className="text-base font-medium truncate">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/5 border border-white/10 transition-transform group-hover:-translate-x-1">
+                    <ChevronLeft className="h-6 w-6 text-[#a6a6a6]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-inter font-black text-[#666666] uppercase tracking-widest mb-1">
+                      Previous Unit
+                    </p>
+                    <p className="text-base font-inter font-bold text-white truncate group-hover:text-[#4040f2] transition-colors">
                       {navigation.previous.title}
-                    </div>
+                    </p>
+                  </div>
+                </Link>
+              )}
+
+              {navigation.next && (
+                <Link
+                  href={`/curriculum/${navigation.next.id}`}
+                  className="flex-1 min-w-0 group flex items-center justify-between gap-6 rounded-3xl border border-white/5 bg-[#1a1d23] p-6 transition-all duration-300 hover:border-white/20 hover:bg-[#1c1f26]"
+                >
+                  <div className="min-w-0 flex-1 text-right">
+                    <p className="text-[10px] font-inter font-black text-[#666666] uppercase tracking-widest mb-1">
+                      Next Unit
+                    </p>
+                    <p className="text-base font-inter font-bold text-white truncate group-hover:text-[#4040f2] transition-colors">
+                      {navigation.next.title}
+                    </p>
+                  </div>
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/5 border border-white/10 transition-transform group-hover:translate-x-1">
+                    <ChevronRight className="h-6 w-6 text-[#a6a6a6]" />
                   </div>
                 </Link>
               )}
