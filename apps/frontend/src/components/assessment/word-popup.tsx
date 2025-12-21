@@ -63,10 +63,30 @@ export const WordPopup: React.FC<WordPopupProps> = ({
   };
 
   // Calculate popup position to avoid going off screen
+  const popupWidth = 224; // w-56
+  const popupHeight = 240; // Estimated max height
+  const padding = 16;
+
+  let left = position.x - popupWidth / 2;
+  let top = position.y - popupHeight - 10; // Default to above
+
+  // Clamp horizontal
+  if (typeof window !== "undefined") {
+    left = Math.max(
+      padding,
+      Math.min(left, window.innerWidth - popupWidth - padding)
+    );
+
+    // Check if it fits above, otherwise show below
+    if (position.y < popupHeight + padding) {
+      top = position.y + 30; // Show below (offset by some word height estimate)
+    }
+  }
+
   const popupStyle: React.CSSProperties = {
     position: "fixed",
-    left: Math.max(10, Math.min(position.x - 100, window.innerWidth - 220)), // Keep popup on screen
-    top: Math.max(10, position.y - 120), // Position above the clicked word
+    left,
+    top,
     zIndex: 1000,
   };
 
@@ -74,7 +94,7 @@ export const WordPopup: React.FC<WordPopupProps> = ({
     <div
       ref={popupRef}
       style={popupStyle}
-      className="bg-[#2e323a] border border-[#404040] rounded-xl shadow-2xl p-4 w-52 animate-in fade-in-0 zoom-in-95 duration-200"
+      className="bg-[#2e323a] border border-[#404040] rounded-2xl shadow-2xl p-5 w-56 animate-in fade-in-0 zoom-in-95 duration-200"
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
