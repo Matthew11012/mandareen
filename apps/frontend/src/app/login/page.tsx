@@ -34,6 +34,10 @@ function LoginPageContent() {
   const planInfo = redirectUrl
     ? (() => {
         try {
+          // Only parse on client-side to avoid SSR errors
+          if (typeof window === "undefined") {
+            return null;
+          }
           const urlObj = new URL(redirectUrl, window.location.origin);
           const plan = urlObj.searchParams.get("plan");
           const billingPeriod = urlObj.searchParams.get("billingPeriod");
