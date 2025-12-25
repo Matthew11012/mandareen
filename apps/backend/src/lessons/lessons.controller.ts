@@ -363,6 +363,8 @@ export class LessonsController {
       viewAccess: LessonAccess,
       owned = false,
     ) => {
+      // Only log for FREE plan users
+      // Paid users (BASIC/PREMIUM) don't need this logged as it's always 0
       if (!isFreePlan) {
         return;
       }
@@ -387,7 +389,8 @@ export class LessonsController {
     if (isCreator) {
       await recordAnalytics('community_full_view', 'full', true);
     } else if (planCode === 'BASIC' || planCode === 'PREMIUM') {
-      await recordAnalytics('community_full_view', 'full');
+      // Skip logging for paid users - they have unlimited access
+      // Only log for FREE plan users
     } else {
       const limit = await this.billingPlanService.getLimit(userId, resource);
       if (!limit || typeof limit.monthlyCap !== 'number') {

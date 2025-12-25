@@ -246,7 +246,26 @@ export class UsageController {
       (limit) => !OMITTED_USAGE_RESOURCES.has(limit.resource),
     );
 
-    const resourceNames = displayLimits.map((limit) => limit.resource);
+    // Create a map of resource -> limit for quick lookup
+    const limitMap = new Map<string, typeof displayLimits[0]>();
+    for (const limit of displayLimits) {
+      limitMap.set(limit.resource, limit);
+    }
+
+    // Include all resources that have usage data, even if not in plan limits
+    // This ensures resources like convo_manual_notes and lesson_custom_generated
+    // appear in the summary if they have usage recorded
+    const allResourceNames = new Set<string>();
+    for (const limit of displayLimits) {
+      allResourceNames.add(limit.resource);
+    }
+    for (const resource of usageMap.keys()) {
+      if (!OMITTED_USAGE_RESOURCES.has(resource)) {
+        allResourceNames.add(resource);
+      }
+    }
+
+    const resourceNames = Array.from(allResourceNames);
     const resetMap = resetTimestamp
       ? new Map<string, string>()
       : await this.usageService.getWindowResetsAt(userId, resourceNames, {
@@ -266,17 +285,19 @@ export class UsageController {
       }
     > = {};
 
-    // Process each limit to build the response
-    for (const limit of displayLimits) {
-      const used = usageMap.get(limit.resource) || 0;
-      const cap = limit.monthlyCap;
+    // Process all resources (both in plan limits and with usage data)
+    for (const resource of resourceNames) {
+      const used = usageMap.get(resource) || 0;
+      const limit = limitMap.get(resource);
+      // If resource is not in plan limits, use cap 0 (unlimited) or fetch from FREE plan
+      const cap = limit?.monthlyCap ?? 0;
       const pct = cap > 0 ? Math.round((used / cap) * 100 * 100) / 100 : 0; // Round to 2 decimals
       const resetsAt =
         resetTimestamp ||
-        resetMap.get(limit.resource) ||
+        resetMap.get(resource) ||
         new Date().toISOString();
 
-      resources[limit.resource] = {
+      resources[resource] = {
         used,
         cap,
         pct,
