@@ -228,8 +228,6 @@ export class CurriculumController {
         ? (lesson as any).activities
         : [];
 
-    // Only log curriculum_unit_full_access for FREE plan users
-    // Paid users (BASIC/PREMIUM) don't need this logged as it's always 0
     if (isFreePlan) {
       try {
         await this.usageService.recordAnalytics({
@@ -248,7 +246,6 @@ export class CurriculumController {
         this.logger.warn('Failed to record curriculum lesson view', err as any);
       }
     }
-    // Explicitly skip logging for paid plans (BASIC/PREMIUM)
 
     const lessonRest = { ...(lesson as any) };
     delete (lessonRest as any).unit;
