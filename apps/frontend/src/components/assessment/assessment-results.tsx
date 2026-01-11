@@ -10,6 +10,17 @@ interface AssessmentResultsProps {
 }
 
 const HSK_LEVEL_INFO = {
+  0: {
+    name: "Novice - Below HSK 1",
+    description: "You are just starting your Mandarin journey!",
+    vocabulary: "0-150 words",
+    color: "from-zinc-500 to-zinc-600",
+    recommendations: [
+      "Start with basic Pinyin and tones",
+      "Learn essential survival phrases",
+      "Practice basic strokes for characters",
+    ],
+  },
   1: {
     name: "HSK Level 1 - Beginner",
     description: "You can understand basic Chinese expressions and characters.",
@@ -145,7 +156,7 @@ export const AssessmentResults: React.FC<AssessmentResultsProps> = ({
         </div>
         <div className="space-y-3">
           {levelInfo.recommendations.map((recommendation, index) => (
-            <div key={index} className="flex items-start gap-3">
+            <div key={index} className="flex items-end gap-3">
               <div className="w-6 h-6 bg-[#4040f2] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                 <span className="text-white text-xs font-bold">
                   {index + 1}
@@ -173,8 +184,8 @@ export const AssessmentResults: React.FC<AssessmentResultsProps> = ({
                 Start AI Lessons
               </h4>
               <p className="text-sm text-[#a6a6a6] font-inter mb-4">
-                Begin personalized lessons tailored to your HSK {levelPlaced}{" "}
-                level
+                Begin personalized lessons tailored to your{" "}
+                {levelPlaced === 0 ? "Novice" : `HSK ${levelPlaced}`} level
               </p>
               <div className="flex items-center gap-2 text-sm text-green-400 font-inter">
                 <span>Available</span>
@@ -201,7 +212,7 @@ export const AssessmentResults: React.FC<AssessmentResultsProps> = ({
                 Monitor your learning journey and see improvement over time
               </p>
               <div className="flex items-center gap-2 text-sm text-blue-400 font-inter">
-                <span>Coming Soon</span>
+                <span>Available</span>
                 <ArrowRight className="w-4 h-4" />
               </div>
             </div>

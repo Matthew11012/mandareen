@@ -387,7 +387,7 @@ export class LessonsController {
     if (isCreator) {
       await recordAnalytics('community_full_view', 'full', true);
     } else if (planCode === 'BASIC' || planCode === 'PREMIUM') {
-      await recordAnalytics('community_full_view', 'full');
+      // Paid users have unlimited access, no need to log analytics
     } else {
       const limit = await this.billingPlanService.getLimit(userId, resource);
       if (!limit || typeof limit.monthlyCap !== 'number') {

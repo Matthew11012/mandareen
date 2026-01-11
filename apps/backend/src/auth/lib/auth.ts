@@ -47,8 +47,8 @@ export function createAuthConfig(emailService: EmailService) {
     },
     session: {
       modelName: 'BetterAuthSession',
-      expiresIn: 60 * 60 * 24, // 24h to match legacy JWT cookies
-      updateAge: 60 * 60, // refresh once per hour when active
+      expiresIn: 60 * 60 * 24 * 2, // 2 days
+      updateAge: 60 * 30, // refresh every 30 minutes when active
     },
     account: {
       modelName: 'BetterAuthAccount',

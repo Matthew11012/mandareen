@@ -17,11 +17,14 @@ import {
   Layers,
   Loader2,
   Rocket,
-  Play,
-  RotateCcw,
   ChevronUp,
   Lock,
+  Search,
+  ArrowRight,
+  X,
 } from "lucide-react";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -346,220 +349,187 @@ export default function CurriculumUnitsPage() {
     // Status-based styling
     const getCardClasses = () => {
       const baseClasses =
-        "group relative flex flex-col rounded-2xl p-5 transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-2 focus:ring-offset-[#222831]";
+        "group relative flex flex-col rounded-3xl p-6 transition-all duration-500 cursor-pointer overflow-hidden";
 
       if (isCompleted) {
-        return `${baseClasses} border border-green-500/50 bg-gradient-to-br from-green-900/20 to-green-800/10 hover:border-green-500/70 hover:from-green-900/30 hover:to-green-800/20 hover:shadow-xl hover:scale-[1.02] shadow-lg ring-1 ring-green-500/30`;
+        return `${baseClasses} border border-green-500/20 bg-[#1a1d23] hover:border-green-500/40 shadow-[0_8px_32px_rgba(34,197,94,0.05)]`;
       } else if (isInProgress) {
-        return `${baseClasses} border border-amber-500/50 bg-gradient-to-br from-amber-900/20 to-amber-800/10 hover:border-amber-500/70 hover:from-amber-900/30 hover:to-amber-800/20 hover:shadow-xl hover:scale-[1.02] shadow-lg ring-1 ring-amber-500/30`;
+        return `${baseClasses} border border-amber-500/20 bg-[#1a1d23] hover:border-amber-500/40 shadow-[0_8px_32px_rgba(245,158,11,0.05)]`;
       } else {
-        return `${baseClasses} border border-white/10 bg-[#2e323a] hover:border-[#4040f2] hover:shadow-lg hover:scale-[1.02] shadow-md`;
+        return `${baseClasses} border border-white/5 bg-[#1a1d23] hover:border-[#4040f2]/40 shadow-xl`;
       }
     };
 
     const getIconContainerClasses = () => {
+      const base =
+        "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition-transform duration-500 group-hover:scale-110";
       if (isCompleted) {
-        return "flex h-10 w-10 items-center justify-center rounded-xl border border-green-500/30 bg-green-500/15";
+        return `${base} border border-green-500/20 bg-green-500/5`;
       } else if (isInProgress) {
-        return "flex h-10 w-10 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/15 animate-pulse";
+        return `${base} border border-amber-500/20 bg-amber-500/5`;
       } else {
-        return "flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5";
-      }
-    };
-
-    const getIconClasses = () => {
-      if (isCompleted) {
-        return "h-5 w-5 text-green-400";
-      } else if (isInProgress) {
-        return "h-5 w-5 text-amber-400";
-      } else {
-        return "h-5 w-5 text-white/70";
+        return `${base} border border-white/5 bg-white/5`;
       }
     };
 
     const getProgressBarClasses = () => {
       if (isCompleted) {
-        return "h-full rounded-full bg-gradient-to-r from-[#20c997] to-[#38ef7d] transition-all duration-300";
+        return "h-full rounded-full bg-gradient-to-r from-green-500 to-emerald-400 shadow-[0_0_8px_rgba(34,197,94,0.4)]";
       } else if (isInProgress) {
-        return "h-full rounded-full bg-gradient-to-r from-[#f59e0b] to-[#fbbf24] transition-all duration-300";
+        return "h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-400 shadow-[0_0_8px_rgba(245,158,11,0.4)]";
       } else {
-        return "h-full rounded-full bg-gradient-to-r from-[#4040f2] to-[#7c80ff] transition-all duration-300";
-      }
-    };
-
-    const getIconComponent = () => {
-      if (isCompleted) {
-        return <CheckCircle2 className={getIconClasses()} />;
-      } else if (isInProgress) {
-        return <Rocket className={getIconClasses()} />;
-      } else {
-        return <BookOpen className={getIconClasses()} />;
-      }
-    };
-
-    const getStatusBadge = () => {
-      if (isCompleted) {
-        return (
-          <span className="inline-flex items-center gap-1 rounded-full border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs font-inter text-green-300">
-            <CheckCircle2 className="h-3 w-3" /> Completed
-          </span>
-        );
-      } else if (isInProgress) {
-        return (
-          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-inter text-amber-300">
-            <Rocket className="h-3 w-3" /> In Progress
-          </span>
-        );
-      } else {
-        return (
-          <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2 py-1 text-xs font-inter text-white/80">
-            <BookOpen className="h-3 w-3" /> Not Started
-          </span>
-        );
-      }
-    };
-
-    const renderAccessBadge = () => {
-      if (isPreviewUnit) {
-        return (
-          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-1 text-[11px] font-inter text-amber-100">
-            <Lock className="h-3 w-3" /> Preview only
-          </span>
-        );
-      }
-      if (isFreeSampleUnit) {
-        return (
-          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-inter text-emerald-200">
-            <BookOpen className="h-3 w-3" /> Free sample
-          </span>
-        );
-      }
-      return null;
-    };
-
-    const getActionButton = () => {
-      if (isPreviewUnit) {
-        return (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-inter text-amber-200 transition-colors duration-200 hover:bg-amber-500/20 hover:border-amber-500/50 cursor-pointer"
-            aria-label="Upgrade to unlock this unit"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              window.location.href = "/pricing";
-            }}
-          >
-            <Lock className="h-3.5 w-3.5" />
-            Unlock unit
-          </button>
-        );
-      }
-
-      if (isCompleted) {
-        return (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              window.location.href = `/curriculum/${unit.id}`;
-            }}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2 text-xs font-inter text-green-300 transition-colors duration-200 hover:bg-green-500/20 hover:border-green-500/50 cursor-pointer"
-            aria-label="Review completed unit"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Review Unit
-          </button>
-        );
-      } else if (isInProgress) {
-        return (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              window.location.href = `/curriculum/${unit.id}`;
-            }}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-inter text-amber-300 transition-colors duration-200 hover:bg-amber-500/20 hover:border-amber-500/50 cursor-pointer"
-            aria-label="Continue learning this unit"
-          >
-            <Play className="h-3.5 w-3.5" />
-            Continue Learning
-          </button>
-        );
-      } else {
-        return (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              window.location.href = `/curriculum/${unit.id}`;
-            }}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs font-inter text-blue-300 transition-colors duration-200 hover:bg-blue-500/20 hover:border-blue-500/50 cursor-pointer"
-            aria-label="Start this unit"
-          >
-            <Play className="h-3.5 w-3.5" />
-            Start Unit
-          </button>
-        );
+        return "h-full rounded-full bg-gradient-to-r from-[#4040f2] to-[#7c80ff] shadow-[0_0_8px_rgba(64,64,242,0.4)]";
       }
     };
 
     return (
-      <Link
+      <motion.div
         key={unit.id}
-        href={`/curriculum/${unit.id}`}
-        className={getCardClasses()}
-        aria-label={`${unit.title} - ${isCompleted ? "Completed" : isInProgress ? "In progress" : "Not started"}`}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ y: -6 }}
+        className="relative"
       >
-        {/* Celebratory shine effect for completed units */}
-        {isCompleted && (
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 animate-pulse" />
-        )}
+        <Link
+          href={`/curriculum/${unit.id}`}
+          className={getCardClasses()}
+          aria-label={`${unit.title} - ${isCompleted ? "Completed" : isInProgress ? "In progress" : "Not started"}`}
+        >
+          {/* Background effects */}
+          <div
+            className={cn(
+              "absolute -right-8 -top-8 h-32 w-32 rounded-full blur-[64px] transition-opacity duration-500 opacity-20",
+              isCompleted
+                ? "bg-green-500"
+                : isInProgress
+                  ? "bg-amber-500"
+                  : "bg-[#4040f2]"
+            )}
+          />
 
-        <div className="flex items-start gap-3 relative z-10">
-          <div className="flex-1 min-w-0 space-y-2">
-            <h3 className="font-inter font-semibold text-white group-hover:text-white/90 leading-tight">
-              {(() => {
-                const match = unit.title.match(/^(\d+)\.?\s*(.*)$/);
-                if (match) {
-                  const [, number, rest] = match;
+          <div className="relative z-10 flex items-start justify-between gap-4 mb-6">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {isCompleted ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-500/10 border border-green-500/20 text-[10px] font-black uppercase tracking-tighter text-green-400">
+                    <CheckCircle2 className="h-3 w-3" /> COMPLETED
+                  </span>
+                ) : isInProgress ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] font-black uppercase tracking-tighter text-amber-400">
+                    <Rocket className="h-3 w-3" /> IN PROGRESS
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-tighter text-[#a6a6a6]">
+                    <BookOpen className="h-3 w-3" /> NOT STARTED
+                  </span>
+                )}
+
+                {isPreviewUnit && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] font-black uppercase tracking-tighter text-amber-200">
+                    <Lock className="h-3 w-3" /> LOCKED
+                  </span>
+                )}
+                {isFreeSampleUnit && !isPreviewUnit && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-black uppercase tracking-tighter text-emerald-300">
+                    FREE SAMPLE
+                  </span>
+                )}
+              </div>
+
+              <h3 className="font-inter leading-tight">
+                {(() => {
+                  const match = unit.title.match(/^(\d+)\.?\s*(.*)$/);
+                  if (match) {
+                    const [, number, rest] = match;
+                    return (
+                      <div className="flex flex-col">
+                        <span className="text-3xl font-black text-white/20 -mb-2 tabular-nums">
+                          {number.padStart(2, "0")}
+                        </span>
+                        <span className="text-xl font-bold text-white group-hover:text-[#4040f2] transition-colors line-clamp-2">
+                          {rest}
+                        </span>
+                      </div>
+                    );
+                  }
                   return (
-                    <>
-                      <span className="sm:text-2xl text-lg font-bold text-white/90">
-                        {number}{" "}
-                      </span>
-                      <span className="sm:text-xl text-md">{rest}</span>
-                    </>
+                    <span className="text-xl font-bold text-white">
+                      {unit.title}
+                    </span>
                   );
-                }
-                return unit.title;
-              })()}
-            </h3>
-            <div className="flex flex-wrap items-center gap-2 mt-1">
-              {getStatusBadge()}
-              {renderAccessBadge()}
+                })()}
+              </h3>
+            </div>
+
+            <div className={getIconContainerClasses()}>
+              {isCompleted ? (
+                <CheckCircle2 className="h-6 w-6 text-green-400" />
+              ) : isInProgress ? (
+                <Rocket className="h-6 w-6 text-amber-400" />
+              ) : (
+                <BookOpen className="h-6 w-6 text-white/30" />
+              )}
             </div>
           </div>
-          <div className={`flex-shrink-0 ${getIconContainerClasses()}`}>
-            {getIconComponent()}
+
+          <div className="relative z-10 mt-auto space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[11px] font-inter font-bold uppercase tracking-wider">
+                <span className="text-[#666666]">
+                  {done} / {total} LESSONS
+                </span>
+                <span
+                  className={cn(
+                    isCompleted
+                      ? "text-green-400"
+                      : isInProgress
+                        ? "text-amber-400"
+                        : "text-[#4040f2]"
+                  )}
+                >
+                  {percent}%
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-white/5 border border-white/5 overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${percent}%` }}
+                  transition={{ duration: 1, delay: 0.2 }}
+                  className={getProgressBarClasses()}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              {isPreviewUnit ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.location.href = "/pricing";
+                  }}
+                  className="flex items-center gap-2 text-xs font-inter font-bold text-amber-400 hover:text-amber-300 transition-colors"
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  Unlock unit
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 text-xs font-inter font-bold text-[#a6a6a6] group-hover:text-white transition-colors">
+                  <span>
+                    {isCompleted
+                      ? "Review Unit"
+                      : isInProgress
+                        ? "Continue"
+                        : "Start Unit"}
+                  </span>
+                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="mt-3 space-y-3 relative z-10">
-          <div className="flex items-center justify-between text-xs font-inter text-white/80">
-            <span aria-label="Lessons completed">
-              {done} / {total} lessons
-            </span>
-            <span className="font-semibold">{percent}%</span>
-          </div>
-          <div className="h-2 rounded-full bg-white/10">
-            <div
-              className={getProgressBarClasses()}
-              style={{ width: `${percent}%` }}
-            />
-          </div>
-          <div className="flex justify-end">{getActionButton()}</div>
-        </div>
-      </Link>
+        </Link>
+      </motion.div>
     );
   };
 
@@ -578,81 +548,112 @@ export default function CurriculumUnitsPage() {
       title="Curriculum"
       subtitle="Follow the Modern Mandarin Chinese Grammar pathway, lesson by lesson."
     >
-      <div className="p-6 space-y-8">
+      <div className="p-6 space-y-10">
         {error && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-inter text-red-200">
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-inter text-red-200"
+          >
             {error}
-          </div>
+          </motion.div>
         )}
 
-        <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-[#2e323a] p-5 shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/15 border border-amber-500/30 shrink-0">
-                <Compass className="h-5 w-5 text-amber-400" />
+        <section className="grid gap-6 md:grid-cols-3">
+          <motion.div
+            className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#1a1d23] p-6 shadow-xl group"
+          >
+            <div className="relative z-10 flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/10 border border-amber-500/20 shadow-inner">
+                <Compass className="h-6 w-6 text-amber-400" />
               </div>
-              <div>
-                <p className="text-sm font-inter text-amber-300">Next step</p>
-                <p className="text-base font-inter font-semibold text-white">
-                  {nextUnit ? nextUnit.title : "Curriculum coming soon"}
+              <div className="space-y-1 min-w-0">
+                <p className="text-xs font-inter font-bold uppercase tracking-wider text-amber-500/80">
+                  Next Step
                 </p>
+                <h3 className="text-lg font-inter font-bold text-white line-clamp-1">
+                  {nextUnit ? nextUnit.title : "Coming soon"}
+                </h3>
               </div>
             </div>
             {nextUnit && (
               <Link
                 href={`/curriculum/${nextUnit.id}`}
-                aria-label={`Go to curriculum unit ${nextUnit.title}`}
-                className="mt-4 inline-flex items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-inter text-amber-300 transition-colors duration-200 hover:bg-amber-500/20"
+                className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-inter font-bold text-black transition-all duration-200 hover:bg-amber-400 hover:scale-[1.02] active:scale-95 shadow-[0_4px_20px_rgba(245,158,11,0.2)] cursor-pointer"
               >
-                Go to unit
+                Continue Path
+                <ArrowRight className="h-4 w-4" />
               </Link>
             )}
-          </div>
+          </motion.div>
 
-          <div className="rounded-2xl border border-white/10 bg-[#2e323a] p-5 shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/15 border border-green-500/30">
-                <CheckCircle2 className="h-5 w-5 text-green-400" />
+          <motion.div
+            className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#1a1d23] p-6 shadow-xl group"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="relative z-10 flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-green-500/10 border border-green-500/20 shadow-inner">
+                <CheckCircle2 className="h-6 w-6 text-green-400" />
               </div>
-              <div>
-                <p className="text-sm font-inter text-green-300">
-                  Overall progress
+              <div className="space-y-1">
+                <p className="text-xs font-inter font-bold uppercase tracking-wider text-green-500/80">
+                  Total Progress
                 </p>
-                <p className="text-lg font-inter font-semibold text-white">
-                  {totals.percent}% complete
-                </p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-inter font-black text-white">
+                    {totals.percent}%
+                  </span>
+                  <span className="text-xs font-inter text-[#a6a6a6]">
+                    Completed
+                  </span>
+                </div>
               </div>
             </div>
-            <div className="mt-4 h-2 rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-[#20c997] to-[#38ef7d] transition-all duration-500"
-                style={{ width: `${totals.percent}%` }}
-              />
-            </div>
-            <p className="mt-2 text-xs font-inter text-white/80">
-              {totals.completedLessons} of {totals.totalLessons} lessons
-              finished
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-[#2e323a] p-5 shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/15 border border-purple-500/30">
-                <Layers className="h-5 w-5 text-purple-400" />
+            <div className="mt-6 space-y-2">
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/5 border border-white/5 shadow-inner">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${totals.percent}%` }}
+                  transition={{ duration: 1, ease: "easeOut" }}
+                  className="h-full rounded-full bg-gradient-to-r from-green-500 to-emerald-400 shadow-[0_0_12px_rgba(34,197,94,0.4)]"
+                />
               </div>
-              <div>
-                <p className="text-sm font-inter text-purple-300">
-                  Units available
+              <p className="text-[11px] font-inter text-[#a6a6a6] flex justify-between">
+                <span>
+                  {totals.completedLessons} of {totals.totalLessons} lessons
+                </span>
+                <span className="font-bold text-green-400/80">
+                  {Math.round(totals.percent)}%
+                </span>
+              </p>
+            </div>
+          </motion.div>
+
+          <motion.div
+            className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#1a1d23] p-6 shadow-xl group"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="relative z-10 flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-purple-500/10 border border-purple-500/20 shadow-inner">
+                <Layers className="h-6 w-6 text-purple-400" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-inter font-bold uppercase tracking-wider text-purple-500/80">
+                  Units Available
                 </p>
-                <p className="text-lg font-inter font-semibold text-white">
+                <h3 className="text-2xl font-inter font-black text-white">
                   {units.length}
-                </p>
+                </h3>
               </div>
             </div>
-            <p className="mt-2 text-xs font-inter text-white/70">
-              Filter by status to focus on what matters next.
+            <p className="mt-6 text-xs font-inter leading-relaxed text-[#a6a6a6]">
+              Structured curriculum based on{" "}
+              <span className="text-white font-medium">
+                Modern Mandarin Grammar
+              </span>
+              . Explore by status or search below.
             </p>
-          </div>
+          </motion.div>
         </section>
 
         <div
@@ -691,155 +692,141 @@ export default function CurriculumUnitsPage() {
           </button>
         </div>
 
-        <section className="space-y-4">
-          {/* Source selector and Search bar container */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            {/* Source selector */}
-            <div className="flex flex-wrap items-center gap-2">
-              {sources.map((s) => {
-                const active = selectedSourceKey === s.key;
-                return (
-                  <button
-                    key={s.key}
-                    type="button"
-                    onClick={() => {
-                      setSelectedSourceKey(s.key);
-                      setSelectedSourceId(s.id);
-                    }}
-                    className={
-                      "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-inter transition-colors duration-200" +
-                      (active
-                        ? " border-white bg-white text-black"
-                        : " border-white/10 bg-white/5 text-white/80 hover:bg-white/10")
-                    }
-                    aria-pressed={active}
-                    aria-label={`Select source ${s.title}`}
-                  >
-                    <span>{s.title}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Search bar */}
-            <div className="flex items-center gap-3">
-              <div className="relative w-full sm:w-auto sm:min-w-[300px]">
-                <input
-                  type="text"
-                  placeholder="Search units by title"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full px-4 py-2 pl-10 pr-10 bg-[#2e323a] border border-white/10 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-colors duration-200"
-                  aria-label="Search curriculum units"
-                />
-                <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                  <svg
-                    className="w-4 h-4 text-white/50"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
+        <section className="space-y-6">
+          <div className="flex flex-col gap-6 p-1">
+            {/* Control Bar */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+              {/* Left side: Source & Search */}
+              <div className="flex flex-col justify-between md:flex-row items-start md:items-center gap-4 flex-1">
+                {/* Source Selectors */}
+                <div className="flex items-center gap-1.5 bg-[#1a1d23] p-1.5 rounded-2xl border border-white/10">
+                  {sources.map((s) => {
+                    const active = selectedSourceKey === s.key;
+                    return (
+                      <button
+                        key={s.key}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSourceKey(s.key);
+                          setSelectedSourceId(s.id);
+                        }}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-xs font-inter font-bold uppercase tracking-wider transition-all duration-300",
+                          active
+                            ? "bg-[#4040f2] text-white shadow-[0_4px_12px_rgba(64,64,242,0.3)]"
+                            : "text-[#a6a6a6] hover:text-white hover:bg-white/5"
+                        )}
+                        aria-pressed={active}
+                      >
+                        {s.title}
+                      </button>
+                    );
+                  })}
                 </div>
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/50 hover:text-white transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded"
-                    aria-label="Clear search"
-                    type="button"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                )}
-              </div>
-              {debouncedSearchQuery.trim() && (
-                <div className="text-sm text-white/70 whitespace-nowrap">
-                  {filteredUnits.length} result
-                  {filteredUnits.length !== 1 ? "s" : ""} found
-                </div>
-              )}
-            </div>
-          </div>
 
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <h2 className="text-lg font-inter font-semibold text-white">
-              Units
-            </h2>
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Sort dropdown */}
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-[200px] min-h-[44px] bg-[#2e323a] border-white/10 text-white hover:bg-[#2e323a]/80 focus:ring-blue-500/50">
-                  <SelectValue placeholder="Sort by Order" />
-                </SelectTrigger>
-                <SelectContent className="bg-[#2e323a] border-white/10">
-                  <SelectItem
-                    value="order"
-                    className="text-white hover:bg-white/10 focus:bg-white/10 hover:text-white focus:text-white data-[highlighted]:text-white"
-                  >
-                    Sort by Order
-                  </SelectItem>
-                  <SelectItem
-                    value="progress-low"
-                    className="text-white hover:bg-white/10 focus:bg-white/10 hover:text-white focus:text-white data-[highlighted]:text-white"
-                  >
-                    Progress (Low to High)
-                  </SelectItem>
-                  <SelectItem
-                    value="progress-high"
-                    className="text-white hover:bg-white/10 focus:bg-white/10 hover:text-white focus:text-white data-[highlighted]:text-white"
-                  >
-                    Progress (High to Low)
-                  </SelectItem>
-                  <SelectItem
-                    value="title"
-                    className="text-white hover:bg-white/10 focus:bg-white/10 hover:text-white focus:text-white data-[highlighted]:text-white"
-                  >
-                    Title (A-Z)
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="flex flex-wrap gap-2">
-                {filters.map(({ value, label, count }) => {
-                  const isActive = filter === value;
-                  return (
+                {/* Search Input */}
+                <div className="relative w-full md:w-80 group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#a6a6a6] group-focus-within:text-white transition-colors">
+                    <Search className="h-4 w-4" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search units..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-[#1a1d23] border border-white/10 rounded-2xl py-3 pl-11 pr-11 text-sm font-inter text-white placeholder-[#666666] focus:outline-none focus:ring-2 focus:ring-[#4040f2]/50 focus:border-[#4040f2]/50 transition-all duration-200 shadow-inner"
+                  />
+                  {searchQuery && (
                     <button
-                      key={value}
-                      type="button"
-                      onClick={() => setFilter(value)}
-                      className={
-                        "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-inter transition-all duration-200 cursor-pointer min-h-[44px]" +
-                        (isActive
-                          ? " border-white bg-white text-black font-semibold shadow-md"
-                          : " border-white/10 bg-white/5 text-white/80 hover:bg-white/10 hover:border-white/20 hover:scale-105")
-                      }
-                      aria-pressed={isActive}
-                      aria-label={`Filter by ${label.toLowerCase()}`}
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-[#666666] hover:text-white hover:bg-white/10 transition-all"
                     >
-                      <span>{label}</span>
-                      <span className="font-medium">{count}</span>
+                      <X className="h-4 w-4" />
                     </button>
-                  );
-                })}
+                  )}
+                </div>
+              </div>
+
+              {/* Right side: Filter & Sort */}
+              <div className="flex flex-wrap justify-between items-center gap-4">
+                <div className="flex items-center gap-2 bg-[#1a1d23] p-1.5 rounded-2xl border border-white/10">
+                  {filters.map(({ value, label, count }) => {
+                    const isActive = filter === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setFilter(value)}
+                        className={cn(
+                          "relative px-4 py-2 rounded-xl text-xs font-inter font-bold transition-all duration-300 flex items-center gap-2 cursor-pointer",
+                          isActive
+                            ? "bg-white text-black shadow-lg scale-[1.02]"
+                            : "text-[#a6a6a6] hover:text-white hover:bg-white/5"
+                        )}
+                      >
+                        {label}
+                        <span
+                          className={cn(
+                            "px-1.5 py-0.5 rounded-md text-[10px] font-black",
+                            isActive
+                              ? "bg-black/10 text-black/60"
+                              : "bg-white/5 text-[#666666]"
+                          )}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="w-full sm:w-[180px] h-[48px] bg-[#1a1d23] border-white/10 rounded-2xl text-xs font-inter font-bold uppercase tracking-wider text-white hover:bg-[#2e323a] focus:ring-[#4040f2]/50 transition-all">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1a1d23] border-white/10 rounded-xl overflow-hidden shadow-2xl">
+                    <SelectItem
+                      value="order"
+                      className="text-xs font-bold font-inter text-[#a6a6a6] focus:bg-white/5 focus:text-white py-3"
+                    >
+                      ORDER
+                    </SelectItem>
+                    <SelectItem
+                      value="progress-low"
+                      className="text-xs font-bold font-inter text-[#a6a6a6] focus:bg-white/5 focus:text-white py-3"
+                    >
+                      PROGRESS (LOW-HIGH)
+                    </SelectItem>
+                    <SelectItem
+                      value="progress-high"
+                      className="text-xs font-bold font-inter text-[#a6a6a6] focus:bg-white/5 focus:text-white py-3"
+                    >
+                      PROGRESS (HIGH-LOW)
+                    </SelectItem>
+                    <SelectItem
+                      value="title"
+                      className="text-xs font-bold font-inter text-[#a6a6a6] focus:bg-white/5 focus:text-white py-3"
+                    >
+                      TITLE (A-Z)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
+
+            {debouncedSearchQuery.trim() && (
+              <motion.p
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="text-sm font-inter text-[#666666]"
+              >
+                Showing{" "}
+                <span className="text-white font-bold">
+                  {filteredUnits.length}
+                </span>{" "}
+                units matching your search
+              </motion.p>
+            )}
           </div>
 
           {loading ? (

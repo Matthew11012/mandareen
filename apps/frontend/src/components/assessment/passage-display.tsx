@@ -230,7 +230,7 @@ export const PassageDisplay: React.FC<PassageDisplayProps> = ({
       </div>
 
       {/* Passage Content */}
-      <div className="bg-[#1a1d23] rounded-xl p-6 border border-[#404040]">
+      <div className="sm:bg-[#1a1d23] rounded-xl p-2 sm:p-6 sm:border border-[#404040]">
         <div className="text-xl leading-relaxed text-white font-medium">
           {segments.map((segment, index) => {
             if (!segment.isWord) {
@@ -252,10 +252,12 @@ export const PassageDisplay: React.FC<PassageDisplayProps> = ({
                 key={index}
                 onClick={(event) => handleWordClick(segment, event)}
                 className={cn(
-                  "cursor-pointer rounded border transition-all duration-200 mx-0.5 select-none",
+                  "cursor-pointer rounded border px-0.5 transition-all duration-200 mx-0.5 select-none inline-block",
                   colorClass,
-                  multiSelect && isSelected
-                    ? "underline decoration-[#4040f2] decoration-2"
+                  multiSelect
+                    ? isSelected
+                      ? "bg-[#4040f2] text-white border-[#4040f2] shadow-[0_0_10px_rgba(64,64,242,0.3)] scale-110 z-10"
+                      : "hover:border-[#4040f2]/50 opacity-80 hover:opacity-100"
                     : undefined
                 )}
                 title={`${segment.text} (${segment.wordData?.pinyin}) - Click to mark`}
