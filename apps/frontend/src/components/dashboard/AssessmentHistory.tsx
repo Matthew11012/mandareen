@@ -112,7 +112,7 @@ export default function AssessmentHistory({
                 </div>
               </div>
               <div className="text-white font-inter font-semibold">
-                HSK {item.levelPlaced}
+                {item.levelPlaced === 0 ? "Novice" : `HSK ${item.levelPlaced}`}
               </div>
             </div>
           ))}

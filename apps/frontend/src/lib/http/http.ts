@@ -197,6 +197,38 @@ export async function http<T>({
     } catch (err) {
       lastError = err;
       clearTimeout(timeoutId);
+
+      // Handle 401 Unauthorized errors - redirect to login in browser
+      const errStatus =
+        err && typeof err === "object" && "status" in err
+          ? (err as { status: unknown }).status
+          : undefined;
+      if (
+        err instanceof Error &&
+        typeof errStatus === "number" &&
+        errStatus === 401 &&
+        typeof window !== "undefined"
+      ) {
+        // Prevent redirect loop - don't redirect if already on login page
+        const currentPath = window.location.pathname;
+        if (currentPath === "/login" || currentPath.startsWith("/login/")) {
+          // Already on login page, don't redirect
+          throw err;
+        }
+
+        // Redirect to login page, preserving the current path as redirect
+        const fullPath = currentPath + window.location.search;
+        const loginUrl = `/login${fullPath !== "/" ? `?redirect=${encodeURIComponent(fullPath)}` : ""}`;
+        window.location.href = loginUrl;
+
+        // Throw a special error to prevent further processing
+        const authError = new Error("Authentication required") as Error & {
+          status: number;
+        };
+        authError.status = 401;
+        throw authError;
+      }
+
       if (!isIdempotent || attempt === maxAttempts - 1) break;
       // Exponential backoff with jitter: 200ms * 2^attempt ± 50ms
       const base = 200 * Math.pow(2, attempt);
@@ -204,6 +236,38 @@ export async function http<T>({
       await sleep(base + jitter);
     }
   }
+
+  // Check if final error is 401 and handle redirect
+  const finalErrorStatus =
+    lastError && typeof lastError === "object" && "status" in lastError
+      ? (lastError as { status: unknown }).status
+      : undefined;
+  if (
+    lastError instanceof Error &&
+    typeof finalErrorStatus === "number" &&
+    finalErrorStatus === 401 &&
+    typeof window !== "undefined"
+  ) {
+    // Prevent redirect loop - don't redirect if already on login page
+    const currentPath = window.location.pathname;
+    if (currentPath === "/login" || currentPath.startsWith("/login/")) {
+      // Already on login page, don't redirect
+      throw lastError;
+    }
+
+    // Redirect to login page, preserving the current path as redirect
+    const fullPath = currentPath + window.location.search;
+    const loginUrl = `/login${fullPath !== "/" ? `?redirect=${encodeURIComponent(fullPath)}` : ""}`;
+    window.location.href = loginUrl;
+
+    // Throw a special error to prevent further processing
+    const authError = new Error("Authentication required") as Error & {
+      status: number;
+    };
+    authError.status = 401;
+    throw authError;
+  }
+
   throw lastError instanceof Error ? lastError : new Error("Request failed");
 }
 

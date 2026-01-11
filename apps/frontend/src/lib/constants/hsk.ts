@@ -1,5 +1,6 @@
 export const getHSKPillClasses = (level?: number | null): string => {
   const map: Record<number, string> = {
+    0: "bg-zinc-500/20 text-zinc-300 border border-zinc-500/30",
     1: "bg-green-500/20 text-green-300 border border-green-500/30",
     2: "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30",
     3: "bg-blue-500/20 text-blue-300 border border-blue-500/30",

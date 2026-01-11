@@ -407,35 +407,38 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
   );
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div
+      className={cn(
+        "max-w-4xl mx-auto space-y-8 px-0",
+        multiSelect && "pb-32 sm:pb-0"
+      )}
+    >
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h1 className="text-2xl font-inter font-bold text-white">
+      <div className="text-center space-y-2 pt-4">
+        <h1 className="text-3xl font-inter font-extrabold text-white tracking-tight">
           Mandarin Placement Test
         </h1>
-        <p className="text-[#a6a6a6] font-inter">
-          {totalMarkedWords} words marked across all passages
-        </p>
+        <div className="flex items-center justify-center gap-2">
+          <div className="h-1 w-12 bg-[#4040f2] rounded-full" />
+          <p className="text-[#a6a6a6] font-inter text-sm font-medium">
+            {totalMarkedWords} words marked across all passages
+          </p>
+          <div className="h-1 w-12 bg-[#4040f2] rounded-full" />
+        </div>
       </div>
 
       {/* Multi-select Controls */}
-      <motion.div
-        layout
-        transition={{ type: "spring", bounce: 0.08, duration: 0.3 }}
+      <div
         className={cn(
-          "flex flex-wrap items-start sm:items-center justify-start sm:justify-between gap-2 bg-[#1a1d23] rounded-xl p-3 border border-[#404040]",
+          "flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#1a1d23] rounded-xl p-3 border border-[#404040] transition-all duration-300",
           multiSelect ? "w-full" : "inline-flex w-auto"
         )}
-        role="toolbar"
-        aria-label="Assessment controls"
       >
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <motion.button
-            layout
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.99 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             type="button"
-            aria-pressed={multiSelect}
             onClick={() => {
               if (multiSelect) {
                 setMultiSelect(false);
@@ -444,51 +447,100 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
                 setMultiSelect(true);
               }
             }}
-            className="inline-flex shrink-0 px-3 py-2 bg-[#2e323a] border border-[#404040] rounded-lg hover:border-[#4040f2] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#1a1d23] text-[#a6a6a6] text-center whitespace-normal w-auto"
+            className={cn(
+              "flex-1 sm:flex-none px-4 py-2.5 rounded-lg font-inter font-medium transition-all duration-200 cursor-pointer text-sm whitespace-nowrap",
+              multiSelect
+                ? "bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20"
+                : "bg-[#2e323a] text-[#a6a6a6] border border-[#404040] hover:border-[#4040f2] hover:text-white"
+            )}
           >
             {multiSelect ? "Cancel Selection" : "Select Multiple Words"}
           </motion.button>
-          {multiSelect && (
-            <>
-              <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
-                type="button"
-                onClick={() => applyBulkStatus("unknown")}
-                disabled={Object.keys(selectedWords).length === 0}
-                className="px-3 py-2 bg-red-500/20 text-red-300 border border-red-500/40 rounded-lg hover:border-red-500 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-400 focus-visible:ring-offset-[#1a1d23] w-full sm:w-auto text-center whitespace-normal"
-              >
-                Mark Unknown ({Object.keys(selectedWords).length})
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
-                type="button"
-                onClick={() => applyBulkStatus("partial")}
-                disabled={Object.keys(selectedWords).length === 0}
-                className="px-3 py-2 bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 rounded-lg hover:border-yellow-500 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-400 focus-visible:ring-offset-[#1a1d23] w-full sm:w-auto text-center whitespace-normal"
-              >
-                Mark Partial ({Object.keys(selectedWords).length})
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
-                type="button"
-                onClick={clearSelection}
-                disabled={Object.keys(selectedWords).length === 0}
-                className="px-3 py-2 bg-[#2e323a] text-white/80 border border-[#404040] rounded-lg hover:border-[#9aa6ff] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4040f2] focus-visible:ring-offset-[#1a1d23] w-full sm:w-auto text-center"
-              >
-                Clear
-              </motion.button>
-            </>
+
+          {!multiSelect && (
+            <div className="hidden sm:block text-xs text-[#666666]">
+              Select multiple words to mark them at once
+            </div>
           )}
         </div>
+
         {multiSelect && (
-          <div className="text-xs text-[#a6a6a6] w-full sm:w-auto">
-            Tip: Click words to toggle selection.
+          <div className="hidden sm:flex items-center gap-2 w-full sm:w-auto">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              type="button"
+              onClick={() => applyBulkStatus("unknown")}
+              disabled={Object.keys(selectedWords).length === 0}
+              className="px-4 py-2 bg-red-500/20 text-red-300 border border-red-500/40 rounded-lg hover:border-red-500 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              Mark Unknown ({Object.keys(selectedWords).length})
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              type="button"
+              onClick={() => applyBulkStatus("partial")}
+              disabled={Object.keys(selectedWords).length === 0}
+              className="px-4 py-2 bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 rounded-lg hover:border-yellow-500 transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              Mark Partial ({Object.keys(selectedWords).length})
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              type="button"
+              onClick={clearSelection}
+              disabled={Object.keys(selectedWords).length === 0}
+              className="px-4 py-2 bg-[#2e323a] text-white/80 border border-[#404040] rounded-lg hover:border-[#9aa6ff] transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              Clear
+            </motion.button>
           </div>
         )}
-      </motion.div>
+      </div>
+
+      {/* Mobile Multi-select Sticky Bar */}
+      {multiSelect && (
+        <div className="sm:hidden fixed bottom-0 left-0 right-0 z-50 p-4 mb-0 ">
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="bg-[#1a1d23] border border-[#404040] rounded-2xl p-4 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-inter font-medium text-white">
+                {Object.keys(selectedWords).length} words selected
+              </div>
+              <button
+                onClick={clearSelection}
+                disabled={Object.keys(selectedWords).length === 0}
+                className="text-xs text-[#a6a6a6] hover:text-white disabled:opacity-50 transition-colors"
+              >
+                Clear Selection
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => applyBulkStatus("unknown")}
+                disabled={Object.keys(selectedWords).length === 0}
+                className="flex flex-col items-center justify-center gap-1 py-3 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl active:bg-red-500/20 transition-all disabled:opacity-50"
+              >
+                <span className="text-sm font-bold">Mark Unknown</span>
+              </button>
+              <button
+                onClick={() => applyBulkStatus("partial")}
+                disabled={Object.keys(selectedWords).length === 0}
+                className="flex flex-col items-center justify-center gap-1 py-3 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded-xl active:bg-yellow-500/20 transition-all disabled:opacity-50"
+              >
+                <span className="text-sm font-bold">Mark Partial</span>
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Passage Display */}
       <PassageDisplay
@@ -518,11 +570,16 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
       />
 
       {/* Progress Summary */}
-      <div className="bg-[#1a1d23] rounded-xl p-6 border border-[#404040]">
-        <h3 className="text-lg font-inter font-semibold text-white mb-4">
-          Assessment Progress
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="bg-[#1a1d23] rounded-2xl p-6 border border-[#404040] shadow-sm">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-inter font-bold text-white">
+            Assessment Progress
+          </h3>
+          <div className="text-xs font-inter text-[#a6a6a6] bg-[#2e323a] px-3 py-1 rounded-full border border-[#404040]">
+            {session.passages.length} Passages Total
+          </div>
+        </div>
+        <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-4 gap-4">
           {session.passages.map((passage, index) => {
             const passageResponse = session.responses.find(
               (r) => r.passageId === passage.id
@@ -531,35 +588,62 @@ export const AssessmentFlow: React.FC<AssessmentFlowProps> = ({
             const isCurrent = index === session.currentPassageIndex;
 
             return (
-              <div
+              <motion.div
                 key={passage.id}
+                whileHover={{ y: -2 }}
                 className={cn(
-                  "p-3 rounded-lg border cursor-pointer transition-all duration-200",
+                  "relative overflow-hidden p-4 rounded-xl border cursor-pointer transition-all duration-300",
                   isCurrent
-                    ? "border-[#4040f2] bg-[#4040f2]/10"
-                    : "border-[#404040] hover:border-[#4040f2]/50 hover:bg-[#2e323a]"
+                    ? "border-[#4040f2] bg-[#4040f2]/5 shadow-[0_0_15px_rgba(64,64,242,0.1)]"
+                    : "border-[#404040] hover:border-[#4040f2]/30 hover:bg-[#2e323a]/50"
                 )}
                 onClick={() => goToPassage(index)}
               >
-                <div className="flex items-center gap-2 mb-1">
+                {isCurrent && (
+                  <div className="absolute top-0 right-0 p-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#4040f2] animate-pulse" />
+                  </div>
+                )}
+                <div className="flex items-center gap-3 mb-2">
                   <div
                     className={cn(
-                      "w-2 h-2 rounded-full",
+                      "flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold transition-colors",
                       markedWords > 0
-                        ? "bg-green-400"
+                        ? "bg-[#31c48d]/20 text-[#31c48d]"
+                        : isCurrent
+                          ? "bg-[#4040f2] text-white"
+                          : "bg-[#2e323a] text-[#a6a6a6]"
+                    )}
+                  >
+                    {index + 1}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-inter font-bold text-white leading-tight">
+                      Passage {index + 1}
+                    </span>
+                    <span className="text-[10px] text-[#a6a6a6] uppercase tracking-wider font-semibold">
+                      {markedWords} words
+                    </span>
+                  </div>
+                </div>
+                {/* Progress Mini Bar */}
+                <div className="w-full h-1 bg-[#2e323a] rounded-full overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full transition-all duration-500",
+                      markedWords > 0
+                        ? "bg-[#31c48d]"
                         : isCurrent
                           ? "bg-[#4040f2]"
-                          : "bg-[#666666]"
+                          : "bg-transparent"
                     )}
+                    style={{
+                      width:
+                        markedWords > 0 ? "100%" : isCurrent ? "50%" : "0%",
+                    }}
                   />
-                  <span className="text-sm font-inter font-medium text-white">
-                    Passage {index + 1}
-                  </span>
                 </div>
-                <p className="text-xs text-[#a6a6a6] font-inter">
-                  {markedWords} words marked
-                </p>
-              </div>
+              </motion.div>
             );
           })}
         </div>

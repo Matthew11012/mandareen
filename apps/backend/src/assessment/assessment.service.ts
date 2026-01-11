@@ -14,6 +14,7 @@ import { Observable } from 'rxjs';
 @Injectable()
 export class AssessmentService {
   private readonly logger = new Logger(AssessmentService.name);
+  private readonly inflightGenerations = new Map<string, Promise<Passage[]>>();
 
   constructor(
     private prisma: PrismaService,
@@ -30,43 +31,21 @@ export class AssessmentService {
   ): Promise<Passage[]> {
     try {
       const { maxLevel = 7, passageCount = 4 } = dto;
+      const key = this.buildGenerationKey(userId, maxLevel, passageCount);
 
-      const levelDistribution = this.calculateLevelDistribution(
-        maxLevel,
-        passageCount,
-      );
+      const existing = this.inflightGenerations.get(key);
+      if (existing) {
+        return existing;
+      }
 
-      const passagePromises = levelDistribution.map((level) =>
-        this.openaiService.generateAssessmentPassage(level),
-      );
+      const run = this.generatePassages(userId, maxLevel, passageCount);
+      this.inflightGenerations.set(key, run);
 
-      const passages = await Promise.all(passagePromises);
-
-      // Segment each passage and add vocabulary metadata (DB-backed only)
-      const enrichedPassages = await Promise.all(
-        passages.map(async (passage) => {
-          const segments = await this.segmentationService.segmentText(
-            passage.content,
-          );
-          const mappedSegments = segments.map((s) => ({
-            text: s.word,
-            startIndex: s.startIndex,
-            endIndex: s.endIndex,
-            isWord: s.isWord,
-            hskLevel: s.hskLevel,
-            pinyin: toToneMarks(s.pinyin),
-            definition: s.definition,
-          }));
-          return {
-            ...passage,
-            segments: mappedSegments,
-          };
-        }),
-      );
-
-      // Store assessment session in cache or DB if needed
-
-      return enrichedPassages;
+      try {
+        return await run;
+      } finally {
+        this.inflightGenerations.delete(key);
+      }
     } catch (error) {
       this.logger.error('Error fetching assessment questions:', error);
       throw new Error(`Failed to fetch assessment questions: ${error.message}`);
@@ -88,10 +67,6 @@ export class AssessmentService {
         try {
           const { maxLevel = 7, passageCount = 4 } =
             dto || ({} as FetchQuestionsDto);
-          const levelDistribution = this.calculateLevelDistribution(
-            maxLevel,
-            passageCount,
-          );
 
           emit('queued');
           emit('started');
@@ -102,28 +77,12 @@ export class AssessmentService {
             15000,
           );
 
-          const results: Passage[] = [];
-          for (let i = 0; i < levelDistribution.length; i++) {
-            const level = levelDistribution[i];
-            emit('step', { key: `openai_generate_passage_${i + 1}`, level });
-            const passage =
-              await this.openaiService.generateAssessmentPassage(level);
-
-            emit('step', { key: `segment_passage_${i + 1}`, level });
-            const segments = await this.segmentationService.segmentText(
-              passage.content,
-            );
-            const mappedSegments = segments.map((s) => ({
-              text: s.word,
-              startIndex: s.startIndex,
-              endIndex: s.endIndex,
-              isWord: s.isWord,
-              hskLevel: s.hskLevel,
-              pinyin: toToneMarks(s.pinyin),
-              definition: s.definition,
-            }));
-            results.push({ ...passage, segments: mappedSegments });
-          }
+          const results = await this.generatePassages(
+            userId,
+            maxLevel,
+            passageCount,
+            emit,
+          );
 
           emit('complete', { passages: results });
           subscriber.complete();
@@ -248,6 +207,54 @@ export class AssessmentService {
     }
 
     return distribution.slice(0, passageCount);
+  }
+
+  private buildGenerationKey(
+    userId: number,
+    maxLevel: number,
+    passageCount: number,
+  ): string {
+    return `${userId}:${maxLevel}:${passageCount}`;
+  }
+
+  private async generatePassages(
+    userId: number,
+    maxLevel: number,
+    passageCount: number,
+    emit?: (...args: any[]) => void,
+  ): Promise<Passage[]> {
+    const levelDistribution = this.calculateLevelDistribution(
+      maxLevel,
+      passageCount,
+    );
+
+    const results: Passage[] = [];
+    for (let i = 0; i < levelDistribution.length; i++) {
+      const level = levelDistribution[i];
+      emit?.('step', { key: `openai_generate_passage_${i + 1}`, level });
+      const passage = await this.openaiService.generateAssessmentPassage(level);
+
+      emit?.('step', { key: `segment_passage_${i + 1}`, level });
+      const segments = await this.segmentationService.segmentText(
+        passage.content,
+      );
+      const mappedSegments = segments.map((s) => ({
+        text: s.word,
+        startIndex: s.startIndex,
+        endIndex: s.endIndex,
+        isWord: s.isWord,
+        hskLevel: s.hskLevel,
+        pinyin: toToneMarks(s.pinyin),
+        definition: s.definition,
+      }));
+      results.push({ ...passage, segments: mappedSegments });
+    }
+
+    this.logger.log(
+      `Generated ${results.length} assessment passages for user ${userId} (maxLevel=${maxLevel}, passageCount=${passageCount})`,
+    );
+
+    return results;
   }
 
   async getAssessmentHistory(

@@ -7,6 +7,7 @@ import type {
   WordStatus,
 } from "../types/assessment";
 import { assessmentApi } from "../api/assessment";
+import { useAssessmentGenerationStore } from "./assessment-generation-store";
 
 interface AssessmentState {
   // Session data
@@ -59,10 +60,19 @@ export const useAssessmentStore = create<AssessmentState>()(
       startAssessment: async () => {
         const { isLoading, session } = get();
         if (isLoading || session) return; // prevent duplicate requests
+        const gen = useAssessmentGenerationStore.getState();
+        const defaults = { passageCount: 4, maxLevel: 7 };
+
         set({ isLoading: true, error: null });
+        if (!gen.inProgress) {
+          gen.start(defaults);
+        }
 
         try {
-          const passages = await assessmentApi.getQuestions();
+          const passages = await assessmentApi.getQuestions(
+            defaults,
+            { timeoutMs: 120000 },
+          );
 
           const session: AssessmentSession = {
             passages,
@@ -77,6 +87,7 @@ export const useAssessmentStore = create<AssessmentState>()(
           };
 
           set({ session, isLoading: false });
+          gen.finish();
 
           // Check completion status after setting session
           get().checkCompletion();
@@ -86,6 +97,7 @@ export const useAssessmentStore = create<AssessmentState>()(
               ? error.message
               : "Failed to start assessment";
           set({ error: errorMessage, isLoading: false });
+          gen.reset();
           // Re-throw to allow callers to handle the error with full error object
           throw error;
         }

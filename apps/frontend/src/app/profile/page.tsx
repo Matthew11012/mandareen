@@ -336,7 +336,9 @@ export default function ProfilePage() {
                   <span
                     className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs mt-1 ${getHSKPillClasses(data.currentLevel)}`}
                   >
-                    HSK {data.currentLevel}
+                    {data.currentLevel === 0
+                      ? "Novice"
+                      : `HSK ${data.currentLevel}`}
                   </span>
                 )}
               </div>
