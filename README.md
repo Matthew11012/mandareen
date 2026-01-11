@@ -101,7 +101,7 @@ Mandareen is a monorepo built with a modern, scalable tech stack.
 
 ### Frontend
 
-- **Framework:** Next.js 14+ (React), TypeScript
+- **Framework:** Next.js 16+ (React), TypeScript
 - **Styling:** Tailwind CSS, Shadcn/UI components
 - **State Management:** Zustand
 - **PWA:** `next-pwa` for Progressive Web App capabilities
@@ -118,9 +118,8 @@ Mandareen is a monorepo built with a modern, scalable tech stack.
 ### AI & Services
 
 - **LLMs:** OpenAI API
-  - GPT-4o-mini for text generation
-  - Whisper for Speech-to-Text (STT)
-  - Text-to-Speech (TTS) for audio playback
+  - GPT models for text generation
+  - Speech-to-Text (STT) and Text-to-Speech (TTS) for audio playback
 - **Embeddings:** Google Gemini (`gemini-embedding-001`)
 - **RAG System:** Retrieval-Augmented Generation using pgvector for context-aware responses
 
