@@ -128,8 +128,7 @@ Mandareen is a monorepo built with a modern, scalable tech stack.
 - **Frontend Deployment:** Vercel
 - **Backend Deployment:** Railway
 - **Storage:** Supabase Storage
-- **Real-time:** Server-Sent Events (SSE) for streaming responses
-- **Audio Processing:** WebRTC for real-time audio streaming
+- **Real-time Communication:** Server-Sent Events (SSE) for streaming responses, including real-time audio processing and AI responses
 
 ## Architecture
 
@@ -140,7 +139,7 @@ graph TD
   subgraph Frontend
     A[Browser / PWA]
     A -->|HTTPS| B[Next.js API Routes]
-    A -->|WebRTC| H[Realtime Audio Stream]
+    A -->|SSE| H[Server-Sent Events Stream]
   end
   subgraph Backend
     B --> C[NestJS Backend]
@@ -204,7 +203,7 @@ The current focus is on user testing, performance optimization, and continuous r
 
 - **Monorepo Architecture:** Clean separation between frontend and backend with shared types
 - **Type Safety:** End-to-end TypeScript with Prisma-generated types
-- **Real-time Features:** SSE streaming, WebRTC audio, and live progress updates
+- **Real-time Features:** SSE streaming for audio processing, AI responses, and live progress updates
 - **Scalable AI Integration:** Quota-aware generation, retry logic, and efficient caching
 - **Production-Ready:** Deployed on Railway (backend) and Vercel (frontend), with error handling and comprehensive logging
 - **Accessibility:** Keyboard navigation, screen reader support, and reduced-motion preferences
