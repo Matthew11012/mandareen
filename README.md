@@ -145,7 +145,6 @@ graph TD
     B --> C[NestJS Backend]
     H --> C
     C --> D[PostgreSQL / pgvector]
-    C --> E[Redis Cache]
     C --> F[Supabase Storage]
     C -->|REST HTTP| G[OpenAI & Gemini APIs]
   end
@@ -169,7 +168,7 @@ The AI's intelligence is powered by a **Retrieval-Augmented Generation (RAG)** s
 
 - **Batched Database Queries:** Optimized vocabulary lookups reduce query count by 99.8% (5,309 → 10 queries for long texts)
 - **Context-Aware Pinyin Disambiguation:** Intelligent pinyin selection based on surrounding context
-- **Caching:** Multi-layer caching with Redis and in-memory LRU caches
+- **In-Memory LRU Caching:** Multi-layer in-memory caching with LRU eviction for vocabulary lookups, timeline data, and billing plans
 - **Streaming Responses:** Server-Sent Events for real-time AI responses without blocking
 - **Progressive Web App:** Offline capabilities and app-like experience
 
